@@ -85,7 +85,3 @@ You can contribute in many ways:
 git clone https://github.com/<your-username>/gxc.git
 cd gxc
 
-# Install dependencies
-npm install        # or `yarn install`
-# Build node software
-make                # or `cargo build --release`, or `go build ./cmd/gxc/...`

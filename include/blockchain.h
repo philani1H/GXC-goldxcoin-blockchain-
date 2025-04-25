@@ -1,142 +1,75 @@
 #pragma once
+
 #include <vector>
-#include <mutex>
-#include <chrono>
-#include <stdexcept>
-#include "block.h"
-#include "gxc_coin.h"
+#include <unordered_map>
+#include <memory>
+#include "Block.h"
+#include "Wallet.h"
+#include "ProofOfPrice.h"
 
 class Blockchain {
+private:
     std::vector<Block> chain;
-    unsigned int difficulty;
-    std::string lastTxHash;  // for linear chaining of transactions
-    mutable std::mutex mtx;
-    const int BLOCK_TIME_TARGET = 10;  // seconds
-    const int DIFFICULTY_ADJUSTMENT_INTERVAL = 10;  // blocks
-    GXCCoinManager gxcManager;
-
-    Block createGenesis() {
-        Block genesis(0, "0", {});
-        double reward = gxcManager.getBlockReward(0);
-        if (gxcManager.canMintReward(reward)) {
-            genesis.minerAddress = "genesis";
-            genesis.miningReward = reward;
-            gxcManager.mintMiningReward(genesis.minerAddress, reward);
-        }
-        return genesis;
-    }
-
+    std::vector<Transaction> pendingTransactions;
+    std::unordered_map<std::string, TransactionOutput> utxoSet; // Unspent transaction outputs
+    double difficulty;
+    double posThreshold;
+    uint64_t blockReward;
+    double feeBurnRate;
+    
+    // Validator selection
+    std::vector<Validator> validators;
+    
+    // Proof of Price oracle
+    std::shared_ptr<ProofOfPrice> popOracle;
+    
+    // Adaptive monetary policy parameters
+    double targetInflationRate;
+    double targetPriceRatio;
+    double k1, k2, k3;
+    
+    // Private methods
+    bool isValidChain() const;
+    void updateUtxoSet(const Block& block);
+    double calculateObservedInflation(uint32_t window) const;
+    
 public:
-    Blockchain(unsigned int diff = 4)
-      : difficulty(diff)
-    {
-        chain.push_back(createGenesis());
-        lastTxHash = chain[0].hash;
-    }
-
-    void adjustDifficulty() {
-        if (chain.size() <= DIFFICULTY_ADJUSTMENT_INTERVAL) return;
-        
-        size_t lastAdjustmentIndex = chain.size() - DIFFICULTY_ADJUSTMENT_INTERVAL;
-        auto timeExpected = BLOCK_TIME_TARGET * DIFFICULTY_ADJUSTMENT_INTERVAL;
-        auto timeTaken = chain.back().timestamp - chain[lastAdjustmentIndex].timestamp;
-        
-        if (timeTaken < timeExpected / 2) difficulty++;
-        else if (timeTaken > timeExpected * 2) difficulty = std::max(1u, difficulty - 1);
-    }
-
-    void addBlock(const std::vector<Transaction>& txs, const std::string& minerAddr) {
-        std::lock_guard<std::mutex> lock(mtx);
-        
-        if (chain.empty()) {
-            throw std::runtime_error("Blockchain not initialized");
-        }
-        if (minerAddr.empty()) {
-            throw std::invalid_argument("Miner address cannot be empty");
-        }
-
-        double reward = gxcManager.getBlockReward(chain.size());
-        Block b(chain.size(), chain.back().hash, txs, minerAddr, reward);
-        b.mine(difficulty);
-        
-        // Verify block before adding
-        if (!verifyBlock(b)) {
-            throw std::runtime_error("Invalid block");
-        }
-
-        // Mint mining reward if within supply cap
-        if (gxcManager.canMintReward(reward)) {
-            gxcManager.mintMiningReward(minerAddr, reward);
-        }
-
-        // Process transactions
-        for (const auto& tx : txs) {
-            gxcManager.transfer(tx.sender, tx.receiver, tx.amount);
-        }
-
-        chain.push_back(b);
-        if (!txs.empty()) {
-            lastTxHash = txs.back().txHash;
-        }
-
-        adjustDifficulty();
-    }
-
-    bool verifyBlock(const Block& block) const {
-        if (block.index != chain.size()) {
-            return false;
-        }
-        if (block.previousHash != chain.back().hash) {
-            return false;
-        }
-        if (block.hash != block.calculateHash()) {
-            return false;
-        }
-        std::string prefix(difficulty, '0');
-        if (block.hash.substr(0, difficulty) != prefix) {
-            return false;
-        }
-        return true;
-    }
-
-    bool isValid() const {
-        std::lock_guard<std::mutex> lock(mtx);
-        
-        if (chain.empty()) return false;
-        
-        for (size_t i = 1; i < chain.size(); ++i) {
-            const Block &curr = chain[i], &prev = chain[i-1];
-            
-            if (curr.index != i) return false;
-            if (curr.previousHash != prev.hash) return false;
-            if (curr.hash != curr.calculateHash()) return false;
-            
-            std::string prefix(difficulty, '0');
-            if (curr.hash.substr(0, difficulty) != prefix) return false;
-        }
-        return true;
-    }
-
-    std::string getLastTxHash() const {
-        std::lock_guard<std::mutex> lock(mtx);
-        return lastTxHash;
-    }
-
-    size_t getHeight() const {
-        std::lock_guard<std::mutex> lock(mtx);
-        return chain.size();
-    }
-
-    unsigned int getDifficulty() const {
-        std::lock_guard<std::mutex> lock(mtx);
-        return difficulty;
-    }
-
-    Block getLastBlock() const {
-        std::lock_guard<std::mutex> lock(mtx);
-        if (chain.empty()) {
-            throw std::runtime_error("Blockchain is empty");
-        }
-        return chain.back();
-    }
+    // Constructor
+    Blockchain();
+    
+    // Add a block to the chain
+    bool addBlock(Block& block);
+    
+    // Create a new block (mining)
+    Block createBlock(BlockType type, const std::string& minerAddress);
+    
+    // Process a transaction
+    bool processTransaction(const Transaction& transaction);
+    
+    // Select a validator for PoS block
+    Validator selectValidator() const;
+    
+    // Calculate new block reward based on adaptive monetary policy
+    double calculateBlockReward(uint32_t blockNumber) const;
+    
+    // Calculate fee burn rate based on current inflation
+    double calculateFeeBurnRate(uint32_t blockNumber) const;
+    
+    // Process transaction fees with partial burning
+    void processTransactionFees(const Block& block);
+    
+    // Getters
+    const Block& getLatestBlock() const { return chain.back(); }
+    size_t getChainLength() const { return chain.size(); }
+    double getDifficulty() const { return difficulty; }
+    uint64_t getBlockReward() const { return blockReward; }
+    
+    // Adjust difficulty
+    void adjustDifficulty();
+    
+    // Register a validator
+    void registerValidator(const Validator& validator);
+    
+    // Update PoP oracle data
+    void updatePriceData(const PriceData& priceData);
 };

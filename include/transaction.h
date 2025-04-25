@@ -1,42 +1,58 @@
 #pragma once
+
 #include <string>
-#include <sstream>
-#include <iomanip>
-#include <openssl/sha.h>
+#include <vector>
+#include <ctime>
 
-// Simple SHA256 helper
-static std::string sha256(const std::string &input) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX ctx;
-    SHA256_Init(&ctx);
-    SHA256_Update(&ctx, input.c_str(), input.size());
-    SHA256_Final(hash, &ctx);
+struct TransactionInput {
+    std::string txHash;      // Reference to previous transaction
+    uint32_t outputIndex;    // Index of the output in the referenced transaction
+    std::string signature;   // Signature to verify ownership
+};
 
-    std::ostringstream ss;
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i)
-        ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
-    return ss.str();
-}
+struct TransactionOutput {
+    std::string address;     // Recipient address
+    double amount;           // Amount of GXC
+    std::string script;      // Output script (can be used for smart contracts)
+};
 
-struct Transaction {
-    std::string sender;
-    std::string receiver;
-    double amount;
-    std::string prevTxHash; // for chained traceability
+class Transaction {
+private:
     std::string txHash;
+    std::vector<TransactionInput> inputs;
+    std::vector<TransactionOutput> outputs;
+    std::time_t timestamp;
+    std::string prevTxHash;  // Hash of sender's previous transaction (for chained TX hashes)
+    std::string popReference; // Reference to Proof of Price (for gold-backed tokens)
+    bool isGoldBacked;       // Flag for gold-backed transactions
 
-    Transaction(const std::string& s,
-                const std::string& r,
-                double a,
-                const std::string& prev)
-      : sender(s), receiver(r), amount(a), prevTxHash(prev)
-    {
-        txHash = calculateHash();
-    }
-
-    std::string calculateHash() const {
-        std::ostringstream ss;
-        ss << sender << receiver << amount << prevTxHash;
-        return sha256(ss.str());
-    }
+public:
+    // Constructor for regular transaction
+    Transaction(const std::vector<TransactionInput>& inputsIn, 
+                const std::vector<TransactionOutput>& outputsIn,
+                const std::string& prevTxHashIn);
+    
+    // Constructor for gold-backed transaction
+    Transaction(const std::vector<TransactionInput>& inputsIn, 
+                const std::vector<TransactionOutput>& outputsIn,
+                const std::string& prevTxHashIn,
+                const std::string& popReferenceIn);
+    
+    // Calculate transaction hash
+    std::string calculateHash() const;
+    
+    // Verify transaction
+    bool verifyTransaction() const;
+    
+    // Sign transaction inputs
+    void signInputs(const std::string& privateKey);
+    
+    // Getters
+    std::string getHash() const { return txHash; }
+    std::time_t getTimestamp() const { return timestamp; }
+    const std::vector<TransactionInput>& getInputs() const { return inputs; }
+    const std::vector<TransactionOutput>& getOutputs() const { return outputs; }
+    std::string getPrevTxHash() const { return prevTxHash; }
+    std::string getPopReference() const { return popReference; }
+    bool isGoldBackedTransaction() const { return isGoldBacked; }
 };
