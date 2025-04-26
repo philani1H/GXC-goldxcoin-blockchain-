@@ -1325,7 +1325,7 @@ The GXC blockchain is an open-source project that welcomes contributions from de
 3. *Medium/Dev.to*: Publish technical summaries with links to full specification
 4. *Bitcointalk*: Announce in altcoin forums for miner outreach
 5. *Social Media*: Tweet updates with #GXC #ProofOfPrice #HybridMining
-6. *Developer Discord*: Join community discussions at [discord.gg/gxc-blockchain](https://discord.gg/gxc-blockchain)
+6. *Developer Discord*: Join community discussions at [discord.gg/gxc-blockchain](https://discord.gg/ZsFRAvp8)
 7. *Academic Partners*: Collaborate with universities on economic modeling
 
 ---
