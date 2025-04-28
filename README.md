@@ -102,6 +102,587 @@ Our vision is to create a blockchain ecosystem that bridges traditional asset cl
 - *Cross-Chain Bridge*: Secure asset transfer protocol with cryptographic verification.
 - *Integrated Wallet System*: Simplified wallet creation and management.
 
+## 4.2 Stock Contracts
+
+### Overview
+
+GXC introduces "Stock Contracts," a specialized smart contract framework enabling developers and companies to build transparent on-chain tracking systems for stocks, ETFs, and other traditional financial instruments. These contracts leverage the PoP oracle infrastructure to create verifiable representations of real-world equities on the GXC blockchain.
+
+### Key Features
+
+- *Asset Mirroring*: Stock Contracts track real-world equities with 1:1 representation
+- *Price Feed Integration*: Utilizes PoP oracle network for accurate, tamper-resistant pricing
+- *Customizable Indices*: Create custom indices or track existing ETFs
+- *Corporate Action Handling*: Dividends, splits, and other events handled on-chain
+- *Regulatory Compliance Hooks*: Built-in mechanisms for regulatory reporting and compliance
+
+### Technical Implementation
+
+Stock Contracts build upon the GXC-G framework, extending its capabilities to equity markets:
+
+javascript
+// Stock Contract base structure
+contract StockContract {
+    // Stock identifier (e.g., "AAPL", "MSFT")
+    string public ticker;
+    
+    // Reference to the PoP oracle providing price data
+    address public priceOracle;
+    
+    // Current stock price in USD (scaled by 10^8 for precision)
+    uint256 public currentPrice;
+    
+    // Total supply of tokenized shares
+    uint256 public totalShares;
+    
+    // Mapping of holders to their share balance
+    mapping(address => uint256) public balances;
+    
+    // Transaction history similar to GXC-G tokens
+    mapping(address => bytes32) public userLastStockTx;
+    
+    // Latest price update timestamp
+    uint256 public lastPriceUpdate;
+    
+    // Corporate action history
+    CorporateAction[] public corporateActions;
+    
+    // Events
+    event PriceUpdated(uint256 price, uint256 timestamp, bytes32 popHash);
+    event SharesIssued(address to, uint256 amount, uint256 price, bytes32 txHash);
+    event SharesTransferred(address from, address to, uint256 amount, bytes32 txHash);
+    event CorporateActionExecuted(uint256 actionId, ActionType actionType);
+    
+    // Structure for corporate actions
+    struct CorporateAction {
+        uint256 id;
+        ActionType actionType;
+        uint256 timestamp;
+        uint256 value;      // e.g., dividend amount, split ratio
+        bytes32 proofHash;  // Reference to external proof
+    }
+    
+    enum ActionType { DIVIDEND, SPLIT, MERGE, DELISTING, OTHER }
+
+    // Constructor
+    constructor(string memory _ticker, address _priceOracle) {
+        ticker = _ticker;
+        priceOracle = _priceOracle;
+    }
+    
+    // Update price using the PoP oracle
+    function updatePrice() external {
+        require(msg.sender == priceOracle, "Only oracle can update price");
+        
+        // Fetch latest price data from the authorized oracle
+        (uint256 newPrice, uint256 timestamp, bytes32 popHash) = IStockPriceOracle(priceOracle).getLatestPrice(ticker);
+        
+        // Ensure price data is fresh
+        require(block.timestamp - timestamp < MAX_PRICE_AGE, "Price data too old");
+        
+        // Update contract state
+        currentPrice = newPrice;
+        lastPriceUpdate = timestamp;
+        
+        // Emit event
+        emit PriceUpdated(newPrice, timestamp, popHash);
+    }
+    
+    // Issue new shares (only by authorized issuers)
+    function issueShares(address to, uint256 amount) external onlyAuthorizedIssuer {
+        // Ensure price is up-to-date
+        require(block.timestamp - lastPriceUpdate < MAX_PRICE_AGE, "Price data too old");
+        
+        // Record transaction with chained hash
+        bytes32 prevTxHash = userLastStockTx[to];
+        bytes32 newTxHash = keccak256(abi.encodePacked(
+            msg.sender,
+            to,
+            amount,
+            prevTxHash,
+            currentPrice
+        ));
+        
+        // Update last transaction hash
+        userLastStockTx[to] = newTxHash;
+        
+        // Update balances
+        balances[to] += amount;
+        totalShares += amount;
+        
+        // Emit event
+        emit SharesIssued(to, amount, currentPrice, newTxHash);
+    }
+    
+    // Transfer shares
+    function transfer(address to, uint256 amount) external {
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+        
+        // Record transaction with chained hash
+        bytes32 senderPrevTxHash = userLastStockTx[msg.sender];
+        bytes32 receiverPrevTxHash = userLastStockTx[to];
+        
+        bytes32 senderNewTxHash = keccak256(abi.encodePacked(
+            msg.sender,
+            to,
+            amount,
+            senderPrevTxHash,
+            currentPrice
+        ));
+        
+        bytes32 receiverNewTxHash = keccak256(abi.encodePacked(
+            msg.sender,
+            to,
+            amount,
+            receiverPrevTxHash,
+            currentPrice
+        ));
+        
+        // Update last transaction hashes
+        userLastStockTx[msg.sender] = senderNewTxHash;
+        userLastStockTx[to] = receiverNewTxHash;
+        
+        // Update balances
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+        
+        // Emit event
+        emit SharesTransferred(msg.sender, to, amount, receiverNewTxHash);
+    }
+    
+    // Execute corporate action (only by authorized entities)
+    function executeCorporateAction(
+        ActionType actionType,
+        uint256 value,
+        bytes32 proofHash
+    ) external onlyAuthorizedExecutor {
+        // Create new corporate action
+        uint256 actionId = corporateActions.length;
+        
+        corporateActions.push(CorporateAction({
+            id: actionId,
+            actionType: actionType,
+            timestamp: block.timestamp,
+            value: value,
+            proofHash: proofHash
+        }));
+        
+        // Execute action based on type
+        if (actionType == ActionType.DIVIDEND) {
+            executeDividend(value);
+        } else if (actionType == ActionType.SPLIT) {
+            executeSplit(value);
+        } else if (actionType == ActionType.MERGE) {
+            executeMerge(value);
+        }
+        
+        // Emit event
+        emit CorporateActionExecuted(actionId, actionType);
+    }
+    
+    // Implementation of specific corporate actions
+    function executeDividend(uint256 dividendPerShare) internal {
+        // Dividend execution logic
+        // ...
+    }
+    
+    function executeSplit(uint256 ratio) internal {
+        // Split execution logic
+        // ...
+    }
+    
+    function executeMerge(uint256 ratio) internal {
+        // Merge execution logic
+        // ...
+    }
+    
+    // Modifiers
+    modifier onlyAuthorizedIssuer() {
+        require(isAuthorizedIssuer(msg.sender), "Not authorized issuer");
+        _;
+    }
+    
+    modifier onlyAuthorizedExecutor() {
+        require(isAuthorizedExecutor(msg.sender), "Not authorized executor");
+        _;
+    }
+    
+    // Authorization checks
+    function isAuthorizedIssuer(address account) internal view returns (bool) {
+        // Check if account is authorized to issue shares
+        // ...
+    }
+    
+    function isAuthorizedExecutor(address account) internal view returns (bool) {
+        // Check if account is authorized to execute corporate actions
+        // ...
+    }
+}
+
+
+### Stock Oracle Implementation
+
+Stock Contracts rely on specialized PoP oracles that track equity markets:
+
+javascript
+// Stock Price Oracle interface
+interface IStockPriceOracle {
+    function getLatestPrice(string calldata ticker) external view returns (
+        uint256 price,
+        uint256 timestamp,
+        bytes32 popHash
+    );
+}
+
+// Stock Price Oracle implementation
+contract StockPriceOracle is IStockPriceOracle {
+    // Mapping of stock tickers to their latest price data
+    mapping(string => StockPrice) public stockPrices;
+    
+    // Structure for stock price data
+    struct StockPrice {
+        uint256 price;      // Price in USD (scaled by 10^8)
+        uint256 timestamp;  // Last update timestamp
+        bytes32 popHash;    // PoP hash of the price data
+    }
+    
+    // Authorized oracle providers
+    mapping(address => bool) public authorizedProviders;
+    
+    // Required number of price submissions for aggregation
+    uint256 public constant REQUIRED_SUBMISSIONS = 5;
+    
+    // Price submissions for the current round
+    mapping(string => mapping(address => PriceSubmission)) public currentSubmissions;
+    
+    // Count of submissions for each ticker in the current round
+    mapping(string => uint256) public submissionCounts;
+    
+    // Structure for price submissions
+    struct PriceSubmission {
+        uint256 price;
+        uint256 timestamp;
+        bytes signature;
+    }
+    
+    // Events
+    event PriceSubmitted(string ticker, address provider, uint256 price);
+    event PriceUpdated(string ticker, uint256 price, bytes32 popHash);
+    
+    // Submit a new stock price
+    function submitStockPrice(
+        string calldata ticker,
+        uint256 price,
+        uint256 timestamp,
+        bytes calldata signature
+    ) external {
+        // Verify provider is authorized
+        require(authorizedProviders[msg.sender], "Provider not authorized");
+        
+        // Verify signature matches the data and provider's public key
+        require(verifySignature(msg.sender, ticker, price, timestamp, signature), "Invalid signature");
+        
+        // Check timestamp is recent
+        require(block.timestamp - timestamp < MAX_TIME_DELAY, "Data too old");
+        
+        // Store the submission
+        currentSubmissions[ticker][msg.sender] = PriceSubmission({
+            price: price,
+            timestamp: timestamp,
+            signature: signature
+        });
+        
+        // Increment submission count
+        submissionCounts[ticker]++;
+        
+        // Emit event
+        emit PriceSubmitted(ticker, msg.sender, price);
+        
+        // Check if we have enough submissions to aggregate
+        if (submissionCounts[ticker] >= REQUIRED_SUBMISSIONS) {
+            aggregateStockPrice(ticker);
+        }
+    }
+    
+    // Aggregate stock price from submissions
+    function aggregateStockPrice(string memory ticker) internal {
+        // Get all submissions for the ticker
+        uint256[] memory prices = new uint256[](REQUIRED_SUBMISSIONS);
+        uint256 count = 0;
+        
+        for (address provider in authorizedProviders) {
+            if (currentSubmissions[ticker][provider].timestamp > 0) {
+                prices[count] = currentSubmissions[ticker][provider].price;
+                count++;
+            }
+            
+            if (count >= REQUIRED_SUBMISSIONS) {
+                break;
+            }
+        }
+        
+        // Calculate median price
+        uint256 medianPrice = calculateMedian(prices);
+        
+        // Apply outlier detection
+        bool hasOutliers = detectOutliers(prices, medianPrice);
+        if (hasOutliers) {
+            emitOutlierWarning(ticker, prices, medianPrice);
+        }
+        
+        // Calculate PoP hash
+        bytes32 popHash = keccak256(abi.encodePacked(
+            ticker,
+            medianPrice,
+            block.timestamp
+        ));
+        
+        // Update stock price
+        stockPrices[ticker] = StockPrice({
+            price: medianPrice,
+            timestamp: block.timestamp,
+            popHash: popHash
+        });
+        
+        // Reset submission counts
+        submissionCounts[ticker] = 0;
+        
+        // Emit event
+        emit PriceUpdated(ticker, medianPrice, popHash);
+    }
+    
+    // Get the latest price for a stock
+    function getLatestPrice(string calldata ticker) external view override returns (
+        uint256 price,
+        uint256 timestamp,
+        bytes32 popHash
+    ) {
+        StockPrice memory stockPrice = stockPrices[ticker];
+        require(stockPrice.timestamp > 0, "No price data available");
+        
+        return (stockPrice.price, stockPrice.timestamp, stockPrice.popHash);
+    }
+    
+    // Helper functions
+    function calculateMedian(uint256[] memory values) internal pure returns (uint256) {
+        // Implementation of median calculation
+        // ...
+    }
+    
+    function detectOutliers(uint256[] memory values, uint256 median) internal pure returns (bool) {
+        // Implementation of outlier detection
+        // ...
+    }
+    
+    function verifySignature(
+        address provider,
+        string memory ticker,
+        uint256 price,
+        uint256 timestamp,
+        bytes memory signature
+    ) internal pure returns (bool) {
+        // Implementation of signature verification
+        // ...
+    }
+    
+    function emitOutlierWarning(
+        string memory ticker,
+        uint256[] memory prices,
+        uint256 median
+    ) internal {
+        // Implementation of outlier warning
+        // ...
+    }
+}
+
+
+### Stock Index Contracts
+
+GXC also enables the creation of index funds that track baskets of Stock Contracts:
+
+javascript
+// Stock Index Contract
+contract StockIndexContract {
+    // Index identifier (e.g., "GXC-TECH", "GXC-SP500")
+    string public indexName;
+    
+    // Component stocks with their weights
+    struct IndexComponent {
+        address stockContract;
+        uint256 weight;     // Weight in basis points (e.g., 1000 = 10%)
+    }
+    
+    IndexComponent[] public components;
+    
+    // Total supply of index tokens
+    uint256 public totalSupply;
+    
+    // Mapping of holders to their token balance
+    mapping(address => uint256) public balances;
+    
+    // Latest index value in USD (scaled by 10^8)
+    uint256 public indexValue;
+    
+    // Last calculation timestamp
+    uint256 public lastCalculation;
+    
+    // Events
+    event IndexValueUpdated(uint256 value, uint256 timestamp);
+    event ComponentAdded(address stockContract, uint256 weight);
+    event ComponentRemoved(address stockContract);
+    event ComponentWeightChanged(address stockContract, uint256 newWeight);
+    
+    // Constructor
+    constructor(string memory _indexName) {
+        indexName = _indexName;
+    }
+    
+    // Add a component to the index
+    function addComponent(address stockContract, uint256 weight) external onlyAdmin {
+        // Check if the stock contract is valid
+        require(isValidStockContract(stockContract), "Invalid stock contract");
+        
+        // Check if the weight is valid (0-10000 basis points)
+        require(weight <= 10000, "Weight exceeds maximum");
+        
+        // Check if adding this weight would exceed 100%
+        uint256 totalWeight = getTotalWeight();
+        require(totalWeight + weight <= 10000, "Total weight exceeds 100%");
+        
+        // Add the component
+        components.push(IndexComponent({
+            stockContract: stockContract,
+            weight: weight
+        }));
+        
+        // Emit event
+        emit ComponentAdded(stockContract, weight);
+        
+        // Update index value
+        calculateIndexValue();
+    }
+    
+    // Remove a component from the index
+    function removeComponent(uint256 index) external onlyAdmin {
+        require(index < components.length, "Component index out of bounds");
+        
+        address stockContract = components[index].stockContract;
+        
+        // Remove the component
+        components[index] = components[components.length - 1];
+        components.pop();
+        
+        // Emit event
+        emit ComponentRemoved(stockContract);
+        
+        // Update index value
+        calculateIndexValue();
+    }
+    
+    // Change the weight of a component
+    function changeComponentWeight(uint256 index, uint256 newWeight) external onlyAdmin {
+        require(index < components.length, "Component index out of bounds");
+        require(newWeight <= 10000, "Weight exceeds maximum");
+        
+        // Calculate new total weight
+        uint256 totalWeight = getTotalWeight() - components[index].weight + newWeight;
+        require(totalWeight <= 10000, "Total weight exceeds 100%");
+        
+        // Update weight
+        components[index].weight = newWeight;
+        
+        // Emit event
+        emit ComponentWeightChanged(components[index].stockContract, newWeight);
+        
+        // Update index value
+        calculateIndexValue();
+    }
+    
+    // Calculate the current index value
+    function calculateIndexValue() public {
+        uint256 value = 0;
+        
+        // Sum weighted stock prices
+        for (uint256 i = 0; i < components.length; i++) {
+            IndexComponent memory component = components[i];
+            
+            // Get stock price from the stock contract
+            (uint256 stockPrice, uint256 timestamp, ) = StockContract(component.stockContract).currentPrice();
+            
+            // Ensure price is fresh
+            require(block.timestamp - timestamp < MAX_PRICE_AGE, "Stock price too old");
+            
+            // Add weighted price to the index value
+            value += (stockPrice * component.weight) / 10000;
+        }
+        
+        // Update index value
+        indexValue = value;
+        lastCalculation = block.timestamp;
+        
+        // Emit event
+        emit IndexValueUpdated(value, block.timestamp);
+    }
+    
+    // Get the total weight of all components
+    function getTotalWeight() public view returns (uint256) {
+        uint256 totalWeight = 0;
+        
+        for (uint256 i = 0; i < components.length; i++) {
+            totalWeight += components[i].weight;
+        }
+        
+        return totalWeight;
+    }
+    
+    // Check if a contract is a valid stock contract
+    function isValidStockContract(address contractAddress) internal view returns (bool) {
+        // Implementation of stock contract validation
+        // ...
+    }
+    
+    // Modifier for admin-only functions
+    modifier onlyAdmin() {
+        require(isAdmin(msg.sender), "Not an admin");
+        _;
+    }
+    
+    // Check if an address is an admin
+    function isAdmin(address account) internal view returns (bool) {
+        // Implementation of admin check
+        // ...
+    }
+}
+
+
+### Use Cases
+
+1. *Tokenized Stocks*: Create 1:1 digital representations of stocks tradable 24/7
+2. *Custom Indices*: Build specialized index funds based on sectors, themes, or strategies
+3. *Synthetic ETFs*: Mirror popular ETFs with on-chain transparency
+4. *Automated Portfolio Management*: Smart contracts that rebalance holdings based on predefined rules
+5. *Dividend Distribution*: Automate dividend payments to token holders
+
+### Compliance Framework
+
+Stock Contracts include compliance hooks for regulatory requirements:
+
+1. *KYC/AML Integration*: Optional identity verification for regulated assets
+2. *Transfer Restrictions*: Configurable rules for who can hold/transfer tokens
+3. *Reporting Tools*: Generate regulatory reports for authorities
+4. *Governance Framework*: Rules for updating stock data and handling corporate actions
+
+### Benefits Over Traditional Systems
+
+1. *24/7 Trading*: Unlike traditional markets with limited hours
+2. *Fractional Ownership*: Enable ownership of partial shares
+3. *Transparent Pricing*: All price feeds verifiable on-chain
+4. *Global Access*: Available to anyone with internet access
+5. *Programmable*: Automated actions based on market conditions
+6. *Reduced Counterparty Risk*: Settlement happens on-chain
+
+By integrating the Stock Contract system with GXC's existing infrastructure, the blockchain provides a comprehensive platform for both traditional and crypto assets with unprecedented transparency and traceability.
+
 ---
 
 ## 5. Technical Architecture
