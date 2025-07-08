@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GXC Wallet - Your Digital Assets Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --warning-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            --primary-color: #667eea;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --dark-color: #1f2937;
+            --light-bg: #f8fafc;
+            --border-color: #e5e7eb;
+            --glass-bg: rgba(255, 255, 255, 0.95);
+        }
+
+        body {
+            background: var(--primary-gradient);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+        }
+
+        .main-container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
+            margin: 20px;
+            overflow: hidden;
+            min-height: calc(100vh - 40px);
+        }
+
+        .sidebar {
+            background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
+            color: white;
+            min-height: calc(100vh - 40px);
+            padding: 2rem 0;
+            position: relative;
+        }
+
+        .sidebar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 2px;
+            height: 100%;
+            background: var(--primary-gradient);
+        }
+
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 1.2rem 2rem;
+            border-radius: 0;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+            font-weight: 500;
+        }
+
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+            border-left-color: #4facfe;
+            transform: translateX(8px);
+        }
+
+        .sidebar .nav-link i {
+            width: 20px;
+            margin-right: 0.75rem;
+        }
+
+        .wallet-card {
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .wallet-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 25px 50px rgba(102, 126, 234, 0.3);
+        }
+
+        .wallet-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+            transform: translateX(-100%);
+            transition: transform 0.6s ease;
+        }
+
+        .wallet-card:hover::before {
+            transform: translateX(100%);
+        }
+
+        .balance-display {
+            font-size: 2.5rem;
+            font-weight: 800;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 0.5rem;
+        }
+
+        .balance-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .action-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+            border-color: var(--primary-color);
+        }
+
+        .action-card .icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .action-card:hover .icon {
+            transform: scale(1.1);
+        }
+
+        .send-icon { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .receive-icon { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+        .history-icon { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+        .stake-icon { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+
+        .transaction-item {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .transaction-item:hover {
+            transform: translateX(8px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+        }
+
+        .tx-hash {
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            background: rgba(102, 126, 234, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .amount-positive {
+            color: var(--success-color);
+            font-weight: 700;
+        }
+
+        .amount-negative {
+            color: var(--danger-color);
+            font-weight: 700;
+        }
+
+        .amount-neutral {
+            color: var(--dark-color);
+            font-weight: 700;
+        }
+
+        .qr-container {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .qr-code {
+            margin: 1rem auto;
+            border-radius: 12px;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .btn-primary-custom {
+            background: var(--primary-gradient);
+            border: none;
+            border-radius: 50px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            color: white;
+        }
+
+        .btn-outline-custom {
+            border: 2px solid transparent;
+            background: linear-gradient(white, white) padding-box, var(--primary-gradient) border-box;
+            color: var(--primary-color);
+            border-radius: 50px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-outline-custom:hover {
+            background: var(--primary-gradient);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .navbar-custom {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 0;
+        }
+
+        .brand-logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.5rem;
+            animation: pulse 2s infinite;
+        }
+
+        .status-online { background: var(--success-color); }
+        .status-offline { background: var(--danger-color); }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-modern .modal-content {
+            border: none;
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(20px);
+        }
+
+        .form-control-modern {
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            background: rgba(248, 250, 252, 0.8);
+            transition: all 0.3s ease;
+        }
+
+        .form-control-modern:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+            background: white;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-custom fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand brand-logo" href="/">
+                <i class="fas fa-wallet me-2"></i>GXC Wallet
+            </a>
+            <div class="navbar-nav ms-auto d-flex flex-row align-items-center">
+                <span class="nav-link">
+                    <span class="status-indicator status-online"></span>
+                    Connected
+                </span>
+                <div class="dropdown ms-3">
+                    <button class="btn btn-outline-custom dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="fas fa-user-circle me-1"></i>Account
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-cog me-2"></i>Settings</a></li>
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-shield-alt me-2"></i>Security</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid" style="margin-top: 100px;">
+        <div class="main-container">
+            <div class="row g-0">
+                <!-- Sidebar -->
+                <div class="col-md-2 sidebar">
+                    <div class="p-3 text-center border-bottom border-secondary">
+                        <div class="fw-bold fs-5">GXC Wallet</div>
+                        <small class="opacity-75">Digital Asset Manager</small>
+                    </div>
+                    <div class="nav flex-column mt-3">
+                        <a class="nav-link active" href="#dashboard">
+                            <i class="fas fa-tachometer-alt"></i>Dashboard
+                        </a>
+                        <a class="nav-link" href="#send">
+                            <i class="fas fa-paper-plane"></i>Send
+                        </a>
+                        <a class="nav-link" href="#receive">
+                            <i class="fas fa-qrcode"></i>Receive
+                        </a>
+                        <a class="nav-link" href="#history">
+                            <i class="fas fa-history"></i>History
+                        </a>
+                        <a class="nav-link" href="#staking">
+                            <i class="fas fa-coins"></i>Staking
+                        </a>
+                        <a class="nav-link" href="#bridge">
+                            <i class="fas fa-bridge"></i>Cross-Chain
+                        </a>
+                        <a class="nav-link" href="#settings">
+                            <i class="fas fa-cog"></i>Settings
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Main Dashboard -->
+                <div class="col-md-10 p-4">
+                    <!-- Wallet Overview -->
+                    <div class="row mb-4" id="dashboard">
+                        <div class="col-md-8">
+                            <div class="card wallet-card">
+                                <div class="card-body p-4">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div>
+                                            <div class="balance-label">Total Balance</div>
+                                            <div class="balance-display" id="total-balance">1,234.56 GXC</div>
+                                            <small class="opacity-75">≈ $2,469.12 USD</small>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="balance-label">Gold Tokens</div>
+                                            <div class="fs-4 fw-bold">45.2 GXC-G</div>
+                                            <small class="opacity-75">≈ $2,850.40 USD</small>
+                                        </div>
+                                    </div>
+                                    <div class="row mt-4">
+                                        <div class="col-4 text-center">
+                                            <div class="fs-6 fw-bold">24h Change</div>
+                                            <div class="text-success">+5.4%</div>
+                                        </div>
+                                        <div class="col-4 text-center">
+                                            <div class="fs-6 fw-bold">Staked</div>
+                                            <div>850 GXC</div>
+                                        </div>
+                                        <div class="col-4 text-center">
+                                            <div class="fs-6 fw-bold">Rewards</div>
+                                            <div class="text-warning">+12.3 GXC</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-value">1,234</div>
+                                    <div class="stat-label">Available</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value">850</div>
+                                    <div class="stat-label">Staked</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="row mb-4 g-3">
+                        <div class="col-md-3">
+                            <div class="action-card p-4 h-100" data-bs-toggle="modal" data-bs-target="#sendModal">
+                                <div class="icon send-icon text-white">
+                                    <i class="fas fa-paper-plane"></i>
+                                </div>
+                                <h6 class="fw-bold">Send GXC</h6>
+                                <p class="text-muted small mb-0">Transfer to another wallet</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="action-card p-4 h-100" data-bs-toggle="modal" data-bs-target="#receiveModal">
+                                <div class="icon receive-icon text-white">
+                                    <i class="fas fa-qrcode"></i>
+                                </div>
+                                <h6 class="fw-bold">Receive</h6>
+                                <p class="text-muted small mb-0">Get QR code & address</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="action-card p-4 h-100" onclick="showHistory()">
+                                <div class="icon history-icon text-white">
+                                    <i class="fas fa-history"></i>
+                                </div>
+                                <h6 class="fw-bold">History</h6>
+                                <p class="text-muted small mb-0">View transactions</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="action-card p-4 h-100" data-bs-toggle="modal" data-bs-target="#stakeModal">
+                                <div class="icon stake-icon text-white">
+                                    <i class="fas fa-coins"></i>
+                                </div>
+                                <h6 class="fw-bold">Stake</h6>
+                                <p class="text-muted small mb-0">Earn rewards</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Transactions -->
+                    <div class="row" id="history">
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="fw-bold mb-0">
+                                    <i class="fas fa-history text-primary me-2"></i>Recent Transactions
+                                </h5>
+                                <button class="btn btn-outline-custom btn-sm">
+                                    <i class="fas fa-download me-1"></i>Export
+                                </button>
+                            </div>
+                            
+                            <div id="transactions-list">
+                                <!-- Transaction items will be populated here -->
+                                <div class="transaction-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="d-flex align-items-center">
+                                            <div class="icon-small bg-success bg-opacity-10 text-success rounded-circle p-2 me-3">
+                                                <i class="fas fa-arrow-down"></i>
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold">Received GXC</div>
+                                                <div class="tx-hash">0x1a2b3c...7d8e9f</div>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="amount-positive">+150.00 GXC</div>
+                                            <small class="text-muted">2 hours ago</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="transaction-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="d-flex align-items-center">
+                                            <div class="icon-small bg-danger bg-opacity-10 text-danger rounded-circle p-2 me-3">
+                                                <i class="fas fa-arrow-up"></i>
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold">Sent GXC</div>
+                                                <div class="tx-hash">0x9f8e7d...3c2b1a</div>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="amount-negative">-75.50 GXC</div>
+                                            <small class="text-muted">5 hours ago</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="transaction-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="d-flex align-items-center">
+                                            <div class="icon-small bg-warning bg-opacity-10 text-warning rounded-circle p-2 me-3">
+                                                <i class="fas fa-coins"></i>
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold">Staking Reward</div>
+                                                <div class="tx-hash">0x5f4e3d...8a9b0c</div>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="amount-positive">+12.34 GXC</div>
+                                            <small class="text-muted">1 day ago</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Send Modal -->
+    <div class="modal fade modal-modern" id="sendModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-paper-plane text-primary me-2"></i>Send GXC
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="sendForm">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Recipient Address</label>
+                            <input type="text" class="form-control form-control-modern" 
+                                   placeholder="GXC1234...abcd" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Amount</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control form-control-modern" 
+                                       placeholder="0.00" step="0.01" required>
+                                <span class="input-group-text">GXC</span>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Transaction Fee</label>
+                            <select class="form-select form-control-modern">
+                                <option>Slow (0.01 GXC) - ~5 min</option>
+                                <option selected>Standard (0.02 GXC) - ~2 min</option>
+                                <option>Fast (0.05 GXC) - ~30 sec</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Note (Optional)</label>
+                            <textarea class="form-control form-control-modern" rows="2" 
+                                      placeholder="Add a note..."></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary-custom">
+                        <i class="fas fa-paper-plane me-1"></i>Send Transaction
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receive Modal -->
+    <div class="modal fade modal-modern" id="receiveModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-qrcode text-primary me-2"></i>Receive GXC
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <div class="qr-container">
+                        <div class="qr-code" id="qr-code"></div>
+                        <div class="mt-3">
+                            <div class="fw-bold">Your GXC Address</div>
+                            <div class="tx-hash mt-2" id="wallet-address">GXC1A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6P7Q8R9S0T1U2V3W4X5Y6Z</div>
+                            <button class="btn btn-outline-custom btn-sm mt-2" onclick="copyAddress()">
+                                <i class="fas fa-copy me-1"></i>Copy Address
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Staking Modal -->
+    <div class="modal fade modal-modern" id="stakeModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-coins text-primary me-2"></i>Stake GXC
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info border-0" style="background: rgba(79, 172, 254, 0.1);">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Staking Rewards:</strong> Earn 8-15% APY by staking your GXC tokens
+                    </div>
+                    <form id="stakeForm">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Amount to Stake</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control form-control-modern" 
+                                       placeholder="100" min="100" required>
+                                <span class="input-group-text">GXC</span>
+                                <button class="btn btn-outline-custom" type="button">Max</button>
+                            </div>
+                            <small class="text-muted">Minimum: 100 GXC</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Staking Duration</label>
+                            <select class="form-select form-control-modern">
+                                <option>14 days (8% APY)</option>
+                                <option>30 days (10% APY)</option>
+                                <option>90 days (12% APY)</option>
+                                <option>180 days (13% APY)</option>
+                                <option>365 days (15% APY)</option>
+                            </select>
+                        </div>
+                        <div class="bg-light rounded p-3">
+                            <div class="d-flex justify-content-between">
+                                <span>Estimated Rewards:</span>
+                                <span class="fw-bold text-success">+15.0 GXC/year</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary-custom">
+                        <i class="fas fa-coins me-1"></i>Start Staking
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Generate QR Code
+        function generateQRCode() {
+            const qr = qrcode(0, 'M');
+            const address = document.getElementById('wallet-address').textContent;
+            qr.addData(address);
+            qr.make();
+            document.getElementById('qr-code').innerHTML = qr.createImgTag(4);
+        }
+
+        // Copy address to clipboard
+        function copyAddress() {
+            const address = document.getElementById('wallet-address').textContent;
+            navigator.clipboard.writeText(address).then(() => {
+                // Show success message
+                const btn = event.target.closest('button');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                btn.classList.add('btn-success');
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.classList.remove('btn-success');
+                    btn.classList.add('btn-outline-custom');
+                }, 2000);
+            });
+        }
+
+        // Show history section
+        function showHistory() {
+            document.getElementById('history').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Navigation
+        document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                // Update active state
+                document.querySelectorAll('.sidebar .nav-link').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Scroll to section if exists
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+
+        // Initialize QR code when modal opens
+        document.getElementById('receiveModal').addEventListener('shown.bs.modal', generateQRCode);
+
+        // Auto-refresh balance every 30 seconds
+        setInterval(() => {
+            // In a real app, this would fetch from the API
+            console.log('Refreshing balance...');
+        }, 30000);
+
+        // Simulate real-time balance updates
+        function updateBalance() {
+            const balanceElement = document.getElementById('total-balance');
+            const currentBalance = parseFloat(balanceElement.textContent.replace(/[^\d.]/g, ''));
+            const newBalance = currentBalance + (Math.random() - 0.5) * 0.1;
+            balanceElement.textContent = newBalance.toFixed(2) + ' GXC';
+        }
+
+        // Update balance every 10 seconds (simulation)
+        setInterval(updateBalance, 10000);
+    </script>
+</body>
+</html>

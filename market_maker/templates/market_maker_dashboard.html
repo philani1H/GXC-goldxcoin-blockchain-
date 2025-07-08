@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GXC Market Maker - Trading Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@2.0.0/dist/chartjs-adapter-date-fns.bundle.min.js">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --dark-color: #1f2937;
+            --light-color: #f8fafc;
+            --border-color: #e5e7eb;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+        }
+
+        .main-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            margin: 20px;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 2rem 0;
+        }
+
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 1rem 2rem;
+            border-radius: 0;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+            border-left-color: var(--primary-color);
+        }
+
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+        }
+
+        .metric-card .card-body {
+            padding: 2rem;
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .trading-table {
+            font-size: 0.9rem;
+        }
+
+        .trading-table th {
+            background: var(--light-color);
+            border: none;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+            padding: 1rem 0.75rem;
+        }
+
+        .trading-table td {
+            padding: 1rem 0.75rem;
+            border-top: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        .price-positive {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .price-negative {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+
+        .price-neutral {
+            color: var(--dark-color);
+            font-weight: 600;
+        }
+
+        .status-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-active {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success-color);
+        }
+
+        .status-filled {
+            background: rgba(37, 99, 235, 0.1);
+            color: var(--primary-color);
+        }
+
+        .status-cancelled {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger-color);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 1rem 0;
+        }
+
+        .live-indicator {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #3b82f6 100%);
+            border: none;
+            border-radius: 50px;
+            padding: 0.75rem 1.5rem;
+            color: white;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .refresh-btn:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, var(--primary-color) 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+        }
+
+        .symbol-badge {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 0.8rem;
+        }
+
+        .order-side-buy {
+            color: var(--success-color);
+            font-weight: 700;
+        }
+
+        .order-side-sell {
+            color: var(--danger-color);
+            font-weight: 700;
+        }
+
+        .navbar-custom {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 0;
+        }
+
+        .brand-logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-custom fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand brand-logo" href="/">
+                <i class="fas fa-chart-line me-2"></i>GXC Market Maker
+            </a>
+            <div class="navbar-nav ms-auto d-flex flex-row align-items-center">
+                <span class="nav-link">
+                    <i class="fas fa-circle text-success live-indicator me-1"></i>
+                    Live Trading
+                </span>
+                <button class="btn refresh-btn ms-3" onclick="refreshData()">
+                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid" style="margin-top: 100px;">
+        <div class="main-container">
+            <div class="row g-0">
+                <!-- Sidebar -->
+                <div class="col-md-2 sidebar">
+                    <div class="nav flex-column">
+                        <a class="nav-link active" href="#overview">
+                            <i class="fas fa-tachometer-alt me-2"></i>Overview
+                        </a>
+                        <a class="nav-link" href="#positions">
+                            <i class="fas fa-wallet me-2"></i>Positions
+                        </a>
+                        <a class="nav-link" href="#orders">
+                            <i class="fas fa-list-ul me-2"></i>Orders
+                        </a>
+                        <a class="nav-link" href="#performance">
+                            <i class="fas fa-chart-area me-2"></i>Performance
+                        </a>
+                        <a class="nav-link" href="#settings">
+                            <i class="fas fa-cog me-2"></i>Settings
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Main Dashboard -->
+                <div class="col-md-10 p-4">
+                    <!-- Portfolio Overview -->
+                    <div class="row mb-4" id="overview">
+                        <div class="col-md-3">
+                            <div class="card metric-card">
+                                <div class="card-body text-center">
+                                    <div class="metric-value" id="total-pnl">
+                                        {{ "${:,.2f}".format(portfolio.total_unrealized_pnl) }}
+                                    </div>
+                                    <div class="metric-label">Total P&L</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card metric-card">
+                                <div class="card-body text-center">
+                                    <div class="metric-value">{{ portfolio.active_positions }}</div>
+                                    <div class="metric-label">Active Positions</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card metric-card">
+                                <div class="card-body text-center">
+                                    <div class="metric-value">{{ portfolio.active_orders }}</div>
+                                    <div class="metric-label">Active Orders</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card metric-card">
+                                <div class="card-body text-center">
+                                    <div class="metric-value">{{ portfolio.tracked_symbols }}</div>
+                                    <div class="metric-label">Tracked Symbols</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Performance Chart -->
+                    <div class="row mb-4">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header bg-white border-bottom">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-chart-line text-primary me-2"></i>Portfolio Performance
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="performanceChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header bg-white border-bottom">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-info-circle text-primary me-2"></i>Market Status
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span>Market Hours</span>
+                                        <span class="status-badge status-active">Open</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span>Strategy Status</span>
+                                        <span class="status-badge status-active">Running</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span>Risk Level</span>
+                                        <span class="status-badge status-filled">Moderate</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span>Last Update</span>
+                                        <small class="text-muted" id="last-update">{{ portfolio.last_updated[:19] }}</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Positions -->
+                    <div class="row mb-4" id="positions">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-white border-bottom">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-wallet text-primary me-2"></i>Current Positions
+                                    </h5>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table trading-table mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Symbol</th>
+                                                    <th>Quantity</th>
+                                                    <th>Avg Price</th>
+                                                    <th>Current Price</th>
+                                                    <th>P&L</th>
+                                                    <th>% Change</th>
+                                                    <th>Last Updated</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="positions-table">
+                                                {% for position in positions %}
+                                                {% if position.quantity != 0 %}
+                                                <tr>
+                                                    <td>
+                                                        <span class="symbol-badge">{{ position.symbol }}</span>
+                                                    </td>
+                                                    <td>
+                                                        <span class="{% if position.quantity > 0 %}price-positive{% else %}price-negative{% endif %}">
+                                                            {{ "{:,.0f}".format(position.quantity) }}
+                                                        </span>
+                                                    </td>
+                                                    <td>${{ "%.2f"|format(position.avg_price) }}</td>
+                                                    <td>${{ "%.2f"|format(position.current_price) }}</td>
+                                                    <td>
+                                                        <span class="{% if position.unrealized_pnl > 0 %}price-positive{% elif position.unrealized_pnl < 0 %}price-negative{% else %}price-neutral{% endif %}">
+                                                            ${{ "{:,.2f}".format(position.unrealized_pnl) }}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        {% set pct_change = ((position.current_price - position.avg_price) / position.avg_price * 100) if position.avg_price != 0 else 0 %}
+                                                        <span class="{% if pct_change > 0 %}price-positive{% elif pct_change < 0 %}price-negative{% else %}price-neutral{% endif %}">
+                                                            {{ "{:+.2f}%".format(pct_change) }}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <small class="text-muted">{{ position.last_updated.strftime('%H:%M:%S') }}</small>
+                                                    </td>
+                                                </tr>
+                                                {% endif %}
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Orders -->
+                    <div class="row mb-4" id="orders">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-white border-bottom">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-list-ul text-primary me-2"></i>Active Orders
+                                    </h5>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table trading-table mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Order ID</th>
+                                                    <th>Symbol</th>
+                                                    <th>Side</th>
+                                                    <th>Quantity</th>
+                                                    <th>Price</th>
+                                                    <th>Status</th>
+                                                    <th>Time</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="orders-table">
+                                                {% for order in orders %}
+                                                <tr>
+                                                    <td>
+                                                        <code class="small">{{ order.order_id[-8:] }}</code>
+                                                    </td>
+                                                    <td>
+                                                        <span class="symbol-badge">{{ order.symbol }}</span>
+                                                    </td>
+                                                    <td>
+                                                        <span class="{% if order.side == 'buy' %}order-side-buy{% else %}order-side-sell{% endif %}">
+                                                            {{ order.side.upper() }}
+                                                        </span>
+                                                    </td>
+                                                    <td>{{ "{:,.0f}".format(order.quantity) }}</td>
+                                                    <td>${{ "%.2f"|format(order.price) }}</td>
+                                                    <td>
+                                                        <span class="status-badge status-{{ order.status }}">
+                                                            {{ order.status.upper() }}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <small class="text-muted">{{ order.timestamp.strftime('%H:%M:%S') }}</small>
+                                                    </td>
+                                                    <td>
+                                                        {% if order.status == 'active' %}
+                                                        <button class="btn btn-sm btn-outline-danger" onclick="cancelOrder('{{ order.order_id }}')">
+                                                            <i class="fas fa-times"></i>
+                                                        </button>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Performance Chart
+        const ctx = document.getElementById('performanceChart').getContext('2d');
+        const performanceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Portfolio P&L',
+                    data: [],
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Auto-refresh data
+        function refreshData() {
+            fetch('/api/portfolio')
+                .then(response => response.json())
+                .then(data => {
+                    updatePortfolioMetrics(data);
+                })
+                .catch(error => console.error('Error:', error));
+
+            fetch('/api/positions')
+                .then(response => response.json())
+                .then(data => {
+                    updatePositionsTable(data);
+                })
+                .catch(error => console.error('Error:', error));
+
+            fetch('/api/orders')
+                .then(response => response.json())
+                .then(data => {
+                    updateOrdersTable(data);
+                })
+                .catch(error => console.error('Error:', error));
+
+            // Update last refresh time
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+        }
+
+        function updatePortfolioMetrics(data) {
+            document.getElementById('total-pnl').textContent = 
+                new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(data.total_unrealized_pnl);
+        }
+
+        function updatePositionsTable(data) {
+            // Update positions table (implementation would go here)
+        }
+
+        function updateOrdersTable(data) {
+            // Update orders table (implementation would go here)
+        }
+
+        function cancelOrder(orderId) {
+            if (confirm('Are you sure you want to cancel this order?')) {
+                fetch(`/api/cancel_order/${orderId}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            refreshData();
+                        } else {
+                            alert('Error cancelling order: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error cancelling order');
+                    });
+            }
+        }
+
+        // Auto-refresh every 10 seconds
+        setInterval(refreshData, 10000);
+
+        // Initialize chart with sample data
+        const now = new Date();
+        const sampleData = [];
+        const sampleLabels = [];
+        
+        for (let i = 23; i >= 0; i--) {
+            const time = new Date(now.getTime() - i * 60 * 1000);
+            sampleLabels.push(time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+            sampleData.push(Math.random() * 1000 - 500);
+        }
+        
+        performanceChart.data.labels = sampleLabels;
+        performanceChart.data.datasets[0].data = sampleData;
+        performanceChart.update();
+
+        // Smooth scrolling for navigation
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+                
+                // Update active nav
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
