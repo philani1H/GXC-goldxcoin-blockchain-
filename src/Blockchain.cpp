@@ -1,4 +1,4 @@
-#include "../include/Blockchain.h"
+#include "../include/blockchain.h"
 #include <algorithm>
 #include <random>
 #include <cmath>

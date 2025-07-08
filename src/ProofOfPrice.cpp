@@ -1,6 +1,7 @@
 #include "../include/ProofOfPrice.h"
 #include "../include/HashUtils.h"
 #include <algorithm>
+#include <cmath>
 #include <numeric>
 #include <sstream>
 

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <ctime>
+#include <cstdint>
 
 struct TransactionInput {
     std::string txHash;      // Reference to previous transaction

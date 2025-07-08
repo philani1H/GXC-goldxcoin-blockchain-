@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GXC Blockchain Explorer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --info-color: #3b82f6;
+            --dark-color: #1f2937;
+            --light-bg: #f8fafc;
+            --border-color: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--light-bg);
+        }
+
+        .bg-gxc { 
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .text-gxc { 
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 700;
+        }
+        
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.95);
+        }
+        
+        .card-hover:hover { 
+            transform: translateY(-8px); 
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .address-link { 
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            background: rgba(102, 126, 234, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            transition: all 0.2s ease;
+        }
+        
+        .address-link:hover {
+            background: rgba(102, 126, 234, 0.2);
+            transform: scale(1.05);
+        }
+        
+        .hash-text { 
+            font-family: 'JetBrains Mono', 'Courier New', monospace; 
+            word-break: break-all;
+            background: rgba(239, 68, 68, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+        }
+        
+        .stats-card { 
+            border: none;
+            border-radius: 20px;
+            background: var(--primary-gradient);
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stats-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+            transform: translateX(-100%);
+            transition: transform 0.6s ease;
+        }
+        
+        .stats-card:hover::before {
+            transform: translateX(100%);
+        }
+        
+        .stats-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stats-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+        
+        .live-indicator { 
+            animation: pulse 2s infinite;
+            filter: drop-shadow(0 0 8px currentColor);
+        }
+        
+        @keyframes pulse { 
+            0% { opacity: 1; transform: scale(1); } 
+            50% { opacity: 0.7; transform: scale(1.1); } 
+            100% { opacity: 1; transform: scale(1); } 
+        }
+        
+        .table-modern {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        
+        .table-modern th {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border: none;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+            padding: 1.2rem 1rem;
+            color: var(--dark-color);
+        }
+        
+        .table-modern td {
+            padding: 1rem;
+            border-top: 1px solid rgba(226, 232, 240, 0.5);
+            vertical-align: middle;
+        }
+        
+        .table-modern tbody tr {
+            transition: all 0.2s ease;
+        }
+        
+        .table-modern tbody tr:hover {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+            transform: scale(1.01);
+        }
+        
+        .badge-modern {
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .badge-pow {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+        }
+        
+        .badge-pos {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+        
+        .search-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+        }
+        
+        .search-input {
+            border: 2px solid transparent;
+            border-radius: 50px;
+            padding: 1rem 1.5rem;
+            font-size: 1.1rem;
+            background: rgba(248, 250, 252, 0.8);
+            transition: all 0.3s ease;
+        }
+        
+        .search-input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+            background: white;
+        }
+        
+        .search-btn {
+            background: var(--primary-gradient);
+            border: none;
+            border-radius: 50px;
+            padding: 1rem 2rem;
+            font-weight: 600;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            color: white;
+        }
+        
+        .navbar-brand {
+            font-size: 1.8rem;
+            font-weight: 800;
+        }
+        
+        .toast-modern {
+            border-radius: 16px;
+            border: none;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+        }
+        
+        .block-type-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+        
+        .pow-indicator { background: var(--warning-color); }
+        .pos-indicator { background: var(--success-color); }
+        
+        .value-highlight {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            padding: 0.25rem 0.75rem;
+            border-radius: 8px;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+        
+        .footer-modern {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .footer-modern::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--primary-gradient);
+        }
+        
+        .btn-outline-primary-custom {
+            border: 2px solid transparent;
+            background: linear-gradient(white, white) padding-box, var(--primary-gradient) border-box;
+            color: var(--primary-color);
+            border-radius: 50px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-outline-primary-custom:hover {
+            background: var(--primary-gradient);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gxc">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-cube me-2"></i>GXC Explorer
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text">
+                    <i class="fas fa-circle text-success live-indicator me-1"></i>Live
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Search Bar -->
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-10 col-lg-8">
+                <div class="search-container">
+                    <form action="/search" method="GET">
+                        <div class="input-group">
+                            <input type="text" class="form-control search-input" 
+                                   name="q" placeholder="🔍 Search addresses, transactions, blocks, or hashes...">
+                            <button class="btn search-btn" type="submit">
+                                <i class="fas fa-search me-2"></i>Explore
+                            </button>
+                        </div>
+                    </form>
+                    <div class="text-center mt-3">
+                        <small class="text-muted">
+                            Try searching: <code>GXC1234...</code> • <code>0xabc123...</code> • <code>Block #12345</code>
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Network Statistics -->
+    <div class="container mt-4">
+        <div class="row g-4">
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-cubes me-2"></i>Total Blocks
+                        </div>
+                        <div class="stats-value">{{ "{:,}".format(stats.total_blocks) }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-exchange-alt me-2"></i>Transactions
+                        </div>
+                        <div class="stats-value">{{ "{:,}".format(stats.total_transactions) }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-users me-2"></i>Addresses
+                        </div>
+                        <div class="stats-value">{{ "{:,}".format(stats.total_addresses) }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-coins me-2"></i>Total Supply
+                        </div>
+                        <div class="stats-value">{{ "{:,.0f}".format(stats.total_supply) }}</div>
+                        <small class="d-block mt-1 opacity-75">GXC</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container mt-4">
+        <div class="row">
+            <!-- Recent Blocks -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header bg-white border-bottom">
+                        <h5 class="mb-0">
+                            <i class="fas fa-cubes text-gxc me-2"></i>Recent Blocks
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-modern mb-0">
+                                <thead>
+                                    <tr>
+                                        <th><i class="fas fa-cube me-2"></i>Block</th>
+                                        <th><i class="fas fa-clock me-2"></i>Age</th>
+                                        <th><i class="fas fa-list me-2"></i>Txns</th>
+                                        <th><i class="fas fa-user-hard-hat me-2"></i>Miner</th>
+                                        <th><i class="fas fa-cog me-2"></i>Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="blocks-table">
+                                    {% for block in blocks %}
+                                    <tr>
+                                        <td>
+                                            <a href="/block/{{ block.number }}" class="text-decoration-none">
+                                                {{ block.number }}
+                                            </a>
+                                        </td>
+                                        <td class="text-muted small">
+                                            <script>
+                                                document.write(timeAgo('{{ block.timestamp }}'));
+                                            </script>
+                                        </td>
+                                        <td>
+                                            <span class="badge badge-modern bg-secondary">{{ block.tx_count }}</span>
+                                        </td>
+                                        <td>
+                                            <a href="/address/{{ block.miner }}" class="address-link text-decoration-none">
+                                                {{ block.miner[:10] }}...
+                                            </a>
+                                        </td>
+                                        <td>
+                                            {% if block.consensus_type == 'pow' %}
+                                                <span class="badge-modern badge-pow">
+                                                    <span class="block-type-indicator pow-indicator"></span>PoW
+                                                </span>
+                                            {% else %}
+                                                <span class="badge-modern badge-pos">
+                                                    <span class="block-type-indicator pos-indicator"></span>PoS
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white text-center">
+                        <a href="/blocks" class="btn btn-outline-primary-custom">
+                            <i class="fas fa-th-list me-2"></i>View All Blocks
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Transactions -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header bg-white border-bottom">
+                        <h5 class="mb-0">
+                            <i class="fas fa-exchange-alt text-gxc me-2"></i>Recent Transactions
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-modern mb-0">
+                                <thead>
+                                    <tr>
+                                        <th><i class="fas fa-fingerprint me-2"></i>Hash</th>
+                                        <th><i class="fas fa-paper-plane me-2"></i>From</th>
+                                        <th><i class="fas fa-bullseye me-2"></i>To</th>
+                                        <th><i class="fas fa-coins me-2"></i>Value</th>
+                                        <th><i class="fas fa-clock me-2"></i>Age</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactions-table">
+                                    {% for tx in transactions %}
+                                    <tr>
+                                        <td>
+                                            <a href="/tx/{{ tx.hash }}" class="hash-text text-decoration-none">
+                                                {{ tx.hash[:12] }}...
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <a href="/address/{{ tx.from }}" class="address-link text-decoration-none">
+                                                {{ tx.from[:8] }}...
+                                            </a>
+                                        </td>
+                                        <td>
+                                            {% if tx.to %}
+                                                <a href="/address/{{ tx.to }}" class="address-link text-decoration-none">
+                                                    {{ tx.to[:8] }}...
+                                                </a>
+                                            {% else %}
+                                                <span class="text-muted">Contract Creation</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="value-highlight">{{ "%.4f"|format(tx.value) }} GXC</span>
+                                        </td>
+                                        <td class="text-muted small">
+                                            <script>
+                                                document.write(timeAgo('{{ tx.timestamp }}'));
+                                            </script>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white text-center">
+                        <a href="/transactions" class="btn btn-outline-primary-custom">
+                            <i class="fas fa-exchange-alt me-2"></i>View All Transactions
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Updates Notification -->
+    <div class="position-fixed top-0 end-0 p-3" style="z-index: 1050">
+        <div id="liveToast" class="toast hide" role="alert">
+            <div class="toast-header">
+                <i class="fas fa-cube text-gxc me-2"></i>
+                <strong class="me-auto">New Block</strong>
+                <small class="text-muted">Live</small>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="toast-body">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer-modern mt-5 py-5">
+        <div class="container">
+            <div class="row g-4">
+                <div class="col-lg-4 col-md-6">
+                    <h5 class="fw-bold mb-3">
+                        <i class="fas fa-cube me-2 text-warning"></i>GXC Explorer
+                    </h5>
+                    <p class="text-light opacity-75 mb-3">
+                        Professional blockchain explorer for the GXC network. Real-time data, 
+                        advanced analytics, and comprehensive transaction tracking.
+                    </p>
+                    <div class="d-flex gap-3">
+                        <a href="#" class="text-light opacity-75 fs-5"><i class="fab fa-github"></i></a>
+                        <a href="#" class="text-light opacity-75 fs-5"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="text-light opacity-75 fs-5"><i class="fab fa-discord"></i></a>
+                        <a href="#" class="text-light opacity-75 fs-5"><i class="fab fa-telegram"></i></a>
+                    </div>
+                </div>
+                <div class="col-lg-2 col-md-3 col-6">
+                    <h6 class="fw-bold text-warning mb-3">Network</h6>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="/blocks" class="text-decoration-none text-light opacity-75">
+                            <i class="fas fa-cubes me-1"></i>Blocks
+                        </a></li>
+                        <li class="mb-2"><a href="/transactions" class="text-decoration-none text-light opacity-75">
+                            <i class="fas fa-exchange-alt me-1"></i>Transactions
+                        </a></li>
+                        <li class="mb-2"><a href="/validators" class="text-decoration-none text-light opacity-75">
+                            <i class="fas fa-shield-alt me-1"></i>Validators
+                        </a></li>
+                        <li class="mb-2"><a href="/addresses" class="text-decoration-none text-light opacity-75">
+                            <i class="fas fa-users me-1"></i>Addresses
+                        </a></li>
+                    </ul>
+                </div>
+                <div class="col-lg-2 col-md-3 col-6">
+                    <h6 class="fw-bold text-warning mb-3">Tools</h6>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="/api/stats" class="text-decoration-none text-light opacity-75">
+                            <i class="fas fa-code me-1"></i>API
+                        </a></li>
+                        <li class="mb-2"><a href="/wallet" class="text-decoration-none text-light opacity-75">
+                            <i class="fas fa-wallet me-1"></i>Wallet
+                        </a></li>
+                        <li class="mb-2"><a href="/mining" class="text-decoration-none text-light opacity-75">
+                            <i class="fas fa-pickaxe me-1"></i>Mining
+                        </a></li>
+                        <li class="mb-2"><a href="/charts" class="text-decoration-none text-light opacity-75">
+                            <i class="fas fa-chart-line me-1"></i>Charts
+                        </a></li>
+                    </ul>
+                </div>
+                <div class="col-lg-4 col-md-12">
+                    <h6 class="fw-bold text-warning mb-3">Network Status</h6>
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <div class="bg-white bg-opacity-10 rounded p-3 text-center">
+                                <div class="fw-bold">{{ "{:,}".format(stats.total_blocks) }}</div>
+                                <small class="opacity-75">Latest Block</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="bg-white bg-opacity-10 rounded p-3 text-center">
+                                <div class="fw-bold text-success">Online</div>
+                                <small class="opacity-75">Network Status</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <hr class="my-4 opacity-25">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <small class="opacity-75">
+                        &copy; 2024 GXC Blockchain. Built with ❤️ for the community.
+                    </small>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <small class="opacity-75">
+                        <span class="me-3">v2.0.0</span>
+                        <span class="me-3">•</span>
+                        <span class="me-3">Uptime: 99.9%</span>
+                        <span>•</span>
+                        <span class="ms-3">
+                            <i class="fas fa-circle text-success live-indicator me-1"></i>Live
+                        </span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Time formatting function
+        function timeAgo(timestamp) {
+            const now = new Date();
+            const time = new Date(timestamp);
+            const seconds = Math.floor((now - time) / 1000);
+            
+            const intervals = [
+                { label: 'year', seconds: 31536000 },
+                { label: 'month', seconds: 2592000 },
+                { label: 'day', seconds: 86400 },
+                { label: 'hour', seconds: 3600 },
+                { label: 'minute', seconds: 60 },
+                { label: 'second', seconds: 1 }
+            ];
+            
+            for (const interval of intervals) {
+                const count = Math.floor(seconds / interval.seconds);
+                if (count > 0) {
+                    return `${count} ${interval.label}${count !== 1 ? 's' : ''} ago`;
+                }
+            }
+            return 'just now';
+        }
+
+        // WebSocket connection for live updates
+        const socket = io();
+        
+        socket.on('connect', function() {
+            console.log('Connected to GXC Explorer');
+        });
+        
+        socket.on('new_block', function(block) {
+            // Show toast notification
+            const toast = new bootstrap.Toast(document.getElementById('liveToast'));
+            document.getElementById('toast-body').innerHTML = 
+                `Block #${block.number} mined by ${block.miner.substring(0, 10)}... with ${block.transactions.length} transactions`;
+            toast.show();
+            
+            // Update blocks table
+            updateBlocksTable(block);
+            
+            // Update statistics
+            updateStats();
+        });
+        
+        function updateBlocksTable(newBlock) {
+            const tbody = document.getElementById('blocks-table');
+            const row = tbody.insertRow(0);
+            
+            row.innerHTML = `
+                <td><a href="/block/${newBlock.number}" class="text-decoration-none">${newBlock.number}</a></td>
+                <td class="text-muted small">just now</td>
+                <td><span class="badge bg-secondary">${newBlock.transactions.length}</span></td>
+                <td><a href="/address/${newBlock.miner}" class="address-link text-decoration-none">${newBlock.miner.substring(0, 10)}...</a></td>
+                <td><span class="badge bg-warning">PoW</span></td>
+            `;
+            
+            // Remove last row if we have more than 10
+            if (tbody.rows.length > 10) {
+                tbody.deleteRow(-1);
+            }
+        }
+        
+        function updateStats() {
+            // Fetch updated statistics
+            fetch('/api/stats')
+                .then(response => response.json())
+                .then(stats => {
+                    // Update DOM elements with new stats
+                    // This would update the statistics cards
+                })
+                .catch(error => console.error('Error fetching stats:', error));
+        }
+        
+        // Auto-refresh every 30 seconds
+        setInterval(function() {
+            location.reload();
+        }, 30000);
+    </script>
+</body>
+</html>

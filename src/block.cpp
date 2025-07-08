@@ -1,4 +1,5 @@
 #include "../include/Block.h"
+#include "../include/HashUtils.h"
 #include <sstream>
 
 Block::Block(uint32_t indexIn, const std::string& previousHashIn, BlockType type) 
@@ -58,7 +59,7 @@ void Block::calculateMerkleRoot() {
         txHashes.push_back(tx.getHash());
     }
     
-    merkleRoot = calculateMerkleRoot(txHashes);
+    merkleRoot = ::calculateMerkleRoot(txHashes);
 }
 
 bool Block::addTransaction(const Transaction& transaction) {
