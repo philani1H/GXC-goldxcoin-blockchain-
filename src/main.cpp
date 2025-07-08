@@ -1,6 +1,6 @@
 #include <iostream>
 #include <memory>
-#include "../include/Blockchain.h"
+#include "../include/blockchain.h"
 #include "../include/Wallet.h"
 #include "../include/ProofOfPrice.h"
 #include "../include/CrossChainBridge.h"

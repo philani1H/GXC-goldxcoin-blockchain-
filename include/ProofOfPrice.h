@@ -4,6 +4,7 @@
 #include <vector>
 #include <unordered_map>
 #include <ctime>
+#include <cstdint>
 
 struct PriceSubmission {
     std::string oracleId;

@@ -1,0 +1,2 @@
+/usr/bin/ar qc libgxc_core.a CMakeFiles/gxc_core.dir/src/Blockchain.cpp.o CMakeFiles/gxc_core.dir/src/block.cpp.o CMakeFiles/gxc_core.dir/src/Transaction.cpp.o CMakeFiles/gxc_core.dir/src/Wallet.cpp.o CMakeFiles/gxc_core.dir/src/Validator.cpp.o CMakeFiles/gxc_core.dir/src/SalectValidator.cpp.o CMakeFiles/gxc_core.dir/src/ProofOfPrice.cpp.o CMakeFiles/gxc_core.dir/src/CrossChainBridge.cpp.o CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o
+/usr/bin/ranlib libgxc_core.a
