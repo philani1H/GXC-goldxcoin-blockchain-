@@ -1,12 +1,12 @@
 #include "../include/Network.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
-#include <iostream>
 #include <thread>
 #include <chrono>
+#include <algorithm>
 
-Network::Network(uint16_t port, uint32_t maxConnections)
-    : listenPort(port), maxConnections(maxConnections), isRunning(false) {
+Network::Network(Blockchain* blockchain, uint16_t port)
+    : blockchain(blockchain), listenPort(port), isRunning(false) {
     LOG_NETWORK(LogLevel::INFO, "Network initialized on port " + std::to_string(port));
 }
 
@@ -20,16 +20,17 @@ bool Network::start() {
         return true;
     }
     
-    LOG_NETWORK(LogLevel::INFO, "Starting network service");
+    LOG_NETWORK(LogLevel::INFO, "Starting P2P network");
     
     try {
-        // Initialize network subsystem
         isRunning = true;
         
         // Start network threads
         networkThread = std::thread(&Network::networkLoop, this);
+        peerDiscoveryThread = std::thread(&Network::peerDiscoveryLoop, this);
+        messageHandlerThread = std::thread(&Network::messageHandlerLoop, this);
         
-        LOG_NETWORK(LogLevel::INFO, "Network service started successfully");
+        LOG_NETWORK(LogLevel::INFO, "P2P network started successfully");
         return true;
         
     } catch (const std::exception& e) {
@@ -44,148 +45,33 @@ void Network::stop() {
         return;
     }
     
-    LOG_NETWORK(LogLevel::INFO, "Stopping network service");
+    LOG_NETWORK(LogLevel::INFO, "Stopping P2P network");
     
     isRunning = false;
     
-    // Close all connections
+    // Disconnect all peers
     {
         std::lock_guard<std::mutex> lock(peersMutex);
         for (auto& peer : peers) {
-            peer.second.disconnect();
+            peer.second.connected = false;
         }
         peers.clear();
     }
     
-    // Join network thread
+    // Join threads
     if (networkThread.joinable()) {
         networkThread.join();
     }
     
-    LOG_NETWORK(LogLevel::INFO, "Network service stopped");
-}
-
-bool Network::connectToPeer(const std::string& address, uint16_t port) {
-    if (!isRunning) {
-        LOG_NETWORK(LogLevel::ERROR, "Cannot connect to peer: network not running");
-        return false;
+    if (peerDiscoveryThread.joinable()) {
+        peerDiscoveryThread.join();
     }
     
-    std::string peerAddr = address + ":" + std::to_string(port);
-    
-    {
-        std::lock_guard<std::mutex> lock(peersMutex);
-        if (peers.find(peerAddr) != peers.end()) {
-            LOG_NETWORK(LogLevel::WARNING, "Already connected to peer: " + peerAddr);
-            return true;
-        }
-        
-        if (peers.size() >= maxConnections) {
-            LOG_NETWORK(LogLevel::WARNING, "Maximum connections reached");
-            return false;
-        }
+    if (messageHandlerThread.joinable()) {
+        messageHandlerThread.join();
     }
     
-    try {
-        NetworkPeer peer;
-        peer.address = address;
-        peer.port = port;
-        peer.isConnected = true;
-        peer.lastSeen = Utils::getCurrentTimestamp();
-        peer.version = PROTOCOL_VERSION;
-        
-        {
-            std::lock_guard<std::mutex> lock(peersMutex);
-            peers[peerAddr] = peer;
-        }
-        
-        LOG_NETWORK(LogLevel::INFO, "Connected to peer: " + peerAddr);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LOG_NETWORK(LogLevel::ERROR, "Failed to connect to peer " + peerAddr + ": " + std::string(e.what()));
-        return false;
-    }
-}
-
-void Network::disconnectPeer(const std::string& address, uint16_t port) {
-    std::string peerAddr = address + ":" + std::to_string(port);
-    
-    std::lock_guard<std::mutex> lock(peersMutex);
-    auto it = peers.find(peerAddr);
-    if (it != peers.end()) {
-        it->second.disconnect();
-        peers.erase(it);
-        LOG_NETWORK(LogLevel::INFO, "Disconnected from peer: " + peerAddr);
-    }
-}
-
-bool Network::broadcastMessage(const NetworkMessage& message) {
-    if (!isRunning) {
-        return false;
-    }
-    
-    std::lock_guard<std::mutex> lock(peersMutex);
-    
-    for (auto& peerPair : peers) {
-        auto& peer = peerPair.second;
-        if (peer.isConnected) {
-            sendMessageToPeer(peer, message);
-        }
-    }
-    
-    return true;
-}
-
-bool Network::sendMessageToPeer(const NetworkPeer& peer, const NetworkMessage& message) {
-    try {
-        // Simplified message sending - in real implementation would use actual sockets
-        LOG_NETWORK(LogLevel::DEBUG, "Sending message type " + std::to_string(static_cast<int>(message.type)) + 
-                   " to peer " + peer.address + ":" + std::to_string(peer.port));
-        return true;
-    } catch (const std::exception& e) {
-        LOG_NETWORK(LogLevel::ERROR, "Failed to send message to peer: " + std::string(e.what()));
-        return false;
-    }
-}
-
-std::vector<NetworkPeer> Network::getConnectedPeers() const {
-    std::lock_guard<std::mutex> lock(peersMutex);
-    
-    std::vector<NetworkPeer> connectedPeers;
-    for (const auto& peerPair : peers) {
-        if (peerPair.second.isConnected) {
-            connectedPeers.push_back(peerPair.second);
-        }
-    }
-    
-    return connectedPeers;
-}
-
-uint32_t Network::getConnectionCount() const {
-    std::lock_guard<std::mutex> lock(peersMutex);
-    
-    uint32_t count = 0;
-    for (const auto& peerPair : peers) {
-        if (peerPair.second.isConnected) {
-            count++;
-        }
-    }
-    
-    return count;
-}
-
-void Network::addBootstrapNodes(const std::vector<std::string>& nodes) {
-    for (const auto& node : nodes) {
-        auto parts = Utils::split(node, ':');
-        if (parts.size() == 2) {
-            std::string address = parts[0];
-            uint16_t port = static_cast<uint16_t>(std::stoi(parts[1]));
-            bootstrapNodes.push_back({address, port});
-        }
-    }
-    
-    LOG_NETWORK(LogLevel::INFO, "Added " + std::to_string(nodes.size()) + " bootstrap nodes");
+    LOG_NETWORK(LogLevel::INFO, "P2P network stopped");
 }
 
 void Network::networkLoop() {
@@ -199,201 +85,179 @@ void Network::networkLoop() {
             // Maintain existing connections
             maintainConnections();
             
-            // Connect to bootstrap nodes if needed
-            connectToBootstrapNodes();
+            // Send periodic messages
+            sendPeriodicMessages();
             
-            // Process message queue
-            processMessageQueue();
-            
-            // Sleep for a short time
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::seconds(1));
             
         } catch (const std::exception& e) {
             LOG_NETWORK(LogLevel::ERROR, "Error in network loop: " + std::string(e.what()));
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
     
     LOG_NETWORK(LogLevel::INFO, "Network loop stopped");
 }
 
-void Network::processIncomingConnections() {
-    // Simplified implementation - would handle actual socket connections
+void Network::peerDiscoveryLoop() {
+    LOG_NETWORK(LogLevel::INFO, "Peer discovery loop started");
+    
+    while (isRunning) {
+        try {
+            discoverPeers();
+            
+            std::this_thread::sleep_for(std::chrono::seconds(30));
+            
+        } catch (const std::exception& e) {
+            LOG_NETWORK(LogLevel::ERROR, "Error in peer discovery: " + std::string(e.what()));
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+        }
+    }
+    
+    LOG_NETWORK(LogLevel::INFO, "Peer discovery loop stopped");
 }
 
-void Network::maintainConnections() {
-    uint64_t now = Utils::getCurrentTimestamp();
-    std::vector<std::string> peersToRemove;
+void Network::messageHandlerLoop() {
+    LOG_NETWORK(LogLevel::INFO, "Message handler loop started");
+    
+    while (isRunning) {
+        try {
+            processMessageQueue();
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            
+        } catch (const std::exception& e) {
+            LOG_NETWORK(LogLevel::ERROR, "Error in message handler: " + std::string(e.what()));
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    }
+    
+    LOG_NETWORK(LogLevel::INFO, "Message handler loop stopped");
+}
+
+bool Network::connectToPeer(const std::string& address, uint16_t port) {
+    std::string peerId = address + ":" + std::to_string(port);
     
     {
         std::lock_guard<std::mutex> lock(peersMutex);
+        if (peers.find(peerId) != peers.end()) {
+            LOG_NETWORK(LogLevel::WARNING, "Already connected to peer: " + peerId);
+            return true;
+        }
+    }
+    
+    try {
+        LOG_NETWORK(LogLevel::INFO, "Connecting to peer: " + peerId);
         
-        for (auto& peerPair : peers) {
-            auto& peer = peerPair.second;
+        // Create new peer
+        Peer peer;
+        peer.id = peerId;
+        peer.address = address;
+        peer.port = port;
+        peer.connected = false;
+        peer.lastSeen = Utils::getCurrentTimestamp();
+        peer.bytesReceived = 0;
+        peer.bytesSent = 0;
+        peer.version = 1;
+        peer.userAgent = "GXC/1.0";
+        peer.height = 0;
+        
+        // Simulate connection (in real implementation would use actual sockets)
+        if (simulateConnection(peer)) {
+            peer.connected = true;
+            peer.connectTime = Utils::getCurrentTimestamp();
             
-            // Check if peer has timed out
-            if (now - peer.lastSeen > CONNECTION_TIMEOUT) {
-                peer.isConnected = false;
-                peersToRemove.push_back(peerPair.first);
-                LOG_NETWORK(LogLevel::INFO, "Peer timed out: " + peerPair.first);
+            {
+                std::lock_guard<std::mutex> lock(peersMutex);
+                peers[peerId] = peer;
             }
             
-            // Send ping messages
-            if (peer.isConnected && now - peer.lastPing > PING_INTERVAL) {
-                NetworkMessage ping;
-                ping.type = MessageType::PING;
-                ping.timestamp = now;
-                
-                sendMessageToPeer(peer, ping);
-                peer.lastPing = now;
-            }
-        }
-    }
-    
-    // Remove timed out peers
-    for (const auto& peerAddr : peersToRemove) {
-        auto parts = Utils::split(peerAddr, ':');
-        if (parts.size() == 2) {
-            disconnectPeer(parts[0], static_cast<uint16_t>(std::stoi(parts[1])));
-        }
-    }
-}
-
-void Network::connectToBootstrapNodes() {
-    if (getConnectionCount() >= maxConnections / 2) {
-        return; // Already have enough connections
-    }
-    
-    for (const auto& node : bootstrapNodes) {
-        if (getConnectionCount() >= maxConnections) {
-            break;
+            // Send version message
+            sendVersionMessage(peerId);
+            
+            LOG_NETWORK(LogLevel::INFO, "Successfully connected to peer: " + peerId);
+            return true;
         }
         
-        connectToPeer(node.address, node.port);
+    } catch (const std::exception& e) {
+        LOG_NETWORK(LogLevel::ERROR, "Failed to connect to peer " + peerId + ": " + std::string(e.what()));
     }
+    
+    return false;
 }
 
-void Network::processMessageQueue() {
-    // Process any queued messages
-    std::lock_guard<std::mutex> lock(messageQueueMutex);
+void Network::disconnectPeer(const std::string& peerId) {
+    std::lock_guard<std::mutex> lock(peersMutex);
     
-    while (!messageQueue.empty()) {
-        auto message = messageQueue.front();
-        messageQueue.pop();
+    auto it = peers.find(peerId);
+    if (it != peers.end()) {
+        it->second.connected = false;
+        peers.erase(it);
         
-        // Handle the message based on its type
-        handleMessage(message);
+        LOG_NETWORK(LogLevel::INFO, "Disconnected from peer: " + peerId);
     }
 }
 
-void Network::handleMessage(const NetworkMessage& message) {
-    LOG_NETWORK(LogLevel::DEBUG, "Handling message type: " + std::to_string(static_cast<int>(message.type)));
+void Network::broadcastMessage(const NetworkMessage& message) {
+    std::lock_guard<std::mutex> lock(peersMutex);
     
-    switch (message.type) {
-        case MessageType::PING:
-            handlePingMessage(message);
-            break;
-            
-        case MessageType::PONG:
-            handlePongMessage(message);
-            break;
-            
-        case MessageType::VERSION:
-            handleVersionMessage(message);
-            break;
-            
-        case MessageType::ADDR:
-            handleAddrMessage(message);
-            break;
-            
-        case MessageType::GETADDR:
-            handleGetAddrMessage(message);
-            break;
-            
-        case MessageType::BLOCK:
-            handleBlockMessage(message);
-            break;
-            
-        case MessageType::TX:
-            handleTransactionMessage(message);
-            break;
-            
-        case MessageType::GETBLOCKS:
-            handleGetBlocksMessage(message);
-            break;
-            
-        case MessageType::GETDATA:
-            handleGetDataMessage(message);
-            break;
-            
-        case MessageType::INV:
-            handleInventoryMessage(message);
-            break;
-            
-        default:
-            LOG_NETWORK(LogLevel::WARNING, "Unknown message type: " + std::to_string(static_cast<int>(message.type)));
-            break;
+    for (auto& peer : peers) {
+        if (peer.second.connected) {
+            sendMessageToPeer(peer.first, message);
+        }
+    }
+    
+    LOG_NETWORK(LogLevel::DEBUG, "Broadcasted message type: " + std::to_string(static_cast<int>(message.type)));
+}
+
+void Network::sendMessageToPeer(const std::string& peerId, const NetworkMessage& message) {
+    auto it = peers.find(peerId);
+    if (it == peers.end() || !it->second.connected) {
+        LOG_NETWORK(LogLevel::WARNING, "Cannot send message to disconnected peer: " + peerId);
+        return;
+    }
+    
+    try {
+        // Serialize and send message (simplified)
+        std::string serializedMessage = serializeMessage(message);
+        
+        // Update peer statistics
+        it->second.bytesSent += serializedMessage.length();
+        it->second.lastSeen = Utils::getCurrentTimestamp();
+        
+        LOG_NETWORK(LogLevel::DEBUG, "Sent message to peer " + peerId + " (type: " + 
+                   std::to_string(static_cast<int>(message.type)) + ")");
+        
+    } catch (const std::exception& e) {
+        LOG_NETWORK(LogLevel::ERROR, "Failed to send message to peer " + peerId + ": " + std::string(e.what()));
+        disconnectPeer(peerId);
     }
 }
 
-void Network::handlePingMessage(const NetworkMessage& message) {
-    // Respond with pong
-    NetworkMessage pong;
-    pong.type = MessageType::PONG;
-    pong.timestamp = Utils::getCurrentTimestamp();
+std::vector<Peer> Network::getConnectedPeers() const {
+    std::lock_guard<std::mutex> lock(peersMutex);
     
-    // Send to originating peer (simplified)
-    LOG_NETWORK(LogLevel::DEBUG, "Responding to ping with pong");
+    std::vector<Peer> connectedPeers;
+    for (const auto& peer : peers) {
+        if (peer.second.connected) {
+            connectedPeers.push_back(peer.second);
+        }
+    }
+    
+    return connectedPeers;
 }
 
-void Network::handlePongMessage(const NetworkMessage& message) {
-    // Update peer last seen time
-    LOG_NETWORK(LogLevel::DEBUG, "Received pong message");
-}
-
-void Network::handleVersionMessage(const NetworkMessage& message) {
-    LOG_NETWORK(LogLevel::DEBUG, "Received version message");
-    // Handle peer version negotiation
-}
-
-void Network::handleAddrMessage(const NetworkMessage& message) {
-    LOG_NETWORK(LogLevel::DEBUG, "Received address message");
-    // Handle peer address list
-}
-
-void Network::handleGetAddrMessage(const NetworkMessage& message) {
-    LOG_NETWORK(LogLevel::DEBUG, "Received getaddr message");
-    // Send our known peer addresses
-}
-
-void Network::handleBlockMessage(const NetworkMessage& message) {
-    LOG_NETWORK(LogLevel::INFO, "Received block message");
-    // Handle new block
-}
-
-void Network::handleTransactionMessage(const NetworkMessage& message) {
-    LOG_NETWORK(LogLevel::DEBUG, "Received transaction message");
-    // Handle new transaction
-}
-
-void Network::handleGetBlocksMessage(const NetworkMessage& message) {
-    LOG_NETWORK(LogLevel::DEBUG, "Received getblocks message");
-    // Send block inventory
-}
-
-void Network::handleGetDataMessage(const NetworkMessage& message) {
-    LOG_NETWORK(LogLevel::DEBUG, "Received getdata message");
-    // Send requested data
-}
-
-void Network::handleInventoryMessage(const NetworkMessage& message) {
-    LOG_NETWORK(LogLevel::DEBUG, "Received inventory message");
-    // Handle inventory advertisement
-}
-
-void Network::queueMessage(const NetworkMessage& message) {
-    std::lock_guard<std::mutex> lock(messageQueueMutex);
-    messageQueue.push(message);
+uint32_t Network::getPeerCount() const {
+    std::lock_guard<std::mutex> lock(peersMutex);
+    
+    uint32_t count = 0;
+    for (const auto& peer : peers) {
+        if (peer.second.connected) {
+            count++;
+        }
+    }
+    
+    return count;
 }
 
 NetworkStats Network::getNetworkStats() const {
@@ -401,66 +265,291 @@ NetworkStats Network::getNetworkStats() const {
     
     {
         std::lock_guard<std::mutex> lock(peersMutex);
-        stats.connectionCount = getConnectionCount();
-        stats.totalPeers = peers.size();
+        
+        stats.connectedPeers = 0;
+        stats.totalBytesReceived = 0;
+        stats.totalBytesSent = 0;
+        
+        for (const auto& peer : peers) {
+            if (peer.second.connected) {
+                stats.connectedPeers++;
+                stats.totalBytesReceived += peer.second.bytesReceived;
+                stats.totalBytesSent += peer.second.bytesSent;
+            }
+        }
     }
     
-    stats.bytesReceived = 0; // Would track actual bytes in real implementation
-    stats.bytesSent = 0;
-    stats.messagesReceived = 0;
-    stats.messagesSent = 0;
+    stats.messagesReceived = messageStats.messagesReceived;
+    stats.messagesSent = messageStats.messagesSent;
     stats.uptime = Utils::getCurrentTimestamp() - startTime;
     
     return stats;
 }
 
-bool Network::isConnectedToPeer(const std::string& address, uint16_t port) const {
-    std::string peerAddr = address + ":" + std::to_string(port);
+void Network::addSeedNode(const std::string& address, uint16_t port) {
+    std::string seedNode = address + ":" + std::to_string(port);
     
-    std::lock_guard<std::mutex> lock(peersMutex);
-    auto it = peers.find(peerAddr);
+    {
+        std::lock_guard<std::mutex> lock(seedNodesMutex);
+        seedNodes.push_back({address, port});
+    }
     
-    return it != peers.end() && it->second.isConnected;
+    LOG_NETWORK(LogLevel::INFO, "Added seed node: " + seedNode);
 }
 
-void Network::banPeer(const std::string& address, uint32_t duration) {
-    LOG_NETWORK(LogLevel::WARNING, "Banning peer " + address + " for " + std::to_string(duration) + " seconds");
+void Network::processIncomingConnections() {
+    // In real implementation, would handle incoming socket connections
+    // For now, this is a placeholder
+}
+
+void Network::maintainConnections() {
+    std::lock_guard<std::mutex> lock(peersMutex);
     
-    uint64_t banUntil = Utils::getCurrentTimestamp() + duration;
-    bannedPeers[address] = banUntil;
+    auto currentTime = Utils::getCurrentTimestamp();
     
-    // Disconnect if currently connected
-    {
-        std::lock_guard<std::mutex> lock(peersMutex);
-        for (auto it = peers.begin(); it != peers.end(); ) {
-            if (it->second.address == address) {
-                it->second.disconnect();
-                it = peers.erase(it);
-            } else {
-                ++it;
-            }
+    // Check for dead connections
+    for (auto it = peers.begin(); it != peers.end();) {
+        if (it->second.connected && (currentTime - it->second.lastSeen) > PEER_TIMEOUT) {
+            LOG_NETWORK(LogLevel::INFO, "Peer timeout: " + it->first);
+            it = peers.erase(it);
+        } else {
+            ++it;
         }
     }
 }
 
-bool Network::isPeerBanned(const std::string& address) const {
-    auto it = bannedPeers.find(address);
-    if (it == bannedPeers.end()) {
-        return false;
+void Network::sendPeriodicMessages() {
+    auto currentTime = Utils::getCurrentTimestamp();
+    
+    // Send ping messages every 30 seconds
+    if (currentTime - lastPingTime > 30) {
+        sendPingMessages();
+        lastPingTime = currentTime;
     }
     
-    uint64_t now = Utils::getCurrentTimestamp();
-    if (now >= it->second) {
-        // Ban has expired
-        bannedPeers.erase(it);
-        return false;
+    // Send inventory updates every 60 seconds
+    if (currentTime - lastInventoryTime > 60) {
+        sendInventoryUpdates();
+        lastInventoryTime = currentTime;
     }
-    
-    return true;
 }
 
-// NetworkPeer implementation
-void NetworkPeer::disconnect() {
-    isConnected = false;
-    LOG_NETWORK(LogLevel::DEBUG, "Peer disconnected: " + address + ":" + std::to_string(port));
+void Network::discoverPeers() {
+    std::lock_guard<std::mutex> lock(seedNodesMutex);
+    
+    // Try to connect to seed nodes if we have too few peers
+    if (getPeerCount() < MAX_PEERS / 2) {
+        for (const auto& seedNode : seedNodes) {
+            if (getPeerCount() >= MAX_PEERS) {
+                break;
+            }
+            
+            connectToPeer(seedNode.address, seedNode.port);
+        }
+    }
+}
+
+void Network::processMessageQueue() {
+    std::lock_guard<std::mutex> lock(messageQueueMutex);
+    
+    while (!messageQueue.empty()) {
+        auto messageData = messageQueue.front();
+        messageQueue.pop();
+        
+        processReceivedMessage(messageData.first, messageData.second);
+    }
+}
+
+void Network::processReceivedMessage(const std::string& peerId, const NetworkMessage& message) {
+    messageStats.messagesReceived++;
+    
+    switch (message.type) {
+        case MessageType::VERSION:
+            handleVersionMessage(peerId, message);
+            break;
+            
+        case MessageType::PING:
+            handlePingMessage(peerId, message);
+            break;
+            
+        case MessageType::PONG:
+            handlePongMessage(peerId, message);
+            break;
+            
+        case MessageType::BLOCK:
+            handleBlockMessage(peerId, message);
+            break;
+            
+        case MessageType::TRANSACTION:
+            handleTransactionMessage(peerId, message);
+            break;
+            
+        case MessageType::INVENTORY:
+            handleInventoryMessage(peerId, message);
+            break;
+            
+        case MessageType::GET_BLOCKS:
+            handleGetBlocksMessage(peerId, message);
+            break;
+            
+        case MessageType::GET_DATA:
+            handleGetDataMessage(peerId, message);
+            break;
+            
+        default:
+            LOG_NETWORK(LogLevel::WARNING, "Unknown message type received from " + peerId);
+            break;
+    }
+}
+
+void Network::handleVersionMessage(const std::string& peerId, const NetworkMessage& message) {
+    std::lock_guard<std::mutex> lock(peersMutex);
+    
+    auto it = peers.find(peerId);
+    if (it != peers.end()) {
+        // Update peer version info (simplified)
+        it->second.version = 1;
+        it->second.userAgent = "GXC/1.0";
+        it->second.height = blockchain->getChainLength();
+        
+        // Send version acknowledgment
+        NetworkMessage response;
+        response.type = MessageType::VERSION_ACK;
+        response.data = "version_ack";
+        
+        sendMessageToPeer(peerId, response);
+        
+        LOG_NETWORK(LogLevel::DEBUG, "Handled version message from " + peerId);
+    }
+}
+
+void Network::handlePingMessage(const std::string& peerId, const NetworkMessage& message) {
+    // Respond with pong
+    NetworkMessage pong;
+    pong.type = MessageType::PONG;
+    pong.data = message.data; // Echo the nonce
+    
+    sendMessageToPeer(peerId, pong);
+    
+    LOG_NETWORK(LogLevel::DEBUG, "Responded to ping from " + peerId);
+}
+
+void Network::handlePongMessage(const std::string& peerId, const NetworkMessage& message) {
+    // Update peer's last seen time
+    std::lock_guard<std::mutex> lock(peersMutex);
+    
+    auto it = peers.find(peerId);
+    if (it != peers.end()) {
+        it->second.lastSeen = Utils::getCurrentTimestamp();
+    }
+    
+    LOG_NETWORK(LogLevel::DEBUG, "Received pong from " + peerId);
+}
+
+void Network::handleBlockMessage(const std::string& peerId, const NetworkMessage& message) {
+    try {
+        // In real implementation, would deserialize block from message.data
+        LOG_NETWORK(LogLevel::INFO, "Received block from " + peerId);
+        
+        // Validate and add block to blockchain
+        // Block block = deserializeBlock(message.data);
+        // if (blockchain->addBlock(block)) {
+        //     LOG_NETWORK(LogLevel::INFO, "Added new block from network");
+        //     broadcastBlock(block);
+        // }
+        
+    } catch (const std::exception& e) {
+        LOG_NETWORK(LogLevel::ERROR, "Error processing block from " + peerId + ": " + std::string(e.what()));
+    }
+}
+
+void Network::handleTransactionMessage(const std::string& peerId, const NetworkMessage& message) {
+    try {
+        // In real implementation, would deserialize transaction from message.data
+        LOG_NETWORK(LogLevel::INFO, "Received transaction from " + peerId);
+        
+        // Validate and add transaction to mempool
+        // Transaction tx = deserializeTransaction(message.data);
+        // if (blockchain->addTransaction(tx)) {
+        //     LOG_NETWORK(LogLevel::INFO, "Added new transaction from network");
+        //     broadcastTransaction(tx);
+        // }
+        
+    } catch (const std::exception& e) {
+        LOG_NETWORK(LogLevel::ERROR, "Error processing transaction from " + peerId + ": " + std::string(e.what()));
+    }
+}
+
+void Network::handleInventoryMessage(const std::string& peerId, const NetworkMessage& message) {
+    LOG_NETWORK(LogLevel::DEBUG, "Received inventory from " + peerId);
+    
+    // Process inventory and request missing items
+    // std::vector<std::string> missingItems = processInventory(message.data);
+    // if (!missingItems.empty()) {
+    //     requestData(peerId, missingItems);
+    // }
+}
+
+void Network::handleGetBlocksMessage(const std::string& peerId, const NetworkMessage& message) {
+    LOG_NETWORK(LogLevel::DEBUG, "Received get_blocks request from " + peerId);
+    
+    // Send block inventory
+    // std::vector<std::string> blockHashes = getBlockHashes();
+    // sendInventory(peerId, blockHashes);
+}
+
+void Network::handleGetDataMessage(const std::string& peerId, const NetworkMessage& message) {
+    LOG_NETWORK(LogLevel::DEBUG, "Received get_data request from " + peerId);
+    
+    // Send requested data
+    // std::vector<std::string> requestedItems = parseDataRequest(message.data);
+    // sendRequestedData(peerId, requestedItems);
+}
+
+void Network::sendVersionMessage(const std::string& peerId) {
+    NetworkMessage message;
+    message.type = MessageType::VERSION;
+    message.data = "version:1;user_agent:GXC/1.0;height:" + std::to_string(blockchain->getChainLength());
+    
+    sendMessageToPeer(peerId, message);
+}
+
+void Network::sendPingMessages() {
+    NetworkMessage ping;
+    ping.type = MessageType::PING;
+    ping.data = std::to_string(Utils::randomUint32()); // Nonce
+    
+    broadcastMessage(ping);
+}
+
+void Network::sendInventoryUpdates() {
+    NetworkMessage inventory;
+    inventory.type = MessageType::INVENTORY;
+    inventory.data = "blocks:" + std::to_string(blockchain->getChainLength());
+    
+    broadcastMessage(inventory);
+}
+
+std::string Network::serializeMessage(const NetworkMessage& message) {
+    // Simplified serialization
+    return std::to_string(static_cast<int>(message.type)) + ":" + message.data;
+}
+
+NetworkMessage Network::deserializeMessage(const std::string& data) {
+    NetworkMessage message;
+    
+    size_t colonPos = data.find(':');
+    if (colonPos != std::string::npos) {
+        int typeInt = std::stoi(data.substr(0, colonPos));
+        message.type = static_cast<MessageType>(typeInt);
+        message.data = data.substr(colonPos + 1);
+    }
+    
+    return message;
+}
+
+bool Network::simulateConnection(const Peer& peer) {
+    // Simplified connection simulation
+    // In real implementation, would establish actual socket connection
+    return Utils::validateIPAddress(peer.address) && peer.port > 0;
 }

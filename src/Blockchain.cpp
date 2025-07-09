@@ -242,3 +242,195 @@ void Blockchain::updatePriceData(const PriceData& priceData) {
     // Update the PoP oracle with new price data
     // This would be used by the adaptive monetary policy
 }
+
+// Transaction Traceability Implementation - Your Formula
+std::vector<std::string> Blockchain::traceTransactionLineage(const std::string& startHash) const {
+    std::vector<std::string> lineage;
+    std::string currentHash = startHash;
+    
+    while (!currentHash.empty() && currentHash != "0") {
+        lineage.push_back(currentHash);
+        
+        try {
+            Transaction tx = getTransactionByHash(currentHash);
+            
+            // If reached genesis or orphan transaction
+            if (tx.getPrevTxHash().empty() || tx.getPrevTxHash() == "0" || tx.isCoinbaseTransaction()) {
+                break;
+            }
+            
+            currentHash = tx.getPrevTxHash();
+            
+            // Prevent infinite loops
+            if (lineage.size() > 10000) {
+                break;
+            }
+            
+        } catch (const std::exception&) {
+            // Transaction not found, break the chain
+            break;
+        }
+    }
+    
+    return lineage;
+}
+
+bool Blockchain::verifyTransactionLineage(const std::string& txHash) const {
+    try {
+        Transaction tx = getTransactionByHash(txHash);
+        
+        // Verify the transaction's traceability formula
+        if (!tx.verifyTraceabilityFormula()) {
+            return false;
+        }
+        
+        // If it's a genesis or coinbase transaction, it's valid
+        if (tx.isGenesis() || tx.isCoinbaseTransaction()) {
+            return true;
+        }
+        
+        // Verify that the referenced previous transaction exists
+        if (!tx.getPrevTxHash().empty() && tx.getPrevTxHash() != "0") {
+            try {
+                Transaction prevTx = getTransactionByHash(tx.getPrevTxHash());
+                
+                // Verify that the amount reference is correct
+                if (!tx.getInputs().empty()) {
+                    const auto& firstInput = tx.getInputs()[0];
+                    
+                    // Check if the referenced output exists and has the correct amount
+                    if (firstInput.outputIndex < prevTx.getOutputs().size()) {
+                        const auto& referencedOutput = prevTx.getOutputs()[firstInput.outputIndex];
+                        
+                        if (std::abs(firstInput.amount - referencedOutput.amount) > 0.00000001) {
+                            return false;
+                        }
+                    }
+                }
+                
+                return true;
+            } catch (const std::exception&) {
+                return false; // Previous transaction not found
+            }
+        }
+        
+        return true;
+        
+    } catch (const std::exception&) {
+        return false; // Transaction not found
+    }
+}
+
+Transaction Blockchain::getTransactionByHash(const std::string& hash) const {
+    // Search through all blocks for the transaction
+    for (const auto& block : chain) {
+        for (const auto& tx : block.getTransactions()) {
+            if (tx.getHash() == hash) {
+                return tx;
+            }
+        }
+    }
+    
+    // Check pending transactions
+    for (const auto& tx : pendingTransactions) {
+        if (tx.getHash() == hash) {
+            return tx;
+        }
+    }
+    
+    // Transaction not found - throw exception or return empty transaction
+    throw std::runtime_error("Transaction not found: " + hash);
+}
+
+bool Blockchain::isLineageValid(const std::string& startHash) const {
+    auto lineage = traceTransactionLineage(startHash);
+    
+    // Verify each transaction in the lineage
+    for (const auto& txHash : lineage) {
+        if (!verifyTransactionLineage(txHash)) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+std::vector<std::string> Blockchain::getTransactionChain(const std::string& address, uint32_t depth) const {
+    std::vector<std::string> chain;
+    
+    // Find all transactions involving this address
+    for (const auto& block : this->chain) {
+        for (const auto& tx : block.getTransactions()) {
+            // Check if address is in inputs or outputs
+            bool addressInvolved = false;
+            
+            // Check outputs
+            for (const auto& output : tx.getOutputs()) {
+                if (output.address == address) {
+                    addressInvolved = true;
+                    break;
+                }
+            }
+            
+            // Check sender address
+            if (!addressInvolved && tx.getSenderAddress() == address) {
+                addressInvolved = true;
+            }
+            
+            if (addressInvolved) {
+                chain.push_back(tx.getHash());
+                
+                if (chain.size() >= depth) {
+                    break;
+                }
+            }
+        }
+        
+        if (chain.size() >= depth) {
+            break;
+        }
+    }
+    
+    return chain;
+}
+
+bool Blockchain::validateTransactionTraceability(const Transaction& tx) const {
+    // Apply your traceability formula validation
+    return tx.verifyTraceabilityFormula() && tx.validateInputReference() && 
+           tx.isTraceabilityValid() && verifyInputReferences(tx);
+}
+
+bool Blockchain::verifyInputReferences(const Transaction& tx) const {
+    if (tx.isCoinbaseTransaction() || tx.isGenesis()) {
+        return true;
+    }
+    
+    // Verify that all inputs reference valid previous transaction outputs
+    for (const auto& input : tx.getInputs()) {
+        try {
+            Transaction prevTx = getTransactionByHash(input.txHash);
+            
+            // Check if the output index is valid
+            if (input.outputIndex >= prevTx.getOutputs().size()) {
+                return false;
+            }
+            
+            // Check if the referenced output amount matches
+            const auto& referencedOutput = prevTx.getOutputs()[input.outputIndex];
+            if (std::abs(input.amount - referencedOutput.amount) > 0.00000001) {
+                return false;
+            }
+            
+            // Check if output hasn't been spent already (simplified UTXO check)
+            std::string utxoKey = input.txHash + ":" + std::to_string(input.outputIndex);
+            if (utxoSet.find(utxoKey) == utxoSet.end()) {
+                return false; // UTXO doesn't exist (already spent)
+            }
+            
+        } catch (const std::exception&) {
+            return false; // Referenced transaction not found
+        }
+    }
+    
+    return true;
+}

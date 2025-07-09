@@ -164,6 +164,17 @@ public:
     std::string getMiningTarget(BlockType type) const;
     bool submitPoWShare(const std::string& miner, const std::string& blockHash, uint64_t nonce);
     
+    // Transaction Traceability - Implementing Your Formula
+    std::vector<std::string> traceTransactionLineage(const std::string& startHash) const;
+    bool verifyTransactionLineage(const std::string& txHash) const;
+    Transaction getTransactionByHash(const std::string& hash) const;
+    bool isLineageValid(const std::string& startHash) const;
+    std::vector<std::string> getTransactionChain(const std::string& address, uint32_t depth = 100) const;
+    
+    // Enhanced transaction validation with traceability
+    bool validateTransactionTraceability(const Transaction& tx) const;
+    bool verifyInputReferences(const Transaction& tx) const;
+    
     // Constants
     static const uint32_t MAX_SUPPLY = 31000000; // 31 million GXC
     static const uint32_t HALVING_INTERVAL = 1051200; // ~4 years

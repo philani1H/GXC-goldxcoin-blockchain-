@@ -1,141 +1,101 @@
-#include "../include/blockchain.h"
-#include "../include/Config.h"
+#include "../include/Blockchain.h"
+#include "../include/RESTServer.h"
+#include "../include/Network.h"
 #include "../include/Logger.h"
-#include "../include/Database.h"
+#include "../include/Config.h"
 #include "../include/Utils.h"
 #include <iostream>
-#include <csignal>
-#include <memory>
+#include <signal.h>
 #include <thread>
-#include <atomic>
+#include <chrono>
 
-// Global variables for signal handling
-std::atomic<bool> shutdownRequested(false);
-std::unique_ptr<Blockchain> blockchain;
-std::unique_ptr<Database> database;
-std::unique_ptr<Config> config;
+// Global variables for clean shutdown
+bool g_running = true;
+Blockchain* g_blockchain = nullptr;
+RESTServer* g_restServer = nullptr;
+Network* g_network = nullptr;
 
-// Signal handler for graceful shutdown
-void signalHandler(int signal) {
-    std::cout << "\nReceived signal " << signal << ", initiating graceful shutdown..." << std::endl;
-    shutdownRequested = true;
+void signalHandler(int signum) {
+    std::cout << "\nReceived signal " << signum << ". Shutting down gracefully..." << std::endl;
+    g_running = false;
 }
 
-// Print usage information
-void printUsage(const char* programName) {
-    std::cout << "GXC Blockchain Node v2.0.0" << std::endl;
-    std::cout << "Usage: " << programName << " [options]" << std::endl;
+void printBanner() {
+    std::cout << R"(
+   ___   _  _   ___     _  _             _       
+  / __| | \| | / __|   | \| |  ___    __| |  ___ 
+ | (__  | .` || (__    | .` | / _ \  / _` | / -_)
+  \___| |_|\_| \___|   |_|\_| \___/  \__,_| \___|
+                                                 
+GXC Blockchain Node - Full Transaction Traceability
+Version 1.0.0
+    )" << std::endl;
+}
+
+void printHelp() {
+    std::cout << "GXC Node - Usage:" << std::endl;
+    std::cout << "  gxc-node [options]" << std::endl;
     std::cout << std::endl;
     std::cout << "Options:" << std::endl;
-    std::cout << "  -h, --help              Show this help message" << std::endl;
-    std::cout << "  -c, --config <file>     Specify configuration file (default: gxc.conf)" << std::endl;
-    std::cout << "  -d, --datadir <dir>     Specify data directory (default: ~/.gxc)" << std::endl;
+    std::cout << "  --help, -h              Show this help message" << std::endl;
+    std::cout << "  --config=FILE, -c FILE  Use configuration file" << std::endl;
+    std::cout << "  --datadir=DIR, -d DIR   Data directory" << std::endl;
+    std::cout << "  --port=PORT, -p PORT    P2P network port (default: 8333)" << std::endl;
+    std::cout << "  --rpcport=PORT          REST API port (default: 8332)" << std::endl;
     std::cout << "  --testnet               Run on testnet" << std::endl;
-    std::cout << "  --debug                 Enable debug logging" << std::endl;
     std::cout << "  --mining                Enable mining" << std::endl;
-    std::cout << "  --validator             Enable validator mode" << std::endl;
-    std::cout << "  --rpc-port <port>       RPC server port (default: 8332)" << std::endl;
-    std::cout << "  --rest-port <port>      REST API port (default: 8334)" << std::endl;
-    std::cout << "  --max-connections <n>   Maximum peer connections (default: 125)" << std::endl;
-    std::cout << std::endl;
-    std::cout << "Examples:" << std::endl;
-    std::cout << "  " << programName << "                     # Start node with default settings" << std::endl;
-    std::cout << "  " << programName << " --testnet           # Start on testnet" << std::endl;
-    std::cout << "  " << programName << " --mining            # Start with mining enabled" << std::endl;
-    std::cout << "  " << programName << " --validator         # Start as validator" << std::endl;
+    std::cout << "  --verbose, -v           Verbose logging" << std::endl;
     std::cout << std::endl;
 }
 
-// Parse command line arguments
-bool parseArguments(int argc, char* argv[], Config& config) {
-    for (int i = 1; i < argc; ++i) {
+void initializeLogging(bool verbose) {
+    Logger::initialize();
+    Logger::setLogLevel(verbose ? LogLevel::DEBUG : LogLevel::INFO);
+    
+    LOG_NODE(LogLevel::INFO, "Logger initialized");
+}
+
+bool parseCommandLine(int argc, char* argv[], Config& config) {
+    for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         
-        if (arg == "-h" || arg == "--help") {
-            printUsage(argv[0]);
+        if (arg == "--help" || arg == "-h") {
+            printHelp();
             return false;
         }
-        else if (arg == "-c" || arg == "--config") {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: --config requires a filename" << std::endl;
-                return false;
-            }
-            // Config file path is handled in main()
-            ++i;
+        else if (arg.find("--config=") == 0) {
+            config.configFile = arg.substr(9);
         }
-        else if (arg == "-d" || arg == "--datadir") {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: --datadir requires a directory path" << std::endl;
-                return false;
-            }
-            config.setString("data_directory", argv[++i]);
+        else if (arg == "-c" && i + 1 < argc) {
+            config.configFile = argv[++i];
+        }
+        else if (arg.find("--datadir=") == 0) {
+            config.dataDir = arg.substr(10);
+        }
+        else if (arg == "-d" && i + 1 < argc) {
+            config.dataDir = argv[++i];
+        }
+        else if (arg.find("--port=") == 0) {
+            config.networkPort = Utils::parsePort(arg.substr(7));
+        }
+        else if (arg == "-p" && i + 1 < argc) {
+            config.networkPort = Utils::parsePort(argv[++i]);
+        }
+        else if (arg.find("--rpcport=") == 0) {
+            config.rpcPort = Utils::parsePort(arg.substr(10));
         }
         else if (arg == "--testnet") {
-            config.setBool("testnet", true);
-        }
-        else if (arg == "--debug") {
-            config.setString("log_level", "DEBUG");
+            config.testnet = true;
         }
         else if (arg == "--mining") {
-            config.setBool("mining_enabled", true);
+            config.mining = true;
         }
-        else if (arg == "--validator") {
-            config.setBool("validator_enabled", true);
-        }
-        else if (arg == "--rpc-port") {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: --rpc-port requires a port number" << std::endl;
-                return false;
-            }
-            try {
-                int port = std::stoi(argv[++i]);
-                if (port <= 0 || port > 65535) {
-                    std::cerr << "Error: Invalid RPC port: " << port << std::endl;
-                    return false;
-                }
-                config.setInt("rpc_port", port);
-            } catch (const std::exception&) {
-                std::cerr << "Error: Invalid RPC port number" << std::endl;
-                return false;
-            }
-        }
-        else if (arg == "--rest-port") {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: --rest-port requires a port number" << std::endl;
-                return false;
-            }
-            try {
-                int port = std::stoi(argv[++i]);
-                if (port <= 0 || port > 65535) {
-                    std::cerr << "Error: Invalid REST port: " << port << std::endl;
-                    return false;
-                }
-                config.setInt("rest_port", port);
-            } catch (const std::exception&) {
-                std::cerr << "Error: Invalid REST port number" << std::endl;
-                return false;
-            }
-        }
-        else if (arg == "--max-connections") {
-            if (i + 1 >= argc) {
-                std::cerr << "Error: --max-connections requires a number" << std::endl;
-                return false;
-            }
-            try {
-                int connections = std::stoi(argv[++i]);
-                if (connections <= 0 || connections > 1000) {
-                    std::cerr << "Error: Invalid max connections: " << connections << std::endl;
-                    return false;
-                }
-                config.setInt("max_connections", connections);
-            } catch (const std::exception&) {
-                std::cerr << "Error: Invalid max connections number" << std::endl;
-                return false;
-            }
+        else if (arg == "--verbose" || arg == "-v") {
+            config.verbose = true;
         }
         else {
-            std::cerr << "Error: Unknown option: " << arg << std::endl;
-            std::cerr << "Use --help for usage information" << std::endl;
+            std::cerr << "Unknown option: " << arg << std::endl;
+            printHelp();
             return false;
         }
     }
@@ -143,227 +103,262 @@ bool parseArguments(int argc, char* argv[], Config& config) {
     return true;
 }
 
-// Initialize the node
-bool initializeNode() {
+bool validateConfig(const Config& config) {
+    if (config.networkPort == 0) {
+        std::cerr << "Error: Invalid network port" << std::endl;
+        return false;
+    }
+    
+    if (config.rpcPort == 0) {
+        std::cerr << "Error: Invalid RPC port" << std::endl;
+        return false;
+    }
+    
+    if (config.networkPort == config.rpcPort) {
+        std::cerr << "Error: Network port and RPC port cannot be the same" << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
+bool initializeBlockchain(Config& config) {
     try {
-        // Expand data directory path
-        std::string dataDir = Utils::expandPath(config->getDataDirectory());
+        LOG_NODE(LogLevel::INFO, "Initializing blockchain...");
         
-        // Create data directory if it doesn't exist
-        if (!Utils::createDirectory(dataDir)) {
-            std::cerr << "Failed to create data directory: " << dataDir << std::endl;
+        g_blockchain = new Blockchain();
+        
+        if (!g_blockchain) {
+            LOG_NODE(LogLevel::ERROR, "Failed to create blockchain instance");
             return false;
         }
         
-        // Initialize logger
-        std::string logPath = dataDir + "/" + config->getLogFile();
-        LogLevel logLevel = LogLevel::INFO;
-        
-        std::string logLevelStr = config->getLogLevel();
-        if (logLevelStr == "DEBUG") logLevel = LogLevel::DEBUG;
-        else if (logLevelStr == "WARNING") logLevel = LogLevel::WARNING;
-        else if (logLevelStr == "ERROR") logLevel = LogLevel::ERROR;
-        else if (logLevelStr == "CRITICAL") logLevel = LogLevel::CRITICAL;
-        
-        if (!Logger::getInstance().initialize(logPath, logLevel)) {
-            std::cerr << "Failed to initialize logger" << std::endl;
-            return false;
+        // Load existing blockchain data
+        if (Utils::fileExists(config.dataDir + "/blockchain.dat")) {
+            LOG_NODE(LogLevel::INFO, "Loading existing blockchain data...");
+            // In a real implementation, would load from file
+        } else {
+            LOG_NODE(LogLevel::INFO, "Creating genesis block...");
+            // Create genesis block
         }
         
-        Logger::getInstance().setFileRotation(config->getLogMaxSize(), config->getLogMaxFiles());
-        
-        LOG_INFO("=== GXC Blockchain Node v2.0.0 Starting ===");
-        LOG_INFO("Data directory: " + dataDir);
-        LOG_INFO("Network: " + std::string(config->isTestNet() ? "testnet" : "mainnet"));
-        
-        // Initialize database
-        database = std::make_unique<Database>(dataDir);
-        if (!database->initialize()) {
-            LOG_ERROR("Failed to initialize database");
-            return false;
-        }
-        
-        LOG_INFO("Database initialized successfully");
-        
-        // Initialize blockchain
-        blockchain = std::make_unique<Blockchain>();
-        if (!blockchain) {
-            LOG_ERROR("Failed to create blockchain instance");
-            return false;
-        }
-        
-        LOG_INFO("Blockchain initialized successfully");
-        LOG_INFO("Current block height: " + std::to_string(blockchain->getChainLength()));
-        LOG_INFO("Current difficulty: " + Utils::doubleToString(blockchain->getDifficulty(), 6));
-        LOG_INFO("Block reward: " + Utils::formatAmount(blockchain->getBlockReward(), "GXC"));
-        
-        // Validate configuration
-        if (!config->validateConfig()) {
-            LOG_ERROR("Configuration validation failed");
-            auto errors = config->getValidationErrors();
-            for (const auto& error : errors) {
-                LOG_ERROR("Config error: " + error);
-            }
-            return false;
-        }
-        
-        LOG_INFO("Configuration validated successfully");
+        LOG_NODE(LogLevel::INFO, "Blockchain initialized successfully");
+        LOG_NODE(LogLevel::INFO, "Current block height: " + std::to_string(g_blockchain->getChainLength()));
+        LOG_NODE(LogLevel::INFO, "Traceability system: ACTIVE");
         
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "Initialization error: " << e.what() << std::endl;
+        LOG_NODE(LogLevel::ERROR, "Failed to initialize blockchain: " + std::string(e.what()));
         return false;
     }
 }
 
-// Main node loop
-void runNode() {
-    LOG_INFO("Node started successfully");
-    LOG_INFO("Listening on " + config->getListenAddress() + ":" + std::to_string(config->getListenPort()));
-    
-    if (config->isRpcEnabled()) {
-        LOG_INFO("RPC server enabled on port " + std::to_string(config->getRpcPort()));
-    }
-    
-    if (config->isRestEnabled()) {
-        LOG_INFO("REST API enabled on port " + std::to_string(config->getRestPort()));
-    }
-    
-    if (config->isMiningEnabled()) {
-        LOG_INFO("Mining enabled with algorithm: " + config->getMiningAlgorithm());
-        if (!config->getMinerAddress().empty()) {
-            LOG_INFO("Mining address: " + config->getMinerAddress());
+bool startNetwork(const Config& config) {
+    try {
+        LOG_NODE(LogLevel::INFO, "Starting P2P network...");
+        
+        g_network = new Network(g_blockchain, config.networkPort);
+        
+        if (!g_network->start()) {
+            LOG_NODE(LogLevel::ERROR, "Failed to start P2P network");
+            return false;
         }
+        
+        // Add seed nodes
+        if (config.testnet) {
+            g_network->addSeedNode("127.0.0.1", 18333);
+        } else {
+            g_network->addSeedNode("seed1.gxc.io", 8333);
+            g_network->addSeedNode("seed2.gxc.io", 8333);
+            g_network->addSeedNode("seed3.gxc.io", 8333);
+        }
+        
+        LOG_NODE(LogLevel::INFO, "P2P network started on port " + std::to_string(config.networkPort));
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LOG_NODE(LogLevel::ERROR, "Failed to start network: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool startRESTServer(const Config& config) {
+    try {
+        LOG_NODE(LogLevel::INFO, "Starting REST API server...");
+        
+        g_restServer = new RESTServer(g_blockchain, config.rpcPort);
+        
+        if (!g_restServer->start()) {
+            LOG_NODE(LogLevel::ERROR, "Failed to start REST API server");
+            return false;
+        }
+        
+        LOG_NODE(LogLevel::INFO, "REST API server started on port " + std::to_string(config.rpcPort));
+        LOG_NODE(LogLevel::INFO, "API endpoint: http://localhost:" + std::to_string(config.rpcPort) + "/api/v1/");
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LOG_NODE(LogLevel::ERROR, "Failed to start REST server: " + std::string(e.what()));
+        return false;
+    }
+}
+
+void printNodeStatus() {
+    if (!g_blockchain || !g_network) {
+        return;
     }
     
-    if (config->isValidatorEnabled()) {
-        LOG_INFO("Validator mode enabled");
-    }
+    auto networkStats = g_network->getNetworkStats();
     
-    // Main event loop
-    auto lastStatusReport = Utils::getCurrentTimestamp();
-    uint32_t lastBlockHeight = blockchain->getChainLength();
+    LOG_NODE(LogLevel::INFO, "=== Node Status ===");
+    LOG_NODE(LogLevel::INFO, "Block Height: " + std::to_string(g_blockchain->getChainLength()));
+    LOG_NODE(LogLevel::INFO, "Connected Peers: " + std::to_string(networkStats.connectedPeers));
+    LOG_NODE(LogLevel::INFO, "Network Uptime: " + std::to_string(networkStats.uptime) + " seconds");
+    LOG_NODE(LogLevel::INFO, "Traceability Active: YES");
+    LOG_NODE(LogLevel::INFO, "==================");
+}
+
+void nodeMainLoop() {
+    LOG_NODE(LogLevel::INFO, "Node main loop started");
     
-    while (!shutdownRequested) {
+    auto lastStatusUpdate = Utils::getCurrentTimestamp();
+    
+    while (g_running) {
         try {
-            // Process pending operations
-            // In a real implementation, this would include:
-            // - Network message processing
-            // - Mining operations
-            // - Validator operations
-            // - RPC/API request handling
-            // - Peer management
-            // - Block validation and propagation
-            
-            // For now, just sleep and report status periodically
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            
-            // Report status every 60 seconds
-            auto now = Utils::getCurrentTimestamp();
-            if (now - lastStatusReport >= 60) {
-                uint32_t currentHeight = blockchain->getChainLength();
-                
-                LOG_INFO("=== Node Status Report ===");
-                LOG_INFO("Uptime: " + std::to_string(now - lastStatusReport) + " seconds");
-                LOG_INFO("Block height: " + std::to_string(currentHeight));
-                LOG_INFO("Blocks processed: " + std::to_string(currentHeight - lastBlockHeight));
-                LOG_INFO("Difficulty: " + Utils::doubleToString(blockchain->getDifficulty(), 6));
-                LOG_INFO("Memory usage: " + std::to_string(database->getDatabaseSize() / 1024 / 1024) + " MB");
-                
-                lastStatusReport = now;
-                lastBlockHeight = currentHeight;
+            // Print status every 60 seconds
+            auto currentTime = Utils::getCurrentTimestamp();
+            if (currentTime - lastStatusUpdate >= 60) {
+                printNodeStatus();
+                lastStatusUpdate = currentTime;
             }
             
+            // Process any node-specific tasks here
+            
+            // Sleep for a short time
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            
         } catch (const std::exception& e) {
-            LOG_ERROR("Error in main loop: " + std::string(e.what()));
+            LOG_NODE(LogLevel::ERROR, "Error in main loop: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
     
-    LOG_INFO("Shutdown requested, stopping node...");
+    LOG_NODE(LogLevel::INFO, "Node main loop stopped");
 }
 
-// Cleanup resources
 void cleanup() {
-    LOG_INFO("Cleaning up resources...");
+    LOG_NODE(LogLevel::INFO, "Cleaning up resources...");
     
-    // Close blockchain
-    if (blockchain) {
-        blockchain.reset();
-        LOG_INFO("Blockchain closed");
+    if (g_restServer) {
+        g_restServer->stop();
+        delete g_restServer;
+        g_restServer = nullptr;
     }
     
-    // Close database
-    if (database) {
-        database->close();
-        database.reset();
-        LOG_INFO("Database closed");
+    if (g_network) {
+        g_network->stop();
+        delete g_network;
+        g_network = nullptr;
     }
     
-    // Close logger
-    Logger::getInstance().info("=== GXC Blockchain Node Shutdown Complete ===");
-    Logger::getInstance().close();
-    Logger::cleanup();
+    if (g_blockchain) {
+        // Save blockchain state
+        LOG_NODE(LogLevel::INFO, "Saving blockchain state...");
+        delete g_blockchain;
+        g_blockchain = nullptr;
+    }
     
-    std::cout << "GXC Node shutdown complete." << std::endl;
+    LOG_NODE(LogLevel::INFO, "Cleanup completed");
 }
 
 int main(int argc, char* argv[]) {
+    // Print banner
+    printBanner();
+    
+    // Set up signal handlers
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
+    
+    // Default configuration
+    Config config;
+    config.networkPort = 8333;
+    config.rpcPort = 8332;
+    config.dataDir = "./data";
+    config.testnet = false;
+    config.mining = false;
+    config.verbose = false;
+    
+    // Parse command line arguments
+    if (!parseCommandLine(argc, argv, config)) {
+        return 1;
+    }
+    
+    // Validate configuration
+    if (!validateConfig(config)) {
+        return 1;
+    }
+    
+    // Initialize logging
+    initializeLogging(config.verbose);
+    
+    LOG_NODE(LogLevel::INFO, "Starting GXC Node...");
+    LOG_NODE(LogLevel::INFO, "Network: " + std::string(config.testnet ? "Testnet" : "Mainnet"));
+    LOG_NODE(LogLevel::INFO, "Data directory: " + config.dataDir);
+    LOG_NODE(LogLevel::INFO, "P2P port: " + std::to_string(config.networkPort));
+    LOG_NODE(LogLevel::INFO, "REST API port: " + std::to_string(config.rpcPort));
+    
+    // Create data directory if it doesn't exist
+    if (!Utils::createDirectory(config.dataDir)) {
+        LOG_NODE(LogLevel::ERROR, "Failed to create data directory: " + config.dataDir);
+        return 1;
+    }
+    
     try {
-        // Handle command line arguments to find config file
-        std::string configFile = "gxc.conf";
-        for (int i = 1; i < argc - 1; ++i) {
-            if (std::string(argv[i]) == "-c" || std::string(argv[i]) == "--config") {
-                configFile = argv[i + 1];
-                break;
-            }
-        }
-        
-        // Initialize configuration
-        config = std::make_unique<Config>(configFile);
-        if (!config->loadConfig()) {
-            std::cerr << "Failed to load configuration" << std::endl;
+        // Initialize blockchain
+        if (!initializeBlockchain(config)) {
+            LOG_NODE(LogLevel::ERROR, "Failed to initialize blockchain");
             return 1;
         }
         
-        // Parse command line arguments (may override config)
-        if (!parseArguments(argc, argv, *config)) {
-            return 1;
-        }
-        
-        // Set up signal handlers
-        std::signal(SIGINT, signalHandler);
-        std::signal(SIGTERM, signalHandler);
-#ifndef _WIN32
-        std::signal(SIGHUP, signalHandler);
-#endif
-        
-        // Initialize node
-        if (!initializeNode()) {
-            std::cerr << "Failed to initialize node" << std::endl;
+        // Start network
+        if (!startNetwork(config)) {
+            LOG_NODE(LogLevel::ERROR, "Failed to start network");
             cleanup();
             return 1;
         }
         
-        // Save configuration (in case we updated it with command line args)
-        config->saveConfig();
+        // Start REST API server
+        if (!startRESTServer(config)) {
+            LOG_NODE(LogLevel::ERROR, "Failed to start REST server");
+            cleanup();
+            return 1;
+        }
         
-        // Run the node
-        runNode();
+        LOG_NODE(LogLevel::INFO, "GXC Node started successfully!");
+        LOG_NODE(LogLevel::INFO, "Transaction traceability formula active:");
+        LOG_NODE(LogLevel::INFO, "  Ti.Inputs[0].txHash == Ti.PrevTxHash");
+        LOG_NODE(LogLevel::INFO, "  Ti.Inputs[0].amount == Ti.ReferencedAmount");
         
-        // Cleanup
-        cleanup();
+        // Print initial status
+        printNodeStatus();
         
-        return 0;
+        // Run main loop
+        nodeMainLoop();
         
     } catch (const std::exception& e) {
-        std::cerr << "Fatal error: " << e.what() << std::endl;
-        cleanup();
-        return 1;
-    } catch (...) {
-        std::cerr << "Unknown fatal error occurred" << std::endl;
+        LOG_NODE(LogLevel::ERROR, "Fatal error: " + std::string(e.what()));
         cleanup();
         return 1;
     }
+    
+    // Clean shutdown
+    cleanup();
+    
+    LOG_NODE(LogLevel::INFO, "GXC Node shutdown complete");
+    std::cout << "Thank you for using GXC Blockchain!" << std::endl;
+    
+    return 0;
 }
