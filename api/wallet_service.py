@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives import serialization
 import base64
 import uuid
+from hashlib import pbkdf2_hmac  # new import for mnemonic->seed derivation
 
 app = Flask(__name__)
 CORS(app)
@@ -140,6 +141,95 @@ class WalletService:
         )
         
         return private_pem.decode(), public_pem.decode()
+
+    # ------------------------------------------------------------------
+    #  Mnemonic restoration helpers
+    # ------------------------------------------------------------------
+
+    def derive_keypair_from_mnemonic(self, mnemonic_phrase: str, passphrase: str = ""):
+        """Derive deterministic ED25519 key-pair from BIP-39 mnemonic.
+
+        We purposely avoid heavy external dependencies; instead we:
+        1.  PBKDF2-HMAC-SHA512(mnemonic, "mnemonic" + passphrase, 2048) → 64-byte seed
+        2.  Use the first 32 bytes as the ED25519 private key scalar
+        (Not a full SLIP-0010 implementation but deterministic & sufficient for demo.)
+        """
+        salt = ("mnemonic" + passphrase).encode()
+        seed = pbkdf2_hmac('sha512', mnemonic_phrase.encode(), salt, 2048, dklen=64)
+        priv_bytes = seed[:32]
+        private_key = ed25519.Ed25519PrivateKey.from_private_bytes(priv_bytes)
+        public_key = private_key.public_key()
+
+        # Serialize keys to PEM
+        private_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        public_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
+        return private_pem.decode(), public_pem.decode()
+
+    def restore_wallet(self, user_id: str, wallet_name: str, password: str,
+                       mnemonic: str, passphrase: str = "", wallet_type: str = 'restored'):
+        """Restore wallet from 24-word seed phrase.
+
+        Returns the same response dict shape as create_wallet().
+        """
+        # Basic validation: 24 words
+        words = mnemonic.strip().split()
+        if len(words) not in (12, 15, 18, 21, 24):
+            return {'success': False, 'error': 'Invalid mnemonic length'}
+
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+
+        try:
+            # Derive deterministic key-pair
+            private_key, public_key = self.derive_keypair_from_mnemonic(mnemonic, passphrase)
+            address = self.generate_address(public_key)
+
+            # Encrypt private key with new spending-password
+            encrypted_private_key = self.encrypt_private_key(private_key, password)
+
+            # Check if wallet/address already exists for this user
+            cursor.execute('SELECT wallet_id FROM wallets WHERE address = ?', (address,))
+            if cursor.fetchone():
+                return {'success': False, 'error': 'Wallet already exists'}
+
+            wallet_id = str(uuid.uuid4())
+
+            # Insert wallet
+            cursor.execute('''
+                INSERT INTO wallets (
+                    wallet_id, user_id, wallet_name, address, public_key,
+                    encrypted_private_key, wallet_type, is_default
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (wallet_id, user_id, wallet_name, address, public_key,
+                  encrypted_private_key, wallet_type, False))
+
+            conn.commit()
+
+            qr_data = {'address': address, 'network': 'GXC', 'type': 'wallet'}
+
+            return {
+                'success': True,
+                'wallet_id': wallet_id,
+                'address': address,
+                'public_key': public_key,
+                'qr_data': qr_data,
+                'message': 'Wallet restored successfully'
+            }
+
+        except Exception as e:
+            conn.rollback()
+            return {'success': False, 'error': str(e)}
+        finally:
+            conn.close()
     
     def generate_address(self, public_key_pem):
         """Generate GXC address from public key"""
@@ -516,6 +606,43 @@ def store_wallet_backup(wallet_id):
         data.get('encryption_hint')
     )
     
+    return jsonify(result), 201 if result['success'] else 400
+
+# ------------------------------------------------------------------
+#  Wallet restore endpoint
+# ------------------------------------------------------------------
+
+@app.route('/api/v1/wallets/restore', methods=['POST'])
+def restore_wallet_endpoint():
+    """Restore wallet from mnemonic."""
+    # JWT Auth
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'success': False, 'error': 'Missing or invalid token'}), 401
+
+    try:
+        token = auth_header.split(' ')[1]
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        user_id = payload['user_id']
+    except jwt.ExpiredSignatureError:
+        return jsonify({'success': False, 'error': 'Token expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'success': False, 'error': 'Invalid token'}), 401
+
+    data = request.get_json()
+    required = ['mnemonic', 'wallet_name', 'password']
+    if not all(f in data for f in required):
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+
+    result = wallet_service.restore_wallet(
+        user_id=user_id,
+        wallet_name=data['wallet_name'],
+        password=data['password'],
+        mnemonic=data['mnemonic'],
+        passphrase=data.get('passphrase', ''),
+        wallet_type=data.get('wallet_type', 'restored')
+    )
+
     return jsonify(result), 201 if result['success'] else 400
 
 @app.route('/api/v1/health', methods=['GET'])
