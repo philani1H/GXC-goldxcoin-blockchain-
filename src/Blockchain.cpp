@@ -12,7 +12,7 @@ const double BASE_BURN_RATE = 0.3; // 30% base burn rate
 const uint32_t MEASUREMENT_WINDOW = 2016; // ~2 weeks of blocks
 
 Blockchain::Blockchain() 
-    : difficulty(4.0), posThreshold(0.5), blockReward(12.5 * 100000000), // 12.5 GXC in satoshis
+    : difficulty(4.0), posThreshold(0.5), blockReward(50.0 * 100000000), // 50 GXC in satoshis
       feeBurnRate(BASE_BURN_RATE), targetInflationRate(TARGET_INFLATION_RATE),
       k1(K1), k2(K2), k3(K3) {
     
