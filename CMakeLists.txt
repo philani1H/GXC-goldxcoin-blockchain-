@@ -63,6 +63,15 @@ if(ENABLE_LTO)
 endif()
 
 # Find required packages
+# Auto-detect Scoop OpenSSL location on Windows if not provided
+if (WIN32 AND NOT DEFINED OPENSSL_ROOT_DIR)
+    # Typical Scoop path e.g. C:/Users/User/scoop/apps/openssl/current
+    if (EXISTS "$ENV{USERPROFILE}/scoop/apps/openssl/current")
+        set(OPENSSL_ROOT_DIR "$ENV{USERPROFILE}/scoop/apps/openssl/current" CACHE PATH "Default Scoop OpenSSL path" FORCE)
+        message(STATUS "OPENSSL_ROOT_DIR not set; using Scoop path: ${OPENSSL_ROOT_DIR}")
+    endif()
+endif()
+
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(PkgConfig QUIET)
