@@ -1,0 +1,11 @@
+Flask>=2.3
+Flask-Cors>=3.0
+Flask-SocketIO>=5.3
+eventlet>=0.33
+PyJWT>=2.8
+bcrypt>=4.0
+cryptography>=41.0
+pyzmq>=25.1
+yfinance>=0.2
+pandas>=2.0
+requests>=2.31
