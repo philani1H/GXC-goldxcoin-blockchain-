@@ -1,0 +1,233 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ResolveNugetPackages>false</ResolveNugetPackages>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{2A593027-21C8-3DE2-81B9-8F618304AEED}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>ALL_BUILD</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>C:\Users\phila\GXC\include;C:\Users\phila\GXC\third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>C:\Users\phila\GXC\include;C:\Users\phila\GXC\third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>C:\Users\phila\GXC\include;C:\Users\phila\GXC\third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>C:\Users\phila\GXC\include;C:\Users\phila\GXC\third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\phila\GXC\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/Users/phila/GXC/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+C:\Users\phila\scoop\apps\cmake\current\bin\cmake.exe -SC:/Users/phila/GXC -BC:/Users/phila/GXC/build --check-stamp-file C:/Users/phila/GXC/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeCCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeCXXCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeRCCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeSystem.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCXXInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeDependentOption.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeGenericSystem.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeInitializeConfigs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakePushCheckState.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeRCInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeSystemSpecificInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeSystemSpecificInitialize.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CPack.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CPackComponent.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckCSourceCompiles.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckIncludeFile.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckLibraryExists.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckSymbolExists.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindCUDA.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindCUDA\select_compute_arch.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindGTest.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindOpenCL.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindOpenSSL.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPkgConfig.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPython\Support.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPython3.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindSQLite3.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindThreads.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\GNUInstallDirs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\GoogleTest.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-Initialize.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\WindowsPaths.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\SelectLibraryConfigurations.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Templates\CPackConfig.cmake.in;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfig.cmake;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfigVersion.cmake;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonTargets.cmake;C:\vcpkg\scripts\buildsystems\vcpkg.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\phila\GXC\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule C:/Users/phila/GXC/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+C:\Users\phila\scoop\apps\cmake\current\bin\cmake.exe -SC:/Users/phila/GXC -BC:/Users/phila/GXC/build --check-stamp-file C:/Users/phila/GXC/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeCCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeCXXCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeRCCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeSystem.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCXXInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeDependentOption.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeGenericSystem.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeInitializeConfigs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakePushCheckState.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeRCInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeSystemSpecificInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeSystemSpecificInitialize.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CPack.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CPackComponent.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckCSourceCompiles.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckIncludeFile.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckLibraryExists.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckSymbolExists.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindCUDA.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindCUDA\select_compute_arch.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindGTest.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindOpenCL.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindOpenSSL.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPkgConfig.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPython\Support.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPython3.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindSQLite3.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindThreads.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\GNUInstallDirs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\GoogleTest.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-Initialize.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\WindowsPaths.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\SelectLibraryConfigurations.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Templates\CPackConfig.cmake.in;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfig.cmake;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfigVersion.cmake;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonTargets.cmake;C:\vcpkg\scripts\buildsystems\vcpkg.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Users\phila\GXC\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule C:/Users/phila/GXC/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+C:\Users\phila\scoop\apps\cmake\current\bin\cmake.exe -SC:/Users/phila/GXC -BC:/Users/phila/GXC/build --check-stamp-file C:/Users/phila/GXC/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeCCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeCXXCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeRCCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeSystem.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCXXInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeDependentOption.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeGenericSystem.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeInitializeConfigs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakePushCheckState.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeRCInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeSystemSpecificInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeSystemSpecificInitialize.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CPack.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CPackComponent.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckCSourceCompiles.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckIncludeFile.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckLibraryExists.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckSymbolExists.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindCUDA.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindCUDA\select_compute_arch.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindGTest.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindOpenCL.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindOpenSSL.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPkgConfig.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPython\Support.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPython3.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindSQLite3.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindThreads.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\GNUInstallDirs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\GoogleTest.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-Initialize.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\WindowsPaths.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\SelectLibraryConfigurations.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Templates\CPackConfig.cmake.in;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfig.cmake;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfigVersion.cmake;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonTargets.cmake;C:\vcpkg\scripts\buildsystems\vcpkg.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Users\phila\GXC\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule C:/Users/phila/GXC/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+C:\Users\phila\scoop\apps\cmake\current\bin\cmake.exe -SC:/Users/phila/GXC -BC:/Users/phila/GXC/build --check-stamp-file C:/Users/phila/GXC/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeCCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeCXXCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeRCCompiler.cmake;C:\Users\phila\GXC\build\CMakeFiles\4.0.1\CMakeSystem.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCXXInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeDependentOption.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeGenericSystem.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeInitializeConfigs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakePushCheckState.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeRCInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeSystemSpecificInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CMakeSystemSpecificInitialize.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CPack.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CPackComponent.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckCSourceCompiles.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckIncludeFile.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckLibraryExists.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\CheckSymbolExists.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindCUDA.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindCUDA\select_compute_arch.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindGTest.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindOpenCL.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindOpenSSL.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPkgConfig.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPython\Support.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindPython3.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindSQLite3.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\FindThreads.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\GNUInstallDirs.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\GoogleTest.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCXXLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-Initialize.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC-C.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC-CXX.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\Windows.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\Platform\WindowsPaths.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Modules\SelectLibraryConfigurations.cmake;C:\Users\phila\scoop\apps\cmake\current\share\cmake-4.0\Templates\CPackConfig.cmake.in;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfig.cmake;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonConfigVersion.cmake;C:\vcpkg\installed\x64-windows\share\nlohmann_json\nlohmann_jsonTargets.cmake;C:\vcpkg\scripts\buildsystems\vcpkg.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Users\phila\GXC\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="C:\Users\phila\GXC\build\ZERO_CHECK.vcxproj">
+      <Project>{B7B4C517-F763-3159-A649-90B60989FB7F}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-cli.vcxproj">
+      <Project>{A96BC864-2642-383B-BA5C-B8684CC7A7FE}</Project>
+      <Name>gxc-cli</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-ethash-miner.vcxproj">
+      <Project>{25F8BE15-1331-39B4-931C-54CFA226A6B7}</Project>
+      <Name>gxc-ethash-miner</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-explorer.vcxproj">
+      <Project>{2C5C1A83-718C-357B-BDD9-633A372870C6}</Project>
+      <Name>gxc-explorer</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-gxhash-miner.vcxproj">
+      <Project>{68AF312E-BCD5-3E9A-BC1C-68473C9D3F58}</Project>
+      <Name>gxc-gxhash-miner</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-keygen.vcxproj">
+      <Project>{6E5EA9FB-037E-3A1B-B055-AE7402C6DA23}</Project>
+      <Name>gxc-keygen</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-miner.vcxproj">
+      <Project>{539AF803-AB71-3255-B073-732167F43A81}</Project>
+      <Name>gxc-miner</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-netdiag.vcxproj">
+      <Project>{67D264E9-0968-3F34-BAE6-510E6875BC99}</Project>
+      <Name>gxc-netdiag</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-node.vcxproj">
+      <Project>{7E804C0F-5552-3E85-A84E-62C60D8BD26D}</Project>
+      <Name>gxc-node</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-pool-proxy.vcxproj">
+      <Project>{3F6B4B99-74AB-3D09-8BBD-B6EA71FFA333}</Project>
+      <Name>gxc-pool-proxy</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-sha256-miner.vcxproj">
+      <Project>{8346C67F-8903-326D-B3C2-0E61833894B0}</Project>
+      <Name>gxc-sha256-miner</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc-tx.vcxproj">
+      <Project>{C1F7F462-F42F-3E9F-805B-6825D6EFBCA1}</Project>
+      <Name>gxc-tx</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc_core.vcxproj">
+      <Project>{4040920D-77EB-30B9-8BE4-86F9A5982D75}</Project>
+      <Name>gxc_core</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\phila\GXC\build\gxc_mining.vcxproj">
+      <Project>{213DE18D-54F4-31E5-AD94-3E61F6871170}</Project>
+      <Name>gxc_mining</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

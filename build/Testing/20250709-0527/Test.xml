@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="(empty)"
+	BuildStamp="20250709-0527-Experimental"
+	Name="(empty)"
+	Generator="ctest-4.0.1"
+	CompilerName=""
+	CompilerVersion=""
+	OSName="Windows"
+	Hostname="CHADEX"
+	OSRelease=" Personal"
+	OSVersion=" (Build 26100)"
+	OSPlatform="AMD64"
+	Is64Bits="1"
+	VendorString="GenuineIntel"
+	VendorID="Intel Corporation"
+	FamilyID="6"
+	ModelID="12"
+	ModelName=""
+	ProcessorCacheSize="-1"
+	NumberOfLogicalCPU="2"
+	NumberOfPhysicalCPU="2"
+	TotalVirtualMemory="17735"
+	TotalPhysicalMemory="7985"
+	LogicalProcessorsPerPhysical="1"
+	ProcessorClockFrequency="1113"
+	>
+	<Testing>
+		<StartDateTime>Jul 09 07:27 South Africa Standard Time</StartDateTime>
+		<StartTestTime>1752038840</StartTestTime>
+		<TestList/>
+		<EndDateTime>Jul 09 07:27 South Africa Standard Time</EndDateTime>
+		<EndTestTime>1752038840</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>

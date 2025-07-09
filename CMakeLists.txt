@@ -64,7 +64,175 @@ endif()
 
 # Find required packages
 find_package(Threads REQUIRED)
-find_package(OpenSSL REQUIRED)
+
+# Custom OpenSSL detection that works across all platforms
+function(find_openssl_custom)
+    # First try standard find_package
+    find_package(OpenSSL QUIET)
+    if(OpenSSL_FOUND)
+        message(STATUS "OpenSSL found via standard find_package")
+        return()
+    endif()
+    
+    # Custom detection for Windows
+    if(WIN32)
+        # Common OpenSSL installation paths on Windows
+        set(OPENSSL_SEARCH_PATHS
+            "C:/Program Files/OpenSSL-Win64"
+            "C:/Program Files (x86)/OpenSSL-Win32"
+            "C:/Program Files/OpenSSL"
+            "C:/Program Files (x86)/OpenSSL"
+            "C:/OpenSSL-Win64"
+            "C:/OpenSSL-Win32"
+            "C:/OpenSSL"
+            "C:/vcpkg/installed/x64-windows"
+            "C:/vcpkg/installed/x86-windows"
+            "$ENV{OPENSSL_ROOT_DIR}"
+            "$ENV{OPENSSL_DIR}"
+        )
+        
+        foreach(SEARCH_PATH ${OPENSSL_SEARCH_PATHS})
+            if(EXISTS "${SEARCH_PATH}")
+                # Check for include directory
+                if(EXISTS "${SEARCH_PATH}/include/openssl/ssl.h")
+                    set(OPENSSL_INCLUDE_DIR "${SEARCH_PATH}/include" PARENT_SCOPE)
+                    set(OPENSSL_FOUND_INCLUDE TRUE)
+                    message(STATUS "Found OpenSSL includes at: ${SEARCH_PATH}/include")
+                    
+                    # Look for libraries in various subdirectories
+                    set(LIB_SEARCH_PATHS
+                        "${SEARCH_PATH}/lib"
+                        "${SEARCH_PATH}/lib/VC"
+                        "${SEARCH_PATH}/lib/VC/x64/MD"
+                        "${SEARCH_PATH}/lib/VC/x86/MD"
+                        "${SEARCH_PATH}/lib/VC/static"
+                        "${SEARCH_PATH}/out32"
+                        "${SEARCH_PATH}/out32dll"
+                    )
+                    
+                    foreach(LIB_PATH ${LIB_SEARCH_PATHS})
+                        # Check for crypto library
+                        if(EXISTS "${LIB_PATH}/libcrypto.lib")
+                            set(OPENSSL_CRYPTO_LIBRARY "${LIB_PATH}/libcrypto.lib" PARENT_SCOPE)
+                            set(OPENSSL_FOUND_CRYPTO TRUE)
+                        elseif(EXISTS "${LIB_PATH}/libeay32.lib")
+                            set(OPENSSL_CRYPTO_LIBRARY "${LIB_PATH}/libeay32.lib" PARENT_SCOPE)
+                            set(OPENSSL_FOUND_CRYPTO TRUE)
+                        endif()
+                        
+                        # Check for SSL library
+                        if(EXISTS "${LIB_PATH}/libssl.lib")
+                            set(OPENSSL_SSL_LIBRARY "${LIB_PATH}/libssl.lib" PARENT_SCOPE)
+                            set(OPENSSL_FOUND_SSL TRUE)
+                        elseif(EXISTS "${LIB_PATH}/ssleay32.lib")
+                            set(OPENSSL_SSL_LIBRARY "${LIB_PATH}/ssleay32.lib" PARENT_SCOPE)
+                            set(OPENSSL_FOUND_SSL TRUE)
+                        endif()
+                        
+                        if(OPENSSL_FOUND_CRYPTO AND OPENSSL_FOUND_SSL)
+                            message(STATUS "Found OpenSSL libraries at: ${LIB_PATH}")
+                            break()
+                        endif()
+                    endforeach()
+                    
+                    if(OPENSSL_FOUND_INCLUDE AND OPENSSL_FOUND_CRYPTO AND OPENSSL_FOUND_SSL)
+                        break()
+                    endif()
+                endif()
+            endif()
+        endforeach()
+    endif()
+    
+    # Unix-like systems (Linux, macOS)
+    if(UNIX)
+        # Standard system paths
+        find_path(OPENSSL_INCLUDE_DIR
+            NAMES openssl/ssl.h
+            PATHS
+                /usr/include
+                /usr/local/include
+                /opt/local/include
+                /usr/local/ssl/include
+                /usr/local/opt/openssl/include
+                /opt/homebrew/include
+                /sw/include
+        )
+        
+        find_library(OPENSSL_CRYPTO_LIBRARY
+            NAMES crypto libcrypto
+            PATHS
+                /usr/lib
+                /usr/local/lib
+                /opt/local/lib
+                /usr/local/ssl/lib
+                /usr/local/opt/openssl/lib
+                /opt/homebrew/lib
+                /sw/lib
+                /usr/lib/x86_64-linux-gnu
+                /usr/lib/i386-linux-gnu
+        )
+        
+        find_library(OPENSSL_SSL_LIBRARY
+            NAMES ssl libssl
+            PATHS
+                /usr/lib
+                /usr/local/lib
+                /opt/local/lib
+                /usr/local/ssl/lib
+                /usr/local/opt/openssl/lib
+                /opt/homebrew/lib
+                /sw/lib
+                /usr/lib/x86_64-linux-gnu
+                /usr/lib/i386-linux-gnu
+        )
+    endif()
+    
+    # Verify all components found
+    if(OPENSSL_INCLUDE_DIR AND OPENSSL_CRYPTO_LIBRARY AND OPENSSL_SSL_LIBRARY)
+        # Set the variables that find_package(OpenSSL) expects
+        set(OPENSSL_FOUND TRUE PARENT_SCOPE)
+        set(OPENSSL_INCLUDE_DIR ${OPENSSL_INCLUDE_DIR} PARENT_SCOPE)
+        set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_CRYPTO_LIBRARY} PARENT_SCOPE)
+        set(OPENSSL_SSL_LIBRARY ${OPENSSL_SSL_LIBRARY} PARENT_SCOPE)
+        set(OPENSSL_LIBRARIES ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY} PARENT_SCOPE)
+        
+        # Create imported targets
+        if(NOT TARGET OpenSSL::Crypto)
+            add_library(OpenSSL::Crypto UNKNOWN IMPORTED)
+            set_target_properties(OpenSSL::Crypto PROPERTIES
+                IMPORTED_LOCATION "${OPENSSL_CRYPTO_LIBRARY}"
+                INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
+            )
+        endif()
+        
+        if(NOT TARGET OpenSSL::SSL)
+            add_library(OpenSSL::SSL UNKNOWN IMPORTED)
+            set_target_properties(OpenSSL::SSL PROPERTIES
+                IMPORTED_LOCATION "${OPENSSL_SSL_LIBRARY}"
+                INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
+                INTERFACE_LINK_LIBRARIES OpenSSL::Crypto
+            )
+        endif()
+        
+        # Windows-specific linking requirements
+        if(WIN32)
+            set_target_properties(OpenSSL::Crypto PROPERTIES
+                INTERFACE_LINK_LIBRARIES "ws2_32;crypt32;user32;advapi32"
+            )
+        endif()
+        
+        message(STATUS "OpenSSL custom detection successful:")
+        message(STATUS "  Include: ${OPENSSL_INCLUDE_DIR}")
+        message(STATUS "  Crypto: ${OPENSSL_CRYPTO_LIBRARY}")
+        message(STATUS "  SSL: ${OPENSSL_SSL_LIBRARY}")
+    else()
+        message(FATAL_ERROR "OpenSSL not found. Please install OpenSSL development libraries.")
+    endif()
+endfunction()
+
+# Use custom OpenSSL detection
+find_openssl_custom()
+
 find_package(PkgConfig QUIET)
 
 # Find optional packages
@@ -86,20 +254,28 @@ set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
 if(NOT TARGET nlohmann_json::nlohmann_json)
     find_package(nlohmann_json QUIET)
     if(NOT nlohmann_json_FOUND)
-        add_subdirectory(${THIRD_PARTY_DIR}/json EXCLUDE_FROM_ALL)
+        if(EXISTS ${THIRD_PARTY_DIR}/json)
+            add_subdirectory(${THIRD_PARTY_DIR}/json EXCLUDE_FROM_ALL)
+        else()
+            message(WARNING "nlohmann_json not found. Some features may be unavailable.")
+        endif()
     endif()
 endif()
 
 # Crypto++ library
 find_package(cryptopp QUIET)
 if(NOT cryptopp_FOUND)
-    add_subdirectory(${THIRD_PARTY_DIR}/cryptopp EXCLUDE_FROM_ALL)
+    if(EXISTS ${THIRD_PARTY_DIR}/cryptopp)
+        add_subdirectory(${THIRD_PARTY_DIR}/cryptopp EXCLUDE_FROM_ALL)
+    endif()
 endif()
 
 # LevelDB for blockchain storage
 find_package(leveldb QUIET)
 if(NOT leveldb_FOUND)
-    add_subdirectory(${THIRD_PARTY_DIR}/leveldb EXCLUDE_FROM_ALL)
+    if(EXISTS ${THIRD_PARTY_DIR}/leveldb)
+        add_subdirectory(${THIRD_PARTY_DIR}/leveldb EXCLUDE_FROM_ALL)
+    endif()
 endif()
 
 # SQLite for wallet storage
@@ -108,7 +284,9 @@ find_package(SQLite3 REQUIRED)
 # WebSocket library
 find_package(websocketpp QUIET)
 if(NOT websocketpp_FOUND)
-    add_subdirectory(${THIRD_PARTY_DIR}/websocketpp EXCLUDE_FROM_ALL)
+    if(EXISTS ${THIRD_PARTY_DIR}/websocketpp)
+        add_subdirectory(${THIRD_PARTY_DIR}/websocketpp EXCLUDE_FROM_ALL)
+    endif()
 endif()
 
 # Include directories
@@ -408,67 +586,81 @@ if(BUILD_TESTS)
     # Find test framework
     find_package(GTest QUIET)
     if(NOT GTest_FOUND)
-        add_subdirectory(${THIRD_PARTY_DIR}/googletest EXCLUDE_FROM_ALL)
-        set(GTEST_LIBRARIES gtest gtest_main)
+        if(EXISTS ${THIRD_PARTY_DIR}/googletest)
+            add_subdirectory(${THIRD_PARTY_DIR}/googletest EXCLUDE_FROM_ALL)
+            set(GTEST_LIBRARIES gtest gtest_main)
+        else()
+            message(WARNING "Google Test not found. Tests will not be built.")
+            set(BUILD_TESTS OFF)
+        endif()
     else()
         set(GTEST_LIBRARIES GTest::gtest GTest::gtest_main)
     endif()
     
-    # Test sources
-    set(TEST_SOURCES
-        tests/test_main.cpp
-        tests/test_blockchain.cpp
-        tests/test_transactions.cpp
-        tests/test_wallet.cpp
-        tests/test_mining.cpp
-        tests/test_staking.cpp
-        tests/test_network.cpp
-        tests/test_api.cpp
-        tests/test_governance.cpp
-        tests/test_tokens.cpp
-        tests/test_crypto.cpp
-        tests/test_database.cpp
-    )
-    
-    add_executable(gxc-tests ${TEST_SOURCES})
-    target_link_libraries(gxc-tests 
-        gxc_core 
-        gxc_mining 
-        ${GTEST_LIBRARIES}
-    )
-    
-    # Register tests
-    add_test(NAME blockchain_tests COMMAND gxc-tests --gtest_filter=Blockchain*)
-    add_test(NAME transaction_tests COMMAND gxc-tests --gtest_filter=Transaction*)
-    add_test(NAME wallet_tests COMMAND gxc-tests --gtest_filter=Wallet*)
-    add_test(NAME mining_tests COMMAND gxc-tests --gtest_filter=Mining*)
-    add_test(NAME staking_tests COMMAND gxc-tests --gtest_filter=Staking*)
-    add_test(NAME network_tests COMMAND gxc-tests --gtest_filter=Network*)
-    add_test(NAME api_tests COMMAND gxc-tests --gtest_filter=API*)
-    add_test(NAME governance_tests COMMAND gxc-tests --gtest_filter=Governance*)
-    add_test(NAME token_tests COMMAND gxc-tests --gtest_filter=Token*)
-    add_test(NAME crypto_tests COMMAND gxc-tests --gtest_filter=Crypto*)
+    if(BUILD_TESTS)
+        # Test sources
+        set(TEST_SOURCES
+            tests/test_main.cpp
+            tests/test_blockchain.cpp
+            tests/test_transactions.cpp
+            tests/test_wallet.cpp
+            tests/test_mining.cpp
+            tests/test_staking.cpp
+            tests/test_network.cpp
+            tests/test_api.cpp
+            tests/test_governance.cpp
+            tests/test_tokens.cpp
+            tests/test_crypto.cpp
+            tests/test_database.cpp
+        )
+        
+        add_executable(gxc-tests ${TEST_SOURCES})
+        target_link_libraries(gxc-tests 
+            gxc_core 
+            gxc_mining 
+            ${GTEST_LIBRARIES}
+        )
+        
+        # Register tests
+        add_test(NAME blockchain_tests COMMAND gxc-tests --gtest_filter=Blockchain*)
+        add_test(NAME transaction_tests COMMAND gxc-tests --gtest_filter=Transaction*)
+        add_test(NAME wallet_tests COMMAND gxc-tests --gtest_filter=Wallet*)
+        add_test(NAME mining_tests COMMAND gxc-tests --gtest_filter=Mining*)
+        add_test(NAME staking_tests COMMAND gxc-tests --gtest_filter=Staking*)
+        add_test(NAME network_tests COMMAND gxc-tests --gtest_filter=Network*)
+        add_test(NAME api_tests COMMAND gxc-tests --gtest_filter=API*)
+        add_test(NAME governance_tests COMMAND gxc-tests --gtest_filter=Governance*)
+        add_test(NAME token_tests COMMAND gxc-tests --gtest_filter=Token*)
+        add_test(NAME crypto_tests COMMAND gxc-tests --gtest_filter=Crypto*)
+    endif()
     
     # Performance benchmarks
     if(BUILD_BENCHMARKS)
         find_package(benchmark QUIET)
         if(NOT benchmark_FOUND)
-            add_subdirectory(${THIRD_PARTY_DIR}/benchmark EXCLUDE_FROM_ALL)
+            if(EXISTS ${THIRD_PARTY_DIR}/benchmark)
+                add_subdirectory(${THIRD_PARTY_DIR}/benchmark EXCLUDE_FROM_ALL)
+            else()
+                message(WARNING "Google Benchmark not found. Benchmarks will not be built.")
+                set(BUILD_BENCHMARKS OFF)
+            endif()
         endif()
         
-        add_executable(gxc-benchmarks
-            benchmarks/benchmark_main.cpp
-            benchmarks/benchmark_hashing.cpp
-            benchmarks/benchmark_mining.cpp
-            benchmarks/benchmark_transactions.cpp
-            benchmarks/benchmark_network.cpp
-        )
-        
-        target_link_libraries(gxc-benchmarks 
-            gxc_core 
-            gxc_mining 
-            benchmark::benchmark
-        )
+        if(BUILD_BENCHMARKS)
+            add_executable(gxc-benchmarks
+                benchmarks/benchmark_main.cpp
+                benchmarks/benchmark_hashing.cpp
+                benchmarks/benchmark_mining.cpp
+                benchmarks/benchmark_transactions.cpp
+                benchmarks/benchmark_network.cpp
+            )
+            
+            target_link_libraries(gxc-benchmarks 
+                gxc_core 
+                gxc_mining 
+                benchmark::benchmark
+            )
+        endif()
     endif()
 endif()
 
@@ -639,6 +831,12 @@ message(STATUS "GXC Blockchain Build Configuration:")
 message(STATUS "  Version: ${PROJECT_VERSION}")
 message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  C++ compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "  OpenSSL found: ${OPENSSL_FOUND}")
+if(OPENSSL_FOUND)
+    message(STATUS "  OpenSSL include: ${OPENSSL_INCLUDE_DIR}")
+    message(STATUS "  OpenSSL crypto: ${OPENSSL_CRYPTO_LIBRARY}")
+    message(STATUS "  OpenSSL SSL: ${OPENSSL_SSL_LIBRARY}")
+endif()
 message(STATUS "  Build GUI: ${BUILD_GUI}")
 if(BUILD_GUI)
     message(STATUS "  Qt version: ${QT_VERSION}")

@@ -1,75 +1,89 @@
 #pragma once
 
 #include <vector>
-#include <unordered_map>
-#include <memory>
-#include "Block.h"
-#include "Wallet.h"
-#include "ProofOfPrice.h"
+#include <string>
+#include <ctime>
+#include <cstdint>
+#include "transaction.h"
 
-class Blockchain {
+enum class BlockType {
+    POW_SHA256,  // Bitcoin-style SHA-256 mining
+    POW_ETHASH,  // Ethereum-style Ethash mining
+    POS          // Proof-of-Stake validation
+};
+
+class Block {
 private:
-    std::vector<Block> chain;
-    std::vector<Transaction> pendingTransactions;
-    std::unordered_map<std::string, TransactionOutput> utxoSet; // Unspent transaction outputs
+    uint32_t index;
+    std::string previousHash;
+    std::string hash;
+    std::string merkleRoot;
+    std::time_t timestamp;
+    uint64_t nonce;
+    BlockType blockType;
+    std::string minerAddress;
+    std::vector<Transaction> transactions;
     double difficulty;
-    double posThreshold;
-    uint64_t blockReward;
+    std::string validatorSignature; // For PoS blocks
+    
+    // Hybrid consensus specific
+    std::string powHash;  // Hash for PoW validation
+    std::string posHash;  // Hash for PoS validation
+    
+    // Adaptive monetary policy
+    double blockReward;
     double feeBurnRate;
-    
-    // Validator selection
-    std::vector<Validator> validators;
-    
-    // Proof of Price oracle
-    std::shared_ptr<ProofOfPrice> popOracle;
-    
-    // Adaptive monetary policy parameters
-    double targetInflationRate;
-    double targetPriceRatio;
-    double k1, k2, k3;
-    
-    // Private methods
-    bool isValidChain() const;
-    void updateUtxoSet(const Block& block);
-    double calculateObservedInflation(uint32_t window) const;
+    std::string popReference; // Reference to latest PoP oracle data
     
 public:
-    // Constructor
-    Blockchain();
+    // Constructors
+    Block(uint32_t indexIn, const std::string& previousHashIn, BlockType type);
     
-    // Add a block to the chain
-    bool addBlock(Block& block);
+    // Mining and validation
+    void mineBlock(double difficultyIn);
+    bool validateBlock(const std::string& validatorSignature = "") const;
     
-    // Create a new block (mining)
-    Block createBlock(BlockType type, const std::string& minerAddress);
+    // Transaction management
+    bool addTransaction(const Transaction& transaction);
+    void calculateMerkleRoot();
     
-    // Process a transaction
-    bool processTransaction(const Transaction& transaction);
-    
-    // Select a validator for PoS block
-    Validator selectValidator() const;
-    
-    // Calculate new block reward based on adaptive monetary policy
-    double calculateBlockReward(uint32_t blockNumber) const;
-    
-    // Calculate fee burn rate based on current inflation
-    double calculateFeeBurnRate(uint32_t blockNumber) const;
-    
-    // Process transaction fees with partial burning
-    void processTransactionFees(const Block& block);
+    // Hash calculations
+    std::string calculateHash() const;
+    std::string calculatePowHash() const;
+    std::string calculatePosHash() const;
     
     // Getters
-    const Block& getLatestBlock() const { return chain.back(); }
-    size_t getChainLength() const { return chain.size(); }
+    uint32_t getIndex() const { return index; }
+    std::string getHash() const { return hash; }
+    std::string getPreviousHash() const { return previousHash; }
+    std::string getMerkleRoot() const { return merkleRoot; }
+    std::time_t getTimestamp() const { return timestamp; }
+    uint64_t getNonce() const { return nonce; }
+    BlockType getBlockType() const { return blockType; }
+    std::string getMinerAddress() const { return minerAddress; }
+    const std::vector<Transaction>& getTransactions() const { return transactions; }
     double getDifficulty() const { return difficulty; }
-    uint64_t getBlockReward() const { return blockReward; }
+    std::string getValidatorSignature() const { return validatorSignature; }
+    double getBlockReward() const { return blockReward; }
+    double getFeeBurnRate() const { return feeBurnRate; }
+    std::string getPopReference() const { return popReference; }
     
-    // Adjust difficulty
-    void adjustDifficulty();
+    // Setters
+    void setMinerAddress(const std::string& address) { minerAddress = address; }
+    void setValidatorSignature(const std::string& signature) { validatorSignature = signature; }
+    void setBlockReward(double reward) { blockReward = reward; }
+    void setFeeBurnRate(double rate) { feeBurnRate = rate; }
+    void setPopReference(const std::string& popRef) { popReference = popRef; }
     
-    // Register a validator
-    void registerValidator(const Validator& validator);
-    
-    // Update PoP oracle data
-    void updatePriceData(const PriceData& priceData);
+    // Serialization
+    std::string serialize() const;
+    static Block deserialize(const std::string& data);
 };
+
+// Helper functions
+std::string sha256(const std::string& data);
+std::string sha256d(const std::string& data);
+std::string ethash(const std::string& data, uint64_t nonce);
+std::string keccak256(const std::string& data);
+std::string calculateMerkleRoot(const std::vector<std::string>& txHashes);
+bool meetsTarget(const std::string& hash, double difficulty);
