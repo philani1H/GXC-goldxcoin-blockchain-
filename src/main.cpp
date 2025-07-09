@@ -1,95 +1,121 @@
-#include <iostream>
-#include <memory>
 #include "../include/blockchain.h"
-#include "../include/Wallet.h"
-#include "../include/ProofOfPrice.h"
-#include "../include/CrossChainBridge.h"
+#include "../include/Logger.h"
+#include "../include/Config.h"
+#include "../include/Database.h"
+#include "../include/Network.h"
+#include "../include/Utils.h"
+#include <iostream>
+#include <signal.h>
+#include <thread>
+
+bool g_shutdown = false;
+
+void signalHandler(int signum) {
+    std::cout << "\nReceived signal " << signum << ". Initiating shutdown..." << std::endl;
+    g_shutdown = true;
+}
 
 int main() {
-    std::cout << "Initializing GXC Blockchain..." << std::endl;
-    
-    // Create the blockchain
-    std::shared_ptr<Blockchain> blockchain = std::make_shared<Blockchain>();
-    
-    // Create wallets
-    Wallet minerWallet;
-    Wallet userWallet;
-    
-    std::cout << "Miner address: " << minerWallet.getAddress() << std::endl;
-    std::cout << "User address: " << userWallet.getAddress() << std::endl;
-    
-    // Create validators
-    Validator validator1(minerWallet.getAddress(), 1000.0, 30);
-    Validator validator2(userWallet.getAddress(), 500.0, 60);
-    
-    // Register validators
-    blockchain->registerValidator(validator1);
-    blockchain->registerValidator(validator2);
-    
-    // Create PoP oracle
-    std::shared_ptr<ProofOfPrice> popOracle = std::make_shared<ProofOfPrice>();
-    
-    // Add oracles
-    Oracle oracle1("oracle1", "oracle1_public_key");
-    Oracle oracle2("oracle2", "oracle2_public_key");
-    Oracle oracle3("oracle3", "oracle3_public_key");
-    
-    popOracle->addOracle(oracle1);
-    popOracle->addOracle(oracle2);
-    popOracle->addOracle(oracle3);
-    
-    // Submit price data
-    PriceSubmission submission1 = oracle1.submitPrice(2000.0, "oracle1_private_key");
-    PriceSubmission submission2 = oracle2.submitPrice(2010.0, "oracle2_private_key");
-    PriceSubmission submission3 = oracle3.submitPrice(1990.0, "oracle3_private_key");
-    
-    popOracle->submitPrice(submission1);
-    popOracle->submitPrice(submission2);
-    popOracle->submitPrice(submission3);
-    
-    // Get aggregated price data
-    PriceData priceData = popOracle->getCurrentPrice();
-    std::cout << "Current gold price: $" << priceData.price << std::endl;
-    
-    // Create cross-chain bridge
-    std::shared_ptr<CrossChainBridge> bridge = std::make_shared<CrossChainBridge>(2);
-    
-    // Add bridge validators
-    BridgeValidator bridgeValidator1;
-    bridgeValidator1.id = "bridge_validator1";
-    bridgeValidator1.publicKey = "bridge_validator1_public_key";
-    bridgeValidator1.collateral = 1000.0;
-    bridgeValidator1.isActive = true;
-    
-    BridgeValidator bridgeValidator2;
-    bridgeValidator2.id = "bridge_validator2";
-    bridgeValidator2.publicKey = "bridge_validator2_public_key";
-    bridgeValidator2.collateral = 1500.0;
-    bridgeValidator2.isActive = true;
-    
-    bridge->addValidator(bridgeValidator1);
-    bridge->addValidator(bridgeValidator2);
-    
-    // Mine some blocks
-    std::cout << "Mining blocks..." << std::endl;
-    
-    for (int i = 0; i < 10; i++) {
-        // Create a new block
-        Block newBlock = blockchain->createBlock(
-            i % 4 == 3 ? BlockType::POS : (i % 2 == 0 ? BlockType::POW_SHA256 : BlockType::POW_ETHASH),
-            minerWallet.getAddress()
-        );
+    std::cout << R"(
+   _____ _  _  ___    ____  _            _        _           _       
+  / ____| \| |/ __|  |  _ \| |          | |      | |         (_)      
+ | |  __|  .` | (__   | |_) | | ___  ___| | _____| |__   __ _ _ _ __   
+ | | |_ | |\ | \__|  |  _ <| |/ _ \/ __| |/ / __| '_ \ / _` | | '_ \  
+ | |__| | | | |___   | |_) | | (_) \__ \   < (__| | | | (_| | | | | | 
+  \_____|_| |_|___|  |____/|_|\___/|___/_|\_\___|_| |_|\__,_|_|_| |_| 
+                                                                      
+GXC Blockchain Core Node - Advanced Cryptocurrency with Traceability
+Version 2.0.0
+    )" << std::endl;
+
+    // Set up signal handlers
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
+
+    try {
+        // Initialize logging
+        Logger::initialize();
+        LOG_CORE(LogLevel::INFO, "GXC Blockchain Core starting up");
+
+        // Initialize configuration
+        Config::initialize();
         
-        // Mine the block
-        newBlock.mineBlock(blockchain->getDifficulty());
+        // Initialize database
+        std::string dataDir = Config::get("data_dir", "./gxc_data");
+        Database::initialize(dataDir + "/blockchain.db");
         
-        // Add the block to the chain
-        blockchain->addBlock(newBlock);
+        // Initialize blockchain
+        Blockchain blockchain;
+        if (!blockchain.initialize()) {
+            LOG_CORE(LogLevel::ERROR, "Failed to initialize blockchain");
+            return 1;
+        }
         
-        std::cout << "Block #" << i + 1 << " mined with hash: " << newBlock.getHash().substr(0, 10) << "..." << std::endl;
+        // Initialize network
+        Network network;
+        int port = Config::getInt("network_port", 9333);
+        if (!network.start(port)) {
+            LOG_CORE(LogLevel::ERROR, "Failed to start network on port " + std::to_string(port));
+            return 1;
+        }
+        
+        LOG_CORE(LogLevel::INFO, "GXC node initialized successfully");
+        LOG_CORE(LogLevel::INFO, "Blockchain height: " + std::to_string(blockchain.getHeight()));
+        LOG_CORE(LogLevel::INFO, "Network listening on port: " + std::to_string(port));
+        
+        // Display traceability information
+        std::cout << "\n=== GXC Traceability System ===" << std::endl;
+        std::cout << "Formula: Ti.Inputs[0].txHash == Ti.PrevTxHash && Ti.Inputs[0].amount == Ti.ReferencedAmount" << std::endl;
+        std::cout << "Status: " << (blockchain.validateTraceability() ? "VALID" : "INVALID") << std::endl;
+        std::cout << "===============================" << std::endl;
+        
+        // Main event loop
+        LOG_CORE(LogLevel::INFO, "Entering main event loop. Press Ctrl+C to shutdown.");
+        
+        auto lastUpdate = Utils::getCurrentTimestamp();
+        while (!g_shutdown) {
+            try {
+                // Process blockchain operations
+                blockchain.processTransactions();
+                
+                // Update network
+                network.update();
+                
+                // Periodic logging every 60 seconds
+                auto currentTime = Utils::getCurrentTimestamp();
+                if (currentTime - lastUpdate >= 60) {
+                    LOG_CORE(LogLevel::INFO, "Node Status - Height: " + 
+                            std::to_string(blockchain.getHeight()) + 
+                            ", Peers: " + std::to_string(network.getPeerCount()) +
+                            ", Difficulty: " + Utils::formatAmount(blockchain.getDifficulty(), 2));
+                    lastUpdate = currentTime;
+                }
+                
+                // Sleep to prevent excessive CPU usage
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                
+            } catch (const std::exception& e) {
+                LOG_CORE(LogLevel::ERROR, "Error in main loop: " + std::string(e.what()));
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+        }
+        
+        // Shutdown sequence
+        LOG_CORE(LogLevel::INFO, "Starting shutdown sequence");
+        
+        network.stop();
+        blockchain.shutdown();
+        Database::shutdown();
+        Config::shutdown();
+        Logger::shutdown();
+        
+        std::cout << "GXC node shutdown complete." << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Fatal error: " << e.what() << std::endl;
+        LOG_CORE(LogLevel::ERROR, "Fatal error: " + std::string(e.what()));
+        return 1;
     }
-    
-    std::cout << "Blockchain initialized with " << blockchain->getChainLength() << " blocks." << std::endl;
     
     return 0;
 }

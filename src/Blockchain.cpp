@@ -1,353 +1,477 @@
 #include "../include/blockchain.h"
+#include "../include/Logger.h"
+#include "../include/Utils.h"
+#include "../include/HashUtils.h"
 #include <algorithm>
-#include <random>
-#include <cmath>
+#include <numeric>
 
-// Constants for adaptive monetary policy
-const double TARGET_INFLATION_RATE = 0.02; // 2% annual inflation
-const double K1 = 0.1;
-const double K2 = 0.05;
-const double K3 = 0.2;
-const double BASE_BURN_RATE = 0.3; // 30% base burn rate
-const uint32_t MEASUREMENT_WINDOW = 2016; // ~2 weeks of blocks
-
-Blockchain::Blockchain() 
-    : difficulty(4.0), posThreshold(0.5), blockReward(50.0 * 100000000), // 50 GXC in satoshis
-      feeBurnRate(BASE_BURN_RATE), targetInflationRate(TARGET_INFLATION_RATE),
-      k1(K1), k2(K2), k3(K3) {
-    
-    // Create the genesis block
-    Block genesisBlock(0, "0", BlockType::POW_SHA256);
-    genesisBlock.setMinerAddress("GENESIS_MINER");
-    genesisBlock.mineBlock(difficulty);
-    
-    chain.push_back(genesisBlock);
-    
-    // Initialize PoP oracle
-    popOracle = std::make_shared<ProofOfPrice>();
+Blockchain::Blockchain() : difficulty(1000.0), lastBlock(nullptr) {
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created");
 }
 
-bool Blockchain::addBlock(Block& block) {
-    // Verify the block
-    if (block.getPreviousHash() != getLatestBlock().getHash()) {
+Blockchain::~Blockchain() {
+    shutdown();
+}
+
+bool Blockchain::initialize() {
+    try {
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Initializing blockchain");
+        
+        // Create genesis block if blockchain is empty
+        if (chain.empty()) {
+            createGenesisBlock();
+        }
+        
+        // Validate existing chain
+        if (!isValid()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Existing blockchain is invalid");
+            return false;
+        }
+        
+        // Initialize traceability system
+        if (!initializeTraceability()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to initialize traceability system");
+            return false;
+        }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain initialized successfully with " + 
+                      std::to_string(chain.size()) + " blocks");
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to initialize blockchain: " + std::string(e.what()));
         return false;
     }
+}
+
+void Blockchain::createGenesisBlock() {
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Creating genesis block");
     
-    // For PoW blocks, verify the hash meets the difficulty target
-    if (block.getBlockType() == BlockType::POW_SHA256 || 
-        block.getBlockType() == BlockType::POW_ETHASH) {
-        if (!meetsTarget(block.getHash(), difficulty)) {
+    Block genesis;
+    genesis.setIndex(0);
+    genesis.setPreviousHash("0000000000000000000000000000000000000000000000000000000000000000");
+    genesis.setTimestamp(1640995200); // 2022-01-01 00:00:00 UTC
+    genesis.setDifficulty(1000.0);
+    genesis.setNonce(0);
+    
+    // Create coinbase transaction for genesis
+    Transaction coinbase;
+    coinbase.setHash("genesis_coinbase_tx");
+    coinbase.setCoinbaseTransaction(true);
+    coinbase.setTimestamp(genesis.getTimestamp());
+    
+    // Add coinbase output
+    TransactionOutput output;
+    output.address = "genesis_address";
+    output.amount = 50000000.0; // 50M GXC initial supply
+    coinbase.addOutput(output);
+    
+    genesis.addTransaction(coinbase);
+    genesis.calculateMerkleRoot();
+    
+    // Mine genesis block (easy difficulty)
+    while (!genesis.getHash().substr(0, 4).empty() && 
+           genesis.getHash().substr(0, 4) != "0000") {
+        genesis.incrementNonce();
+        genesis.calculateHash();
+    }
+    
+    // Add to chain
+    std::lock_guard<std::mutex> lock(chainMutex);
+    chain.push_back(std::make_shared<Block>(genesis));
+    lastBlock = chain.back();
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block created with hash: " + genesis.getHash());
+}
+
+bool Blockchain::addBlock(const Block& block) {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    try {
+        // Validate block
+        if (!validateBlock(block)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Block validation failed");
             return false;
         }
-    }
-    // For PoS blocks, verify the validator's signature
-    else if (block.getBlockType() == BlockType::POS) {
-        // In a real implementation, we would verify the validator's signature here
-        // For simplicity, we'll just check if the block has a miner address
-        if (block.getMinerAddress().empty()) {
+        
+        // Validate traceability for all transactions in block
+        if (!validateBlockTraceability(block)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Block traceability validation failed");
             return false;
         }
-    }
-    
-    // Add the block to the chain
-    chain.push_back(block);
-    
-    // Update the UTXO set
-    updateUtxoSet(block);
-    
-    // Process transaction fees
-    processTransactionFees(block);
-    
-    // Adjust difficulty every 2016 blocks (approximately 2 weeks)
-    if (chain.size() % 2016 == 0) {
+        
+        // Add block to chain
+        auto blockPtr = std::make_shared<Block>(block);
+        chain.push_back(blockPtr);
+        lastBlock = blockPtr;
+        
+        // Update difficulty
         adjustDifficulty();
+        
+        // Update transaction pool (remove confirmed transactions)
+        updateTransactionPool(block);
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Block added successfully. Height: " + 
+                      std::to_string(chain.size()) + ", Hash: " + block.getHash().substr(0, 16) + "...");
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to add block: " + std::string(e.what()));
+        return false;
     }
-    
-    return true;
 }
 
-Block Blockchain::createBlock(BlockType type, const std::string& minerAddress) {
-    uint32_t index = static_cast<uint32_t>(chain.size());
-    Block newBlock(index, getLatestBlock().getHash(), type);
-    newBlock.setMinerAddress(minerAddress);
-    
-    // Add pending transactions to the block
-    for (const auto& tx : pendingTransactions) {
-        newBlock.addTransaction(tx);
-    }
-    
-    // Clear pending transactions
-    pendingTransactions.clear();
-    
-    return newBlock;
-}
-
-bool Blockchain::processTransaction(const Transaction& transaction) {
-    // Verify the transaction
-    if (!transaction.verifyTransaction()) {
+bool Blockchain::validateBlock(const Block& block) {
+    // Basic block validation
+    if (block.getIndex() != getHeight()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid block index");
         return false;
     }
     
-    // Add the transaction to pending transactions
-    pendingTransactions.push_back(transaction);
+    if (!lastBlock) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "No previous block");
+        return false;
+    }
+    
+    if (block.getPreviousHash() != lastBlock->getHash()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid previous hash");
+        return false;
+    }
+    
+    // Validate proof of work
+    if (!validateProofOfWork(block)) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid proof of work");
+        return false;
+    }
+    
+    // Validate transactions
+    for (const auto& tx : block.getTransactions()) {
+        if (!validateTransaction(tx)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid transaction in block");
+            return false;
+        }
+    }
+    
+    // Validate merkle root
+    if (block.getMerkleRoot() != block.calculateMerkleRoot()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid merkle root");
+        return false;
+    }
     
     return true;
 }
 
-Validator Blockchain::selectValidator() const {
-    // Calculate total weighted stake
-    double totalWeightedStake = 0.0;
-    for (const auto& validator : validators) {
-        if (validator.getIsActive()) {
-            totalWeightedStake += validator.getWeightedStake();
+bool Blockchain::validateProofOfWork(const Block& block) {
+    std::string hash = block.getHash();
+    
+    // Count leading zeros
+    int leadingZeros = 0;
+    for (char c : hash) {
+        if (c == '0') {
+            leadingZeros++;
+        } else {
+            break;
         }
     }
     
-    // Random selection proportional to weighted stake
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(0, totalWeightedStake);
-    double threshold = dis(gen);
+    // Calculate required zeros based on difficulty
+    int requiredZeros = static_cast<int>(std::log2(block.getDifficulty())) + 2;
     
-    double cumulativeWeight = 0.0;
-    for (const auto& validator : validators) {
-        if (validator.getIsActive()) {
-            cumulativeWeight += validator.getWeightedStake();
-            if (cumulativeWeight >= threshold) {
-                return validator;
+    return leadingZeros >= requiredZeros;
+}
+
+bool Blockchain::validateTransaction(const Transaction& tx) {
+    // Basic transaction validation
+    if (tx.getHash().empty()) {
+        return false;
+    }
+    
+    // Skip validation for coinbase transactions
+    if (tx.isCoinbaseTransaction()) {
+        return true;
+    }
+    
+    // Validate traceability for non-coinbase transactions
+    if (!tx.isTraceabilityValid()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction traceability validation failed: " + tx.getHash());
+        return false;
+    }
+    
+    // Validate transaction structure
+    if (tx.getInputs().empty() || tx.getOutputs().empty()) {
+        return false;
+    }
+    
+    // Validate amounts
+    double inputTotal = tx.getTotalInputAmount();
+    double outputTotal = tx.getTotalOutputAmount();
+    double fee = tx.getFee();
+    
+    if (inputTotal < outputTotal + fee) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input/output amount mismatch");
+        return false;
+    }
+    
+    return true;
+}
+
+bool Blockchain::validateBlockTraceability(const Block& block) {
+    for (const auto& tx : block.getTransactions()) {
+        if (!tx.isCoinbaseTransaction()) {
+            // Apply GXC traceability formula
+            if (!validateTransactionTraceability(tx)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool Blockchain::validateTransactionTraceability(const Transaction& tx) {
+    // GXC Traceability Formula:
+    // Ti.Inputs[0].txHash == Ti.PrevTxHash && Ti.Inputs[0].amount == Ti.ReferencedAmount
+    
+    if (tx.isCoinbaseTransaction()) {
+        return true; // Coinbase transactions don't need traceability
+    }
+    
+    const auto& inputs = tx.getInputs();
+    if (inputs.empty()) {
+        return false;
+    }
+    
+    const auto& firstInput = inputs[0];
+    
+    // Check hash match
+    bool hashMatch = (firstInput.txHash == tx.getPrevTxHash());
+    
+    // Check amount match (with small epsilon for floating point comparison)
+    bool amountMatch = std::abs(firstInput.amount - tx.getReferencedAmount()) < 0.00000001;
+    
+    if (!hashMatch || !amountMatch) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, 
+                      "Traceability validation failed for transaction " + tx.getHash() +
+                      ": hashMatch=" + (hashMatch ? "true" : "false") +
+                      ", amountMatch=" + (amountMatch ? "true" : "false"));
+        return false;
+    }
+    
+    return true;
+}
+
+bool Blockchain::initializeTraceability() {
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Initializing traceability system");
+    
+    // Build traceability index for existing transactions
+    for (const auto& block : chain) {
+        for (const auto& tx : block->getTransactions()) {
+            if (!tx.isCoinbaseTransaction()) {
+                traceabilityIndex[tx.getHash()] = {
+                    tx.getPrevTxHash(),
+                    tx.getReferencedAmount(),
+                    tx.getTimestamp(),
+                    block->getIndex()
+                };
             }
         }
     }
     
-    // Fallback (should never reach here)
-    return validators.back();
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Traceability index built with " + 
+                  std::to_string(traceabilityIndex.size()) + " entries");
+    
+    return true;
 }
 
-double Blockchain::calculateBlockReward(uint32_t blockNumber) const {
-    // Get the base reward for the current halving epoch
-    uint32_t halvings = blockNumber / 1051200; // 4 years of blocks
-    double baseReward = blockReward * std::pow(0.5, halvings);
+bool Blockchain::validateTraceability() {
+    std::lock_guard<std::mutex> lock(chainMutex);
     
-    // Get observed inflation rate
-    double observedInflation = calculateObservedInflation(MEASUREMENT_WINDOW);
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Validating complete blockchain traceability");
     
-    // Get gold-GXC price ratio (in a real implementation, this would come from the PoP oracle)
-    double goldPrice = 2000.0; // Example gold price in USD
-    double gxcPrice = 100.0;   // Example GXC price in USD
-    double priceRatio = goldPrice / gxcPrice;
-    
-    // Get target parameters
-    double targetPriceRatio = 20.0; // Example target ratio
-    
-    // Calculate adjustment factors
-    double inflationAdjustment = k1 * (targetInflationRate - observedInflation);
-    double priceRatioAdjustment = k2 * (targetPriceRatio - priceRatio);
-    
-    // Calculate new reward
-    double adjustmentFactor = 1.0 + inflationAdjustment + priceRatioAdjustment;
-    double newReward = baseReward * adjustmentFactor;
-    
-    // Ensure reward stays within bounds
-    return std::max(0.0, std::min(baseReward * 2.0, newReward));
-}
-
-double Blockchain::calculateFeeBurnRate(uint32_t blockNumber) const {
-    // Get observed inflation rate
-    double observedInflation = calculateObservedInflation(MEASUREMENT_WINDOW);
-    
-    // Calculate adjustment
-    double adjustment = k3 * (observedInflation - targetInflationRate);
-    
-    // Calculate new burn rate
-    double newBurnRate = BASE_BURN_RATE * (1.0 + adjustment);
-    
-    // Ensure burn rate stays within bounds
-    return std::max(0.1, std::min(0.9, newBurnRate));
-}
-
-void Blockchain::processTransactionFees(const Block& block) {
-    // Calculate the current burn rate
-    double burnRate = calculateFeeBurnRate(block.getIndex());
-    
-    // Get the block producer
-    std::string blockProducer = block.getMinerAddress();
-    
-    double totalFees = 0.0;
-    
-    // Process each transaction
-    for (const auto& tx : block.getTransactions()) {
-        // Calculate transaction fee (in a real implementation, this would be more complex)
-        double fee = 0.001; // Example fee
-        totalFees += fee;
-    }
-    
-    // Calculate amount to burn
-    double burnAmount = totalFees * burnRate;
-    
-    // Distribute remaining fees to block producer
-    double remainingFees = totalFees - burnAmount;
-    
-    // In a real implementation, we would update the UTXO set to reflect these changes
-}
-
-double Blockchain::calculateObservedInflation(uint32_t window) const {
-    // In a real implementation, this would calculate the actual inflation rate
-    // based on the change in total supply over the specified window
-    
-    // For simplicity, we'll just return a fixed value
-    return 0.02; // 2% inflation
-}
-
-void Blockchain::updateUtxoSet(const Block& block) {
-    // Process each transaction in the block
-    for (const auto& tx : block.getTransactions()) {
-        // Remove spent outputs
-        for (const auto& input : tx.getInputs()) {
-            utxoSet.erase(input.txHash + ":" + std::to_string(input.outputIndex));
-        }
-        
-        // Add new outputs
-        for (size_t i = 0; i < tx.getOutputs().size(); ++i) {
-            const auto& output = tx.getOutputs()[i];
-            utxoSet[tx.getHash() + ":" + std::to_string(i)] = output;
+    for (const auto& block : chain) {
+        if (!validateBlockTraceability(*block)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Traceability validation failed at block " + 
+                          std::to_string(block->getIndex()));
+            return false;
         }
     }
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Complete blockchain traceability validation successful");
+    return true;
 }
 
 void Blockchain::adjustDifficulty() {
-    // Calculate the time taken for the last 2016 blocks
-    std::time_t startTime = chain[chain.size() - 2016].getTimestamp();
-    std::time_t endTime = chain.back().getTimestamp();
-    double actualTimespan = difftime(endTime, startTime);
-    
-    // Expected timespan: 2016 blocks * 10 minutes = 20160 minutes = 1209600 seconds
-    double expectedTimespan = 1209600;
-    
-    // Apply damping factor to prevent excessive swings
-    double dampingFactor = 0.25;
-    
-    // Calculate new difficulty
-    double ratio = (expectedTimespan / actualTimespan) * dampingFactor;
-    difficulty = difficulty * ratio;
-    
-    // Ensure difficulty stays within bounds
-    difficulty = std::max(1.0, std::min(difficulty, 100.0));
-}
-
-void Blockchain::registerValidator(const Validator& validator) {
-    validators.push_back(validator);
-}
-
-void Blockchain::updatePriceData(const PriceData& priceData) {
-    // Update the PoP oracle with new price data
-    // This would be used by the adaptive monetary policy
-}
-
-// Transaction Traceability Implementation - Your Formula
-std::vector<std::string> Blockchain::traceTransactionLineage(const std::string& startHash) const {
-    std::vector<std::string> lineage;
-    std::string currentHash = startHash;
-    
-    while (!currentHash.empty() && currentHash != "0") {
-        lineage.push_back(currentHash);
-        
-        try {
-            Transaction tx = getTransactionByHash(currentHash);
-            
-            // If reached genesis or orphan transaction
-            if (tx.getPrevTxHash().empty() || tx.getPrevTxHash() == "0" || tx.isCoinbaseTransaction()) {
-                break;
-            }
-            
-            currentHash = tx.getPrevTxHash();
-            
-            // Prevent infinite loops
-            if (lineage.size() > 10000) {
-                break;
-            }
-            
-        } catch (const std::exception&) {
-            // Transaction not found, break the chain
-            break;
-        }
+    if (chain.size() < 2) {
+        return; // Not enough blocks to adjust
     }
     
-    return lineage;
-}
-
-bool Blockchain::verifyTransactionLineage(const std::string& txHash) const {
-    try {
-        Transaction tx = getTransactionByHash(txHash);
+    // Adjust difficulty every 10 blocks
+    if (chain.size() % 10 == 0) {
+        auto currentBlock = chain.back();
+        auto previousBlock = chain[chain.size() - 10];
         
-        // Verify the transaction's traceability formula
-        if (!tx.verifyTraceabilityFormula()) {
-            return false;
+        auto timeExpected = 10 * 600; // 10 blocks * 10 minutes
+        auto timeActual = currentBlock->getTimestamp() - previousBlock->getTimestamp();
+        
+        if (timeActual > 0) {
+            double ratio = static_cast<double>(timeExpected) / timeActual;
+            difficulty *= ratio;
+            
+            // Clamp difficulty to reasonable bounds
+            difficulty = std::max(100.0, std::min(difficulty, 1000000.0));
+            
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Difficulty adjusted to: " + 
+                          Utils::formatAmount(difficulty, 2));
         }
-        
-        // If it's a genesis or coinbase transaction, it's valid
-        if (tx.isGenesis() || tx.isCoinbaseTransaction()) {
-            return true;
-        }
-        
-        // Verify that the referenced previous transaction exists
-        if (!tx.getPrevTxHash().empty() && tx.getPrevTxHash() != "0") {
-            try {
-                Transaction prevTx = getTransactionByHash(tx.getPrevTxHash());
-                
-                // Verify that the amount reference is correct
-                if (!tx.getInputs().empty()) {
-                    const auto& firstInput = tx.getInputs()[0];
-                    
-                    // Check if the referenced output exists and has the correct amount
-                    if (firstInput.outputIndex < prevTx.getOutputs().size()) {
-                        const auto& referencedOutput = prevTx.getOutputs()[firstInput.outputIndex];
-                        
-                        if (std::abs(firstInput.amount - referencedOutput.amount) > 0.00000001) {
-                            return false;
-                        }
-                    }
-                }
-                
-                return true;
-            } catch (const std::exception&) {
-                return false; // Previous transaction not found
-            }
-        }
-        
-        return true;
-        
-    } catch (const std::exception&) {
-        return false; // Transaction not found
     }
 }
 
-Transaction Blockchain::getTransactionByHash(const std::string& hash) const {
-    // Search through all blocks for the transaction
+void Blockchain::updateTransactionPool(const Block& block) {
+    // Remove confirmed transactions from pending pool
+    for (const auto& tx : block.getTransactions()) {
+        auto it = std::find_if(pendingTransactions.begin(), pendingTransactions.end(),
+                              [&tx](const Transaction& poolTx) {
+                                  return poolTx.getHash() == tx.getHash();
+                              });
+        
+        if (it != pendingTransactions.end()) {
+            pendingTransactions.erase(it);
+        }
+    }
+}
+
+bool Blockchain::addTransaction(const Transaction& tx) {
+    std::lock_guard<std::mutex> lock(transactionMutex);
+    
+    // Validate transaction
+    if (!validateTransaction(tx)) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction validation failed: " + tx.getHash());
+        return false;
+    }
+    
+    // Check if transaction already exists
+    auto it = std::find_if(pendingTransactions.begin(), pendingTransactions.end(),
+                          [&tx](const Transaction& poolTx) {
+                              return poolTx.getHash() == tx.getHash();
+                          });
+    
+    if (it != pendingTransactions.end()) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Transaction already in pool: " + tx.getHash());
+        return false;
+    }
+    
+    // Add to pending transactions
+    pendingTransactions.push_back(tx);
+    
+    LOG_BLOCKCHAIN(LogLevel::DEBUG, "Transaction added to pool: " + tx.getHash());
+    return true;
+}
+
+void Blockchain::processTransactions() {
+    // Process pending transactions (placeholder for more complex logic)
+    std::lock_guard<std::mutex> lock(transactionMutex);
+    
+    // Remove expired transactions
+    auto currentTime = Utils::getCurrentTimestamp();
+    pendingTransactions.erase(
+        std::remove_if(pendingTransactions.begin(), pendingTransactions.end(),
+                      [currentTime](const Transaction& tx) {
+                          return currentTime - tx.getTimestamp() > 3600; // 1 hour expiry
+                      }),
+        pendingTransactions.end()
+    );
+}
+
+std::vector<Transaction> Blockchain::getPendingTransactions(size_t maxCount) {
+    std::lock_guard<std::mutex> lock(transactionMutex);
+    
+    std::vector<Transaction> result;
+    size_t count = std::min(maxCount, pendingTransactions.size());
+    
+    result.reserve(count);
+    for (size_t i = 0; i < count; i++) {
+        result.push_back(pendingTransactions[i]);
+    }
+    
+    return result;
+}
+
+Block Blockchain::getLatestBlock() const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    if (lastBlock) {
+        return *lastBlock;
+    }
+    
+    // Return empty block if no blocks exist
+    return Block();
+}
+
+Block Blockchain::getBlock(const std::string& hash) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
     for (const auto& block : chain) {
-        for (const auto& tx : block.getTransactions()) {
-            if (tx.getHash() == hash) {
-                return tx;
-            }
+        if (block->getHash() == hash) {
+            return *block;
         }
     }
     
-    // Check pending transactions
-    for (const auto& tx : pendingTransactions) {
-        if (tx.getHash() == hash) {
-            return tx;
-        }
-    }
-    
-    // Transaction not found - throw exception or return empty transaction
-    throw std::runtime_error("Transaction not found: " + hash);
+    // Return empty block if not found
+    return Block();
 }
 
-bool Blockchain::isLineageValid(const std::string& startHash) const {
-    auto lineage = traceTransactionLineage(startHash);
+Block Blockchain::getBlock(size_t index) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
     
-    // Verify each transaction in the lineage
-    for (const auto& txHash : lineage) {
-        if (!verifyTransactionLineage(txHash)) {
+    if (index < chain.size()) {
+        return *chain[index];
+    }
+    
+    // Return empty block if index out of range
+    return Block();
+}
+
+std::vector<Block> Blockchain::getBlocks(size_t count) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    std::vector<Block> result;
+    size_t startIndex = chain.size() > count ? chain.size() - count : 0;
+    
+    for (size_t i = startIndex; i < chain.size(); i++) {
+        result.push_back(*chain[i]);
+    }
+    
+    return result;
+}
+
+bool Blockchain::isValid() const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    if (chain.empty()) {
+        return false;
+    }
+    
+    // Validate each block and its connection to previous block
+    for (size_t i = 1; i < chain.size(); i++) {
+        const auto& currentBlock = *chain[i];
+        const auto& previousBlock = *chain[i - 1];
+        
+        // Check block linkage
+        if (currentBlock.getPreviousHash() != previousBlock.getHash()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Block linkage validation failed at index " + std::to_string(i));
+            return false;
+        }
+        
+        // Check block index
+        if (currentBlock.getIndex() != previousBlock.getIndex() + 1) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Block index validation failed at index " + std::to_string(i));
+            return false;
+        }
+        
+        // Validate proof of work
+        if (!validateProofOfWork(currentBlock)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Proof of work validation failed at index " + std::to_string(i));
             return false;
         }
     }
@@ -355,82 +479,46 @@ bool Blockchain::isLineageValid(const std::string& startHash) const {
     return true;
 }
 
-std::vector<std::string> Blockchain::getTransactionChain(const std::string& address, uint32_t depth) const {
-    std::vector<std::string> chain;
-    
-    // Find all transactions involving this address
-    for (const auto& block : this->chain) {
-        for (const auto& tx : block.getTransactions()) {
-            // Check if address is in inputs or outputs
-            bool addressInvolved = false;
-            
-            // Check outputs
-            for (const auto& output : tx.getOutputs()) {
-                if (output.address == address) {
-                    addressInvolved = true;
-                    break;
-                }
-            }
-            
-            // Check sender address
-            if (!addressInvolved && tx.getSenderAddress() == address) {
-                addressInvolved = true;
-            }
-            
-            if (addressInvolved) {
-                chain.push_back(tx.getHash());
-                
-                if (chain.size() >= depth) {
-                    break;
-                }
-            }
-        }
-        
-        if (chain.size() >= depth) {
-            break;
-        }
-    }
-    
-    return chain;
+size_t Blockchain::getHeight() const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    return chain.size();
 }
 
-bool Blockchain::validateTransactionTraceability(const Transaction& tx) const {
-    // Apply your traceability formula validation
-    return tx.verifyTraceabilityFormula() && tx.validateInputReference() && 
-           tx.isTraceabilityValid() && verifyInputReferences(tx);
+double Blockchain::getDifficulty() const {
+    return difficulty;
 }
 
-bool Blockchain::verifyInputReferences(const Transaction& tx) const {
-    if (tx.isCoinbaseTransaction() || tx.isGenesis()) {
-        return true;
+std::string Blockchain::getStats() const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    std::ostringstream oss;
+    oss << "Blockchain Statistics:\n";
+    oss << "  Height: " << chain.size() << "\n";
+    oss << "  Difficulty: " << Utils::formatAmount(difficulty, 2) << "\n";
+    oss << "  Pending Transactions: " << pendingTransactions.size() << "\n";
+    oss << "  Traceability Index Size: " << traceabilityIndex.size() << "\n";
+    oss << "  Last Block Hash: " << (lastBlock ? lastBlock->getHash().substr(0, 16) + "..." : "none") << "\n";
+    oss << "  Traceability Formula: Ti.Inputs[0].txHash == Ti.PrevTxHash && Ti.Inputs[0].amount == Ti.ReferencedAmount";
+    
+    return oss.str();
+}
+
+void Blockchain::shutdown() {
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Shutting down blockchain");
+    
+    // Clear all data structures
+    {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        chain.clear();
+        lastBlock = nullptr;
     }
     
-    // Verify that all inputs reference valid previous transaction outputs
-    for (const auto& input : tx.getInputs()) {
-        try {
-            Transaction prevTx = getTransactionByHash(input.txHash);
-            
-            // Check if the output index is valid
-            if (input.outputIndex >= prevTx.getOutputs().size()) {
-                return false;
-            }
-            
-            // Check if the referenced output amount matches
-            const auto& referencedOutput = prevTx.getOutputs()[input.outputIndex];
-            if (std::abs(input.amount - referencedOutput.amount) > 0.00000001) {
-                return false;
-            }
-            
-            // Check if output hasn't been spent already (simplified UTXO check)
-            std::string utxoKey = input.txHash + ":" + std::to_string(input.outputIndex);
-            if (utxoSet.find(utxoKey) == utxoSet.end()) {
-                return false; // UTXO doesn't exist (already spent)
-            }
-            
-        } catch (const std::exception&) {
-            return false; // Referenced transaction not found
-        }
+    {
+        std::lock_guard<std::mutex> lock(transactionMutex);
+        pendingTransactions.clear();
     }
     
-    return true;
+    traceabilityIndex.clear();
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain shutdown complete");
 }
