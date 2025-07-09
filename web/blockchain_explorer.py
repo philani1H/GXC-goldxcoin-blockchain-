@@ -582,6 +582,40 @@ def search():
     else:
         return "Search query not recognized", 400
 
+@app.route('/blocks')
+def blocks_list():
+    # Placeholder: fetch recent blocks
+    blocks = explorer.get_recent_blocks(50)
+    return render_template('blocks.html', blocks=blocks)
+
+@app.route('/transactions')
+def transactions_list():
+    # Placeholder: fetch recent transactions
+    transactions = explorer.get_recent_transactions(50)
+    return render_template('transactions.html', transactions=transactions)
+
+@app.route('/validators')
+def validators_list():
+    # Placeholder: empty list for now
+    validators = []
+    return render_template('validators.html', validators=validators)
+
+@app.route('/addresses')
+def addresses_list():
+    # Placeholder: empty list for now
+    addresses = []
+    return render_template('addresses.html', addresses=addresses)
+
+@app.route('/mining')
+def mining_page():
+    # Placeholder: show mining info
+    return render_template('mining.html')
+
+@app.route('/charts')
+def charts_page():
+    # Placeholder: show charts
+    return render_template('charts.html')
+
 # API Routes
 @app.route('/api/blocks')
 def api_blocks():
