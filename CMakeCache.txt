@@ -483,7 +483,7 @@ cryptopp_DIR:PATH=cryptopp_DIR-NOTFOUND
 leveldb_DIR:PATH=leveldb_DIR-NOTFOUND
 
 //The directory containing a CMake configuration file for nlohmann_json.
-nlohmann_json_DIR:PATH=/usr/share/cmake/nlohmann_json
+nlohmann_json_DIR:PATH=nlohmann_json_DIR-NOTFOUND
 
 //Path to a library.
 pkgcfg_lib_PC_SQLite3_sqlite3:FILEPATH=/usr/lib/x86_64-linux-gnu/libsqlite3.so
@@ -768,7 +768,7 @@ FIND_PACKAGE_MESSAGE_DETAILS_PkgConfig:INTERNAL=[/usr/bin/pkg-config][v1.8.1()]
 //Details about finding Python3
 FIND_PACKAGE_MESSAGE_DETAILS_Python3:INTERNAL=[/usr/bin/python3][/usr/include/python3.13][/usr/lib/x86_64-linux-gnu/libpython3.13.so][cfound components: Interpreter Development Development.Module Development.Embed ][v3.13.3()]
 //Details about finding SQLite3
-FIND_PACKAGE_MESSAGE_DETAILS_SQLite3:INTERNAL=[/usr/include][/usr/lib/x86_64-linux-gnu/libsqlite3.so][v3.46.1()]
+FIND_PACKAGE_MESSAGE_DETAILS_SQLite3:INTERNAL=[/usr/include][/usr/lib/x86_64-linux-gnu/libsqlite3.so][v()]
 //Details about finding Threads
 FIND_PACKAGE_MESSAGE_DETAILS_Threads:INTERNAL=[TRUE][v()]
 //ADVANCED property for variable: GMOCK_LIBRARY
@@ -947,6 +947,8 @@ _Python3_INCLUDE_DIR:INTERNAL=/usr/include/python3.13
 //Python3 Properties
 _Python3_INTERPRETER_PROPERTIES:INTERNAL=Python;3;13;3;64;<none>;cpython-313-x86_64-linux-gnu;abi3;/usr/lib/python3.13;/usr/lib/python3.13;/usr/local/lib/python3.13/dist-packages;/usr/local/lib/python3.13/dist-packages
 _Python3_INTERPRETER_SIGNATURE:INTERNAL=4c8bfa8951e99fa32e4000a94f8c04a2
+//Interpreter reason failure
+_Python3_Interpreter_REASON_FAILURE:INTERNAL=
 //Path to a library.
 _Python3_LIBRARY_RELEASE:INTERNAL=/usr/lib/x86_64-linux-gnu/libpython3.13.so
 //NumPy reason failure
