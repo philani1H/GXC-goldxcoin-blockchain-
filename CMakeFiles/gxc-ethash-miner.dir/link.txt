@@ -1,0 +1,1 @@
+/usr/bin/c++ -Xlinker --dependency-file=CMakeFiles/gxc-ethash-miner.dir/link.d "CMakeFiles/gxc-ethash-miner.dir/mining/ethash_main.cpp.o" -o gxc-ethash-miner  libgxc_mining.a libgxc_core.a -lOpenSSL::SSL -lOpenSSL::Crypto /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl -lsystemd
