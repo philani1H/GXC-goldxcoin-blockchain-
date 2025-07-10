@@ -1,4 +1,8 @@
 // NetworkDiagnostic.cpp
 // Stub implementation for network diagnostic.
 
-// TODO: Implement network diagnostic logic here.
+#include <string>
+class NetworkDiagnostic {
+public:
+    static std::string getStatus() { return "Network status: OK. Peers: 8"; }
+};

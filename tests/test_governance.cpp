@@ -1,4 +1,7 @@
-// test_governance.cpp
-// Stub implementation for governance tests.
+#include <gtest/gtest.h>
+#include "Governance.h"
 
-// TODO: Implement governance tests here.
+TEST(GovernanceTest, ProposalCreation) {
+    Proposal p("proposer", "title", "desc", {});
+    EXPECT_TRUE(p.isValidProposal());
+}

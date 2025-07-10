@@ -1,4 +1,7 @@
-// test_mining.cpp
-// Stub implementation for mining tests.
+#include <gtest/gtest.h>
+#include "GXCMiner.h"
 
-// TODO: Implement mining tests here.
+TEST(MiningTest, DetectDevices) {
+    auto devices = HardwareDetector::detectAllDevices();
+    EXPECT_FALSE(devices.empty());
+}

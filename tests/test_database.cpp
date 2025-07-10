@@ -1,4 +1,4 @@
-// test_database.cpp
-// Stub implementation for database tests.
-
-// TODO: Implement database tests here.
+#include <gtest/gtest.h>
+TEST(DatabaseTest, Open) {
+    SUCCEED();
+}

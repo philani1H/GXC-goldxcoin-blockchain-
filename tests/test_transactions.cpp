@@ -1,4 +1,7 @@
-// test_transactions.cpp
-// Stub implementation for transaction tests.
+#include <gtest/gtest.h>
+#include "transaction.h"
 
-// TODO: Implement transaction tests here.
+TEST(TransactionTest, Creation) {
+    Transaction tx;
+    EXPECT_TRUE(tx.isValid());
+}

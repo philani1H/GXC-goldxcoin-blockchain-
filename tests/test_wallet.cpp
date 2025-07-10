@@ -1,4 +1,7 @@
-// test_wallet.cpp
-// Stub implementation for wallet tests.
+#include <gtest/gtest.h>
+#include "Wallet.h"
 
-// TODO: Implement wallet tests here.
+TEST(WalletTest, Creation) {
+    Wallet w;
+    EXPECT_EQ(w.getBalance(), 0);
+}

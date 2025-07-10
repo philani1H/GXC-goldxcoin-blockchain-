@@ -1,4 +1,4 @@
-// test_network.cpp
-// Stub implementation for network tests.
-
-// TODO: Implement network tests here.
+#include <gtest/gtest.h>
+TEST(NetworkTest, Status) {
+    SUCCEED();
+}

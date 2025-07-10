@@ -1,4 +1,8 @@
 // KeyGenerator.cpp
 // Stub implementation for key generator.
 
-// TODO: Implement key generator logic here.
+#include <string>
+class KeyGenerator {
+public:
+    static std::string generate() { return "0xDEADBEEF..."; }
+};

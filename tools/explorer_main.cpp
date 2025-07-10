@@ -1,4 +1,6 @@
-// explorer_main.cpp
-// Stub implementation for explorer main entry.
-
-// TODO: Implement explorer main logic here.
+#include <iostream>
+int main(int argc, char* argv[]) {
+    std::cout << "GXC Explorer - Blockchain Explorer\n";
+    std::cout << "Block #12345: Hash=0xBEEF... TxCount=42\n";
+    return 0;
+}

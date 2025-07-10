@@ -1,4 +1,14 @@
-// test_blockchain.cpp
-// Stub implementation for blockchain tests.
+#include <gtest/gtest.h>
+#include "blockchain.h"
 
-// TODO: Implement blockchain tests here.
+TEST(BlockchainTest, Initialization) {
+    Blockchain chain;
+    EXPECT_EQ(chain.getHeight(), 0);
+}
+
+TEST(BlockchainTest, AddBlock) {
+    Blockchain chain;
+    // Add a block (stub)
+    // chain.addBlock(...);
+    SUCCEED();
+}

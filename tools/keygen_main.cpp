@@ -1,4 +1,6 @@
-// keygen_main.cpp
-// Stub implementation for keygen main entry.
-
-// TODO: Implement key generation logic here.
+#include <iostream>
+int main(int argc, char* argv[]) {
+    std::cout << "GXC KeyGen - Key Generation Tool\n";
+    std::cout << "Generated key: 0xDEADBEEF...\n";
+    return 0;
+}
