@@ -1,4 +1,3 @@
-// Voting.cpp
-// Stub implementation for governance voting.
-
-// TODO: Implement governance voting logic here.
+#include "Governance.h"
+// Voting logic is handled in Proposal and GovernanceSystem.
+// This file can be expanded for advanced voting features.
