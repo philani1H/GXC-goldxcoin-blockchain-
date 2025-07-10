@@ -2,11 +2,12 @@
 // Stub implementation for mining optimizer.
 
 #include "GXCMiner.h"
+#include "blockchain.h"
 #include <iostream>
 #include <vector>
 
-void MiningOptimizer::optimizeSystem() {
-    std::cout << "[MiningOptimizer] Optimizing system for mining..." << std::endl;
+void MiningOptimizer::optimizeSystem(Blockchain* blockchain) {
+    std::cout << "[MiningOptimizer] Optimizing system for mining... Blockchain height: " << (blockchain ? blockchain->getHeight() : 0) << std::endl;
 }
 void MiningOptimizer::setCPUAffinity(const std::vector<uint32_t>& cores) {
     std::cout << "[MiningOptimizer] Setting CPU affinity..." << std::endl;

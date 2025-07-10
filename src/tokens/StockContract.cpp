@@ -2,10 +2,13 @@
 // Stub implementation for StockContract.
 
 #include "StockContract.h"
+#include "blockchain.h"
 #include <iostream>
 
-StockContract::StockContract(const std::string& tickerIn, const std::string& companyNameIn, const std::string& exchangeIn, const std::string& priceOracleIn)
-    : ticker(tickerIn), companyName(companyNameIn), exchange(exchangeIn), priceOracle(priceOracleIn), totalShares(0), tradingHalted(false), dividendYield(0.0), marketCap(0) {}
+StockContract::StockContract(const std::string& tickerIn, const std::string& companyNameIn, const std::string& exchangeIn, const std::string& priceOracleIn, Blockchain* blockchainPtr)
+    : ticker(tickerIn), companyName(companyNameIn), exchange(exchangeIn), priceOracle(priceOracleIn), totalShares(0), tradingHalted(false), dividendYield(0.0), marketCap(0), blockchain(blockchainPtr) {
+    if (blockchain) std::cout << "[StockContract] Blockchain height: " << blockchain->getHeight() << std::endl;
+}
 
 bool StockContract::updatePrice(double newPrice, std::time_t timestamp, const std::string& popHash, const std::string& source) {
     currentPrice = {newPrice, timestamp, popHash, source};

@@ -2,14 +2,16 @@
 // Stub implementation for mining pool manager.
 
 #include "GXCMiner.h"
+#include "blockchain.h"
 #include <iostream>
 
-PoolManager::PoolManager() : socketFd(-1), connected(false), shouldStop(false), poolHashRate(0.0), poolDifficulty(1), poolShares(0) {}
+PoolManager::PoolManager(Blockchain* blockchainPtr) : blockchain(blockchainPtr), socketFd(-1), connected(false), shouldStop(false), poolHashRate(0.0), poolDifficulty(1), poolShares(0) {}
 PoolManager::~PoolManager() { disconnectFromPool(); }
 
 void PoolManager::addPool(const PoolConfig& config) {
     std::lock_guard<std::mutex> lock(poolsMutex);
     pools.push_back(config);
+    if (blockchain) std::cout << "[PoolManager] Blockchain height: " << blockchain->getHeight() << std::endl;
 }
 void PoolManager::removePool(const std::string& url) {
     std::lock_guard<std::mutex> lock(poolsMutex);

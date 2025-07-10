@@ -2,11 +2,12 @@
 // Stub implementation for mining hardware detection.
 
 #include "GXCMiner.h"
+#include "blockchain.h"
 #include <iostream>
 #include <vector>
 
-std::vector<MiningDevice> HardwareDetector::detectCPUs() {
-    std::cout << "[HardwareDetector] Detecting CPUs..." << std::endl;
+std::vector<MiningDevice> HardwareDetector::detectCPUs(Blockchain* blockchain) {
+    std::cout << "[HardwareDetector] Detecting CPUs... Blockchain height: " << (blockchain ? blockchain->getHeight() : 0) << std::endl;
     return { {0, DeviceType::CPU, "Intel CPU", "Generic", 8192, 8, 3200, 40.0, 65.0, true, false, 0.0, 0, 0, 0, std::chrono::steady_clock::now()} };
 }
 std::vector<MiningDevice> HardwareDetector::detectNVIDIAGPUs() {

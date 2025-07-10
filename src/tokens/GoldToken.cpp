@@ -1,7 +1,10 @@
 #include "GoldToken.h"
+#include "blockchain.h"
 #include <iostream>
 
-GoldToken::GoldToken() : tokenId("GXC-G"), symbol("GXC-G"), name("GXC Gold Token"), decimals(8), totalSupply(0), totalReserves(0), transfersEnabled(true) {}
+GoldToken::GoldToken(Blockchain* blockchainPtr) : tokenId("GXC-G"), symbol("GXC-G"), name("GXC Gold Token"), decimals(8), totalSupply(0), totalReserves(0), transfersEnabled(true), blockchain(blockchainPtr) {
+    if (blockchain) std::cout << "[GoldToken] Blockchain height: " << blockchain->getHeight() << std::endl;
+}
 
 bool GoldToken::mint(const std::string& to, double goldGrams, const std::string&) {
     if (!transfersEnabled) return false;

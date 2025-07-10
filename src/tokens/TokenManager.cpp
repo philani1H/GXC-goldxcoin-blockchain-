@@ -3,9 +3,13 @@
 #include <memory>
 #include "GoldToken.h"
 #include "StockContract.h"
+#include "blockchain.h"
 
 class TokenManager {
 public:
+    TokenManager(Blockchain* blockchainPtr) : blockchain(blockchainPtr) {
+        if (blockchain) std::cout << "[TokenManager] Blockchain height: " << blockchain->getHeight() << std::endl;
+    }
     void addGoldToken(const std::string& id, const GoldToken& token) { goldTokens[id] = token; }
     void addStockContract(const std::string& id, const StockContract& contract) { stockContracts[id] = contract; }
     GoldToken getGoldToken(const std::string& id) const { return goldTokens.at(id); }
@@ -15,4 +19,5 @@ public:
 private:
     std::unordered_map<std::string, GoldToken> goldTokens;
     std::unordered_map<std::string, StockContract> stockContracts;
+    Blockchain* blockchain;
 };
