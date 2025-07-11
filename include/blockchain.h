@@ -12,10 +12,11 @@
 #include "Governance.h"
 #include "GoldToken.h"
 #include "StockContract.h"
+#include <mutex>
 
 class Blockchain {
 private:
-    std::vector<Block> chain;
+    std::vector<std::shared_ptr<Block>> chain;
     std::vector<Transaction> pendingTransactions;
     std::unordered_map<std::string, TransactionOutput> utxoSet; // Unspent transaction outputs
     
@@ -63,50 +64,73 @@ private:
     double calculateObservedInflation(uint32_t window) const;
     void processHalving(uint32_t blockNumber);
     bool validateConsensus(const Block& block) const;
+    std::shared_ptr<Block> lastBlock;
+    std::mutex chainMutex;
+    std::mutex transactionMutex;
+    std::unordered_map<std::string, struct TraceabilityEntry> traceabilityIndex;
     
 public:
     // Constructor
     Blockchain();
-    
-    // Core blockchain operations
-    bool addBlock(Block& block);
-    Block createBlock(BlockType type, const std::string& minerAddress);
-    bool processTransaction(const Transaction& transaction);
+    ~Blockchain();
+    bool initialize();
+    void shutdown();
+    void createGenesisBlock();
+    bool addBlock(const Block& block);
+    bool validateBlock(const Block& block);
+    bool validateProofOfWork(const Block& block);
+    bool validateBlockTraceability(const Block& block);
+    bool validateTransaction(const Transaction& tx);
+    bool validateTraceability();
+    bool initializeTraceability();
+    bool validateTransactionTraceability(const Transaction& tx);
+    void updateTransactionPool(const Block& block);
+    bool addTransaction(const Transaction& tx);
+    void processTransactions();
+    std::vector<Transaction> getPendingTransactions(size_t maxCount);
+    Block getLatestBlock() const;
+    Block getBlock(const std::string& hash) const;
+    Block getBlock(size_t index) const;
+    std::vector<Block> getBlocks(size_t count) const;
+    bool isValid() const;
+    size_t getHeight() const;
+    double getDifficulty() const;
+    std::string getStats() const;
     
     // Hybrid consensus
-    bool validatePoWBlock(const Block& block) const;
-    bool validatePoSBlock(const Block& block) const;
-    Validator selectValidator() const;
-    BlockType getNextBlockType() const;
+    // bool validatePoWBlock(const Block& block) const;
+    // bool validatePoSBlock(const Block& block) const;
+    // Validator selectValidator() const;
+    // BlockType getNextBlockType() const;
     
     // Adaptive monetary policy
-    double calculateBlockReward(uint32_t blockNumber) const;
-    double calculateFeeBurnRate(uint32_t blockNumber) const;
-    void processTransactionFees(const Block& block);
-    void updateMonetaryPolicy();
+    // double calculateBlockReward(uint32_t blockNumber) const;
+    // double calculateFeeBurnRate(uint32_t blockNumber) const;
+    // void processTransactionFees(const Block& block);
+    // void updateMonetaryPolicy();
     
     // Transaction chaining
-    std::string getLastTransactionHash(const std::string& address) const;
-    bool verifyTransactionChain(const std::string& address, uint32_t depth = 100) const;
+    // std::string getLastTransactionHash(const std::string& address) const;
+    // bool verifyTransactionChain(const std::string& address, uint32_t depth = 100) const;
     
     // Gold-backed tokens (GXC-G)
-    bool mintGoldTokens(const std::string& recipient, double goldGrams, const std::string& vaultAttestation);
-    bool burnGoldTokens(const std::string& holder, double goldGrams, const std::string& redemptionCert);
-    double getGoldReserves(const std::string& vault) const;
-    bool verifyGoldReserves() const;
+    // bool mintGoldTokens(const std::string& recipient, double goldGrams, const std::string& vaultAttestation);
+    // bool burnGoldTokens(const std::string& holder, double goldGrams, const std::string& redemptionCert);
+    // double getGoldReserves(const std::string& vault) const;
+    // bool verifyGoldReserves() const;
     
     // Stock contracts
-    bool deployStockContract(const std::string& ticker, const std::string& priceOracle);
-    bool issueStockShares(const std::string& ticker, const std::string& recipient, uint64_t shares);
-    bool transferStockShares(const std::string& ticker, const std::string& from, const std::string& to, uint64_t shares);
-    StockContract getStockContract(const std::string& ticker) const;
+    // bool deployStockContract(const std::string& ticker, const std::string& priceOracle);
+    // bool issueStockShares(const std::string& ticker, const std::string& recipient, uint64_t shares);
+    // bool transferStockShares(const std::string& ticker, const std::string& from, const std::string& to, uint64_t shares);
+    // StockContract getStockContract(const std::string& ticker) const;
     
     // Governance
-    std::string submitProposal(const std::string& proposer, const std::string& title, 
-                              const std::string& description, const std::vector<ParameterChange>& changes);
-    bool castVote(const std::string& voter, const std::string& proposalId, VoteType voteType);
-    void tallyVotes(const std::string& proposalId);
-    bool executeProposal(const std::string& proposalId);
+    // std::string submitProposal(const std::string& proposer, const std::string& title, 
+    //                           const std::string& description, const std::vector<ParameterChange>& changes);
+    // bool castVote(const std::string& voter, const std::string& proposalId, VoteType voteType);
+    // void tallyVotes(const std::string& proposalId);
+    // bool executeProposal(const std::string& proposalId);
     
     // Validator management
     void registerValidator(const Validator& validator);
@@ -121,25 +145,24 @@ public:
     void addBridgeValidator(const BridgeValidator& validator);
     
     // Difficulty adjustment
-    void adjustDifficulty();
-    void adjustPoSDifficulty();
+    // void adjustDifficulty();
+    // void adjustPoSDifficulty();
     
     // Getters
-    const Block& getLatestBlock() const { return chain.back(); }
-    size_t getChainLength() const { return chain.size(); }
-    double getDifficulty() const { return difficulty; }
-    double getPoSThreshold() const { return posThreshold; }
-    uint64_t getBlockReward() const { return blockReward; }
-    double getFeeBurnRate() const { return feeBurnRate; }
-    double getTotalSupply() const { return totalSupply; }
-    double getTotalBurned() const { return totalBurned; }
-    double getTargetInflationRate() const { return targetInflationRate; }
+    // const Block& getLatestBlock() const { return chain.back(); }
+    // size_t getChainLength() const { return chain.size(); }
+    // double getPoSThreshold() const { return posThreshold; }
+    // uint64_t getBlockReward() const { return blockReward; }
+    // double getFeeBurnRate() const { return feeBurnRate; }
+    // double getTotalSupply() const { return totalSupply; }
+    // double getTotalBurned() const { return totalBurned; }
+    // double getTargetInflationRate() const { return targetInflationRate; }
     
     // Network statistics
-    double getHashrate() const;
-    double getStakeRatio() const;
-    uint32_t getActiveValidatorCount() const;
-    double getNetworkStakeWeight() const;
+    // double getHashrate() const;
+    // double getStakeRatio() const;
+    // uint32_t getActiveValidatorCount() const;
+    // double getNetworkStakeWeight() const;
     
     // Oracle integration
     void updatePriceData(const PriceData& priceData);
@@ -152,17 +175,17 @@ public:
     std::vector<Transaction> getTransactionHistory(const std::string& address) const;
     
     // Block validation
-    bool isValidBlock(const Block& block) const;
-    bool isValidTransaction(const Transaction& transaction) const;
+    // bool isValidBlock(const Block& block) const;
+    // bool isValidTransaction(const Transaction& transaction) const;
     
     // Chain validation
-    bool validateChain() const;
-    void reorgChain(uint32_t fromBlock);
+    // bool validateChain() const;
+    // void reorgChain(uint32_t fromBlock);
     
     // Mining support
-    double getCurrentDifficulty(BlockType type) const;
-    std::string getMiningTarget(BlockType type) const;
-    bool submitPoWShare(const std::string& miner, const std::string& blockHash, uint64_t nonce);
+    // double getCurrentDifficulty(BlockType type) const;
+    // std::string getMiningTarget(BlockType type) const;
+    // bool submitPoWShare(const std::string& miner, const std::string& blockHash, uint64_t nonce);
     
     // Transaction Traceability - Implementing Your Formula
     std::vector<std::string> traceTransactionLineage(const std::string& startHash) const;

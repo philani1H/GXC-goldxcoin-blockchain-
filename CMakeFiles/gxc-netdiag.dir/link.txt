@@ -1,0 +1,1 @@
+/usr/bin/c++ -Xlinker --dependency-file=CMakeFiles/gxc-netdiag.dir/link.d "CMakeFiles/gxc-netdiag.dir/tools/netdiag_main.cpp.o" "CMakeFiles/gxc-netdiag.dir/tools/NetworkDiagnostic.cpp.o" -o gxc-netdiag  libgxc_core.a -lOpenSSL::SSL -lOpenSSL::Crypto /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl -lsystemd
