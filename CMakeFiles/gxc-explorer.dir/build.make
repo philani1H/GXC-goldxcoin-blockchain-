@@ -113,6 +113,8 @@ gxc-explorer: CMakeFiles/gxc-explorer.dir/tools/BlockExplorer.cpp.o
 gxc-explorer: CMakeFiles/gxc-explorer.dir/build.make
 gxc-explorer: CMakeFiles/gxc-explorer.dir/compiler_depend.ts
 gxc-explorer: libgxc_core.a
+gxc-explorer: /usr/lib/x86_64-linux-gnu/libssl.so
+gxc-explorer: /usr/lib/x86_64-linux-gnu/libcrypto.so
 gxc-explorer: /usr/lib/x86_64-linux-gnu/libsqlite3.so
 gxc-explorer: CMakeFiles/gxc-explorer.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/workspace/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable gxc-explorer"

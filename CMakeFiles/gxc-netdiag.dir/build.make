@@ -113,6 +113,8 @@ gxc-netdiag: CMakeFiles/gxc-netdiag.dir/tools/NetworkDiagnostic.cpp.o
 gxc-netdiag: CMakeFiles/gxc-netdiag.dir/build.make
 gxc-netdiag: CMakeFiles/gxc-netdiag.dir/compiler_depend.ts
 gxc-netdiag: libgxc_core.a
+gxc-netdiag: /usr/lib/x86_64-linux-gnu/libssl.so
+gxc-netdiag: /usr/lib/x86_64-linux-gnu/libcrypto.so
 gxc-netdiag: /usr/lib/x86_64-linux-gnu/libsqlite3.so
 gxc-netdiag: CMakeFiles/gxc-netdiag.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/workspace/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable gxc-netdiag"

@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <numeric>
 
-Blockchain::Blockchain() : difficulty(1000.0), lastBlock(nullptr) {
+Blockchain::Blockchain() : difficulty(1000.0), lastBlock() {
     LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created");
 }
 

@@ -113,6 +113,8 @@ gxc-cli: CMakeFiles/gxc-cli.dir/tools/CliInterface.cpp.o
 gxc-cli: CMakeFiles/gxc-cli.dir/build.make
 gxc-cli: CMakeFiles/gxc-cli.dir/compiler_depend.ts
 gxc-cli: libgxc_core.a
+gxc-cli: /usr/lib/x86_64-linux-gnu/libssl.so
+gxc-cli: /usr/lib/x86_64-linux-gnu/libcrypto.so
 gxc-cli: /usr/lib/x86_64-linux-gnu/libsqlite3.so
 gxc-cli: CMakeFiles/gxc-cli.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/workspace/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable gxc-cli"

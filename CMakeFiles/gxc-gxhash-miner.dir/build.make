@@ -98,6 +98,8 @@ gxc-gxhash-miner: CMakeFiles/gxc-gxhash-miner.dir/build.make
 gxc-gxhash-miner: CMakeFiles/gxc-gxhash-miner.dir/compiler_depend.ts
 gxc-gxhash-miner: libgxc_mining.a
 gxc-gxhash-miner: libgxc_core.a
+gxc-gxhash-miner: /usr/lib/x86_64-linux-gnu/libssl.so
+gxc-gxhash-miner: /usr/lib/x86_64-linux-gnu/libcrypto.so
 gxc-gxhash-miner: /usr/lib/x86_64-linux-gnu/libsqlite3.so
 gxc-gxhash-miner: CMakeFiles/gxc-gxhash-miner.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/workspace/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX executable gxc-gxhash-miner"

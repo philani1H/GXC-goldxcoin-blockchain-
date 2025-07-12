@@ -57,6 +57,11 @@ public:
     static Logger& getInstance();
     static void cleanup();
     
+    // Static initialization
+    static bool initialize();
+    static bool initialize(const std::string& logPath, LogLevel minLevel = LogLevel::INFO);
+    static void shutdown();
+    
     // Configuration
     bool initialize(const std::string& logPath, LogLevel minLevel = LogLevel::INFO);
     void setLogLevel(LogLevel level);
@@ -154,3 +159,8 @@ public:
 
 #define LOG_SECURITY(level, event, source) Logger::getInstance().security(level, event, source)
 #define LOG_AUDIT(action, user, details) Logger::getInstance().audit(action, user, details)
+
+// Additional convenience macros
+#define LOG_CORE(level, msg) Logger::getInstance().info(msg)
+#define LOG_CONFIG(level, msg) Logger::getInstance().info(msg)
+#define LOG_DATABASE(level, msg) Logger::getInstance().info(msg)
