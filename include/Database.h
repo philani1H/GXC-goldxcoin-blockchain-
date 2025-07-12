@@ -10,21 +10,27 @@
 
 class Database {
 private:
-    sqlite3* walletDb;
-    std::unique_ptr<leveldb::DB> blockchainDb;
+    sqlite3* db;
     std::string dataDirectory;
     
-    // Database initialization
-    bool initializeWalletDB();
-    bool initializeBlockchainDB();
+    // Static members for singleton pattern
+    static std::unique_ptr<Database> instance;
+    static std::mutex instanceMutex;
     
-    // Internal helpers
-    void executeSQL(const std::string& sql);
+    // Database initialization
+    bool open(const std::string& dbPath);
+    bool createTables();
+    bool executeSQL(const std::string& sql);
     std::string getLastError() const;
 
 public:
+    // Static methods for singleton-like access
+    static bool initialize(const std::string& dataDir);
+    static void shutdown();
+    static Database& getInstance();
+    
     // Constructor and destructor
-    Database(const std::string& dataDir);
+    Database();
     ~Database();
     
     // Database operations

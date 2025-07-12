@@ -98,6 +98,8 @@ public:
     
     // Setters
     void setHash(const std::string& hash) { txHash = hash; }
+    void setTimestamp(std::time_t ts) { timestamp = ts; }
+    void setCoinbaseTransaction(bool isCoinbaseTx) { isCoinbase = isCoinbaseTx; }
     void setPrevTxHash(const std::string& hash) { prevTxHash = hash; }
     void setReferencedAmount(double amount) { referencedAmount = amount; }
     void setSenderAddress(const std::string& addr) { senderAddress = addr; }

@@ -432,7 +432,7 @@ GTEST_MAIN_LIBRARY:FILEPATH=GTEST_MAIN_LIBRARY-NOTFOUND
 GTEST_MAIN_LIBRARY_DEBUG:FILEPATH=GTEST_MAIN_LIBRARY_DEBUG-NOTFOUND
 
 //The directory containing a CMake configuration file for GTest.
-GTest_DIR:PATH=/usr/lib/x86_64-linux-gnu/cmake/GTest
+GTest_DIR:PATH=GTest_DIR-NOTFOUND
 
 //Value Computed by CMake
 GXC_Blockchain_BINARY_DIR:STATIC=/workspace
@@ -483,7 +483,7 @@ Qt5WebSockets_DIR:PATH=Qt5WebSockets_DIR-NOTFOUND
 Qt5Widgets_DIR:PATH=/usr/lib/x86_64-linux-gnu/cmake/Qt5Widgets
 
 //The directory containing a CMake configuration file for Qt5.
-Qt5_DIR:PATH=/usr/lib/x86_64-linux-gnu/cmake/Qt5
+Qt5_DIR:PATH=Qt5_DIR-NOTFOUND
 
 //The directory containing a CMake configuration file for Qt6.
 Qt6_DIR:PATH=Qt6_DIR-NOTFOUND
@@ -501,7 +501,7 @@ cryptopp_DIR:PATH=cryptopp_DIR-NOTFOUND
 leveldb_DIR:PATH=leveldb_DIR-NOTFOUND
 
 //The directory containing a CMake configuration file for nlohmann_json.
-nlohmann_json_DIR:PATH=nlohmann_json_DIR-NOTFOUND
+nlohmann_json_DIR:PATH=/usr/share/cmake/nlohmann_json
 
 //Path to a library.
 pkgcfg_lib_PC_SQLite3_sqlite3:FILEPATH=/usr/lib/x86_64-linux-gnu/libsqlite3.so

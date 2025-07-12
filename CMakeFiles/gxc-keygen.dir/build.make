@@ -113,6 +113,8 @@ gxc-keygen: CMakeFiles/gxc-keygen.dir/tools/KeyGenerator.cpp.o
 gxc-keygen: CMakeFiles/gxc-keygen.dir/build.make
 gxc-keygen: CMakeFiles/gxc-keygen.dir/compiler_depend.ts
 gxc-keygen: libgxc_core.a
+gxc-keygen: /usr/lib/x86_64-linux-gnu/libssl.so
+gxc-keygen: /usr/lib/x86_64-linux-gnu/libcrypto.so
 gxc-keygen: /usr/lib/x86_64-linux-gnu/libsqlite3.so
 gxc-keygen: CMakeFiles/gxc-keygen.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/workspace/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable gxc-keygen"

@@ -97,6 +97,8 @@ gxc-node: CMakeFiles/gxc-node.dir/src/node_main.cpp.o
 gxc-node: CMakeFiles/gxc-node.dir/build.make
 gxc-node: CMakeFiles/gxc-node.dir/compiler_depend.ts
 gxc-node: libgxc_core.a
+gxc-node: /usr/lib/x86_64-linux-gnu/libssl.so
+gxc-node: /usr/lib/x86_64-linux-gnu/libcrypto.so
 gxc-node: /usr/lib/x86_64-linux-gnu/libsqlite3.so
 gxc-node: CMakeFiles/gxc-node.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/workspace/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX executable gxc-node"

@@ -3,109 +3,119 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <mutex>
 
 class Config {
 private:
-    std::map<std::string, std::string> configValues;
-    std::string configFilePath;
+    // Static members for singleton pattern
+    static std::map<std::string, std::string> configMap;
+    static std::mutex configMutex;
+    static bool initialized;
     
-    // Internal helpers
-    void parseConfigFile();
-    void writeConfigFile();
-    std::string trim(const std::string& str);
+    // Private constructor for singleton
+    Config();
 
 public:
-    // Constructor
-    Config(const std::string& configPath = "gxc.conf");
+    // Static singleton methods
+    static bool initialize();
+    static void shutdown();
+    static void setDefaults();
+    
+    // Configuration file operations
+    static bool loadFromFile(const std::string& filename);
+    static bool saveToFile(const std::string& filename);
+    
+    // Value accessors (static)
+    static std::string get(const std::string& key, const std::string& defaultValue = "");
+    static int getInt(const std::string& key, int defaultValue = 0);
+    static double getDouble(const std::string& key, double defaultValue = 0.0);
+    static bool getBool(const std::string& key, bool defaultValue = false);
+    static std::vector<std::string> getStringList(const std::string& key);
+    
+    // Value setters (static)
+    static void set(const std::string& key, const std::string& value);
+    static void setInt(const std::string& key, int value);
+    static void setDouble(const std::string& key, double value);
+    static void setBool(const std::string& key, bool value);
+    static void setStringList(const std::string& key, const std::vector<std::string>& values);
     
     // Configuration management
-    bool loadConfig();
-    bool saveConfig();
-    void setDefaults();
+    static bool has(const std::string& key);
+    static void remove(const std::string& key);
+    static std::vector<std::string> getKeys();
+    static std::map<std::string, std::string> getAll();
+    static void clear();
+    static bool validate();
     
-    // Value accessors
-    std::string getString(const std::string& key, const std::string& defaultValue = "") const;
-    int getInt(const std::string& key, int defaultValue = 0) const;
-    double getDouble(const std::string& key, double defaultValue = 0.0) const;
-    bool getBool(const std::string& key, bool defaultValue = false) const;
-    std::vector<std::string> getStringList(const std::string& key) const;
-    
-    // Value setters
-    void setString(const std::string& key, const std::string& value);
-    void setInt(const std::string& key, int value);
-    void setDouble(const std::string& key, double value);
-    void setBool(const std::string& key, bool value);
-    void setStringList(const std::string& key, const std::vector<std::string>& values);
-    
-    // Validation
-    bool hasKey(const std::string& key) const;
-    bool validateConfig() const;
-    std::vector<std::string> getValidationErrors() const;
+    // Utility methods
+    static void printConfig();
+    static std::string getConfigSummary();
+    static void setNetworkMode(bool testnet);
     
     // Network configuration
-    std::string getListenAddress() const;
-    uint16_t getListenPort() const;
-    uint32_t getMaxConnections() const;
-    std::vector<std::string> getBootstrapNodes() const;
-    bool isTestNet() const;
+    static std::string getListenAddress();
+    static uint16_t getListenPort();
+    static uint32_t getMaxConnections();
+    static std::vector<std::string> getBootstrapNodes();
+    static bool isTestNet();
     
     // Mining configuration
-    bool isMiningEnabled() const;
-    std::string getMinerAddress() const;
-    uint32_t getMiningThreads() const;
-    std::string getMiningAlgorithm() const;
-    std::string getPoolAddress() const;
-    bool isGpuMiningEnabled() const;
+    static bool isMiningEnabled();
+    static std::string getMinerAddress();
+    static uint32_t getMiningThreads();
+    static std::string getMiningAlgorithm();
+    static std::string getPoolAddress();
+    static bool isGpuMiningEnabled();
     
     // Wallet configuration
-    std::string getWalletFile() const;
-    bool isWalletEncrypted() const;
-    uint32_t getWalletBackupInterval() const;
+    static std::string getWalletFile();
+    static bool isWalletEncrypted();
+    static uint32_t getWalletBackupInterval();
     
     // Database configuration
-    std::string getDataDirectory() const;
-    uint32_t getDatabaseCacheSize() const;
-    bool isDatabaseCompressionEnabled() const;
+    static std::string getDataDirectory();
+    static uint32_t getDatabaseCacheSize();
+    static bool isDatabaseCompressionEnabled();
     
     // Consensus configuration
-    double getInitialDifficulty() const;
-    uint32_t getDifficultyAdjustmentInterval() const;
-    uint32_t getBlockTime() const;
-    uint64_t getMaxBlockSize() const;
-    double getMinTxFee() const;
+    static double getInitialDifficulty();
+    static uint32_t getDifficultyAdjustmentInterval();
+    static uint32_t getBlockTime();
+    static uint64_t getMaxBlockSize();
+    static double getMinTxFee();
     
     // Validator configuration
-    bool isValidatorEnabled() const;
-    double getMinStake() const;
-    uint32_t getValidatorTimeout() const;
+    static bool isValidatorEnabled();
+    static double getMinStake();
+    static uint32_t getValidatorTimeout();
     
     // API configuration
-    bool isRpcEnabled() const;
-    std::string getRpcAddress() const;
-    uint16_t getRpcPort() const;
-    bool isRestEnabled() const;
-    uint16_t getRestPort() const;
-    std::string getRpcUsername() const;
-    std::string getRpcPassword() const;
+    static bool isRpcEnabled();
+    static std::string getRpcAddress();
+    static uint16_t getRpcPort();
+    static bool isRestEnabled();
+    static uint16_t getRestPort();
+    static std::string getRpcUsername();
+    static std::string getRpcPassword();
     
     // Logging configuration
-    std::string getLogLevel() const;
-    std::string getLogFile() const;
-    uint32_t getLogMaxSize() const;
-    uint32_t getLogMaxFiles() const;
+    static std::string getLogLevel();
+    static std::string getLogFile();
+    static uint32_t getLogMaxSize();
+    static uint32_t getLogMaxFiles();
     
     // Security configuration
-    bool isSslEnabled() const;
-    std::string getSslCertFile() const;
-    std::string getSslKeyFile() const;
-    uint32_t getMaxLoginAttempts() const;
-    uint32_t getLoginBanTime() const;
+    static bool isSslEnabled();
+    static std::string getSslCertFile();
+    static std::string getSslKeyFile();
+    static uint32_t getMaxLoginAttempts();
+    static uint32_t getLoginBanTime();
     
     // Performance configuration
-    uint32_t getWorkerThreads() const;
-    uint32_t getIoThreads() const;
-    uint32_t getNetworkBufferSize() const;
-    bool isMultiThreadingEnabled() const;
+    static uint32_t getWorkerThreads();
+    static uint32_t getIoThreads();
+    static uint32_t getNetworkBufferSize();
+    static bool isMultiThreadingEnabled();
     
     // Configuration constants
     static const std::string DEFAULT_CONFIG_FILE;

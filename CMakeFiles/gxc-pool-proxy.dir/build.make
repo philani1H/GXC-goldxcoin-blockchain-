@@ -98,6 +98,8 @@ gxc-pool-proxy: CMakeFiles/gxc-pool-proxy.dir/build.make
 gxc-pool-proxy: CMakeFiles/gxc-pool-proxy.dir/compiler_depend.ts
 gxc-pool-proxy: libgxc_mining.a
 gxc-pool-proxy: libgxc_core.a
+gxc-pool-proxy: /usr/lib/x86_64-linux-gnu/libssl.so
+gxc-pool-proxy: /usr/lib/x86_64-linux-gnu/libcrypto.so
 gxc-pool-proxy: /usr/lib/x86_64-linux-gnu/libsqlite3.so
 gxc-pool-proxy: CMakeFiles/gxc-pool-proxy.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/workspace/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX executable gxc-pool-proxy"

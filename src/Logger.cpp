@@ -46,7 +46,17 @@ void Logger::cleanup() {
     instance.reset();
 }
 
+bool Logger::initialize() {
+    return getInstance().initialize(DEFAULT_LOG_FILE, LogLevel::INFO);
+}
+
 bool Logger::initialize(const std::string& logPath, LogLevel minLevel) {
+    return getInstance().initialize(logPath, minLevel);
+}
+
+void Logger::shutdown() {
+    cleanup();
+}
     logFilePath = logPath;
     minLogLevel = minLevel;
     

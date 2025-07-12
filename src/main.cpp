@@ -42,7 +42,10 @@ Version 2.0.0
         
         // Initialize database
         std::string dataDir = Config::get("data_dir", "./gxc_data");
-        Database::initialize(dataDir + "/blockchain.db");
+        if (!Database::initialize(dataDir + "/blockchain.db")) {
+            LOG_CORE(LogLevel::ERROR, "Failed to initialize database");
+            return 1;
+        }
         
         // Initialize blockchain
         Blockchain blockchain;
@@ -52,16 +55,17 @@ Version 2.0.0
         }
         
         // Initialize network
-        Network network;
-        int port = Config::getInt("network_port", 9333);
-        if (!network.start(port)) {
-            LOG_CORE(LogLevel::ERROR, "Failed to start network on port " + std::to_string(port));
+        NetworkConfig networkConfig;
+        networkConfig.defaultPort = Config::getInt("network_port", 9333);
+        NetworkNode network(networkConfig, &blockchain);
+        if (!network.start()) {
+            LOG_CORE(LogLevel::ERROR, "Failed to start network on port " + std::to_string(networkConfig.defaultPort));
             return 1;
         }
         
         LOG_CORE(LogLevel::INFO, "GXC node initialized successfully");
         LOG_CORE(LogLevel::INFO, "Blockchain height: " + std::to_string(blockchain.getHeight()));
-        LOG_CORE(LogLevel::INFO, "Network listening on port: " + std::to_string(port));
+        LOG_CORE(LogLevel::INFO, "Network listening on port: " + std::to_string(networkConfig.defaultPort));
         
         // Display traceability information
         std::cout << "\n=== GXC Traceability System ===" << std::endl;
@@ -79,7 +83,7 @@ Version 2.0.0
                 blockchain.processTransactions();
                 
                 // Update network
-                network.update();
+                // network.update(); // NetworkNode doesn't have update method
                 
                 // Periodic logging every 60 seconds
                 auto currentTime = Utils::getCurrentTimestamp();

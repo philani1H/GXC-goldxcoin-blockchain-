@@ -113,6 +113,8 @@ gxc-tx: CMakeFiles/gxc-tx.dir/tools/TransactionBuilder.cpp.o
 gxc-tx: CMakeFiles/gxc-tx.dir/build.make
 gxc-tx: CMakeFiles/gxc-tx.dir/compiler_depend.ts
 gxc-tx: libgxc_core.a
+gxc-tx: /usr/lib/x86_64-linux-gnu/libssl.so
+gxc-tx: /usr/lib/x86_64-linux-gnu/libcrypto.so
 gxc-tx: /usr/lib/x86_64-linux-gnu/libsqlite3.so
 gxc-tx: CMakeFiles/gxc-tx.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/workspace/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable gxc-tx"
