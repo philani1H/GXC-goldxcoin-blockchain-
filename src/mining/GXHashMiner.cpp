@@ -196,11 +196,11 @@ GXHashResult GXHashMiner::computeGXHash(const std::string& blockHeader, uint64_t
     // 4. Enhanced security through transaction linking
     
     // Phase 1: Base hash computation
-    std::string baseHash = HashUtils::sha256(blockHeader + std::to_string(nonce));
+    std::string baseHash = sha256(blockHeader + std::to_string(nonce));
     
     // Phase 2: Integrate traceability data
     std::string traceabilityData = extractTraceabilityData(transactions);
-    std::string traceHash = HashUtils::sha256(baseHash + traceabilityData);
+    std::string traceHash = sha256(baseHash + traceabilityData);
     
     // Phase 3: Cross-transaction validation hash
     std::string crossValidationHash = computeCrossValidationHash(transactions);
@@ -211,12 +211,12 @@ GXHashResult GXHashMiner::computeGXHash(const std::string& blockHeader, uint64_t
     // Apply GXHash rounds (more rounds for better security)
     std::string gxHash = finalInput;
     for (int round = 0; round < GXHASH_ROUNDS; round++) {
-        gxHash = HashUtils::sha256(gxHash + std::to_string(round));
+        gxHash = sha256(gxHash + std::to_string(round));
         
         // Integrate transaction data in specific rounds
         if (round % 4 == 0 && !transactions.empty()) {
             size_t txIndex = round / 4 % transactions.size();
-            gxHash = HashUtils::sha256(gxHash + transactions[txIndex].getHash());
+            gxHash = sha256(gxHash + transactions[txIndex].getHash());
         }
     }
     
@@ -273,7 +273,7 @@ std::string GXHashMiner::computeCrossValidationHash(const std::vector<Transactio
         combined += link;
     }
     
-    return HashUtils::sha256(combined);
+    return sha256(combined);
 }
 
 bool GXHashMiner::validateTransactionTraceability(const std::vector<Transaction>& transactions) {
@@ -470,10 +470,10 @@ void GXHashMiner::statsLoop() {
                 static_cast<double>(stats.traceabilityValidations) / stats.uptime : 0.0;
             
             LOG_MINING(LogLevel::INFO, "GXHash Stats - Hash Rate: " + 
-                      Utils::formatAmount(stats.hashRate, 2) + " H/s, Total: " + 
+                      std::to_string(stats.hashRate) + " H/s, Total: " + 
                       std::to_string(stats.totalHashes) + " hashes, Traceability: " + 
                       std::to_string(stats.traceabilityValidations) + " validations (" +
-                      Utils::formatAmount(traceabilityRate, 2) + " val/s)");
+                      std::to_string(traceabilityRate) + " val/s)");
             
             std::this_thread::sleep_for(std::chrono::seconds(30));
             

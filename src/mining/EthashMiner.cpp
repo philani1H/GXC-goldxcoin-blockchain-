@@ -202,11 +202,11 @@ EthashResult EthashMiner::computeEthash(const std::string& blockHeader, uint64_t
     // Simulate DAG lookups with multiple hash operations
     std::string hash = input;
     for (int i = 0; i < 64; i++) { // Simulate complexity
-        hash = HashUtils::sha256(hash + std::to_string(i));
+        hash = sha256(hash + std::to_string(i));
     }
     
     result.hash = hash;
-    result.mixHash = HashUtils::sha256(hash + "mix");
+    result.mixHash = sha256(hash + "mix");
     
     return result;
 }
@@ -231,13 +231,13 @@ void EthashMiner::generateDAG() {
         for (size_t i = 0; i < dag.size(); i++) {
             // Simplified DAG item generation
             std::string seed = "dag_item_" + std::to_string(i) + "_epoch_" + std::to_string(currentEpoch);
-            dag[i] = HashUtils::sha256(seed);
+            dag[i] = sha256(seed);
             
             // Show progress every 10%
             if (i % (dag.size() / 10) == 0) {
                 double progress = static_cast<double>(i) / dag.size() * 100.0;
                 LOG_MINING(LogLevel::INFO, "DAG generation progress: " + 
-                          Utils::formatAmount(progress, 1) + "%");
+                          std::to_string(progress) + "%");
             }
         }
         
@@ -246,7 +246,7 @@ void EthashMiner::generateDAG() {
     
     auto elapsed = Utils::getCurrentTimestamp() - startTime;
     LOG_MINING(LogLevel::INFO, "DAG generation completed in " + std::to_string(elapsed) + 
-              " seconds, size: " + Utils::formatAmount(dagSize / (1024.0 * 1024.0), 1) + " MB");
+              " seconds, size: " + std::to_string(dagSize / (1024.0 * 1024.0)) + " MB");
 }
 
 uint64_t EthashMiner::calculateEpoch(uint64_t blockNumber) {
@@ -340,7 +340,7 @@ void EthashMiner::statsLoop() {
             auto stats = getStats();
             
             LOG_MINING(LogLevel::INFO, "Ethash Stats - Hash Rate: " + 
-                      Utils::formatAmount(stats.hashRate, 2) + " H/s, Total: " + 
+                      std::to_string(stats.hashRate) + " H/s, Total: " + 
                       std::to_string(stats.totalHashes) + " hashes, Epoch: " + 
                       std::to_string(stats.epoch));
             
@@ -376,10 +376,10 @@ std::string EthashMiner::getOptimizationInfo() {
     std::ostringstream oss;
     oss << "Ethash Miner Information:\n";
     oss << "  Current Epoch: " << currentEpoch << "\n";
-    oss << "  DAG Size: " << Utils::formatAmount(dagSize / (1024.0 * 1024.0), 1) << " MB\n";
+    oss << "  DAG Size: " << std::to_string(dagSize / (1024.0 * 1024.0)) << " MB\n";
     oss << "  DAG Generated: " << (dagGenerated ? "Yes" : "No") << "\n";
     oss << "  Threads: " << threadsCount << "\n";
-    oss << "  Available Memory: " << Utils::formatAmount(getAvailableMemory() / (1024.0 * 1024.0), 1) << " MB\n";
+    oss << "  Available Memory: " << std::to_string(getAvailableMemory() / (1024.0 * 1024.0)) << " MB\n";
     oss << "  Memory Capable: " << (isMiningCapable() ? "Yes" : "No");
     
     return oss.str();
