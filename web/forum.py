@@ -40,9 +40,30 @@ FORUM_REALTIME_URL = os.environ.get('FORUM_REALTIME_URL', 'http://localhost:3002
 # SocketIO for backward compatibility (will connect to external real-time server)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
+# Import database adapter
+try:
+    from forum_db import get_db
+    db_adapter = get_db()
+    USE_DB_ADAPTER = True
+    print("✅ Using database adapter (supports PostgreSQL)")
+except ImportError:
+    USE_DB_ADAPTER = False
+    print("ℹ️  Using legacy SQLite mode")
+
 # Database initialization
 def init_database():
     """Initialize forum database"""
+    if USE_DB_ADAPTER:
+        # Use new database adapter (supports PostgreSQL)
+        try:
+            db_adapter.init_schema()
+            print("✅ Database schema initialized")
+            return
+        except Exception as e:
+            print(f"Warning: Database adapter initialization failed: {e}")
+            print("Falling back to SQLite...")
+    
+    # Fallback to legacy SQLite
     conn = sqlite3.connect(app.config['DATABASE'])
     cursor = conn.cursor()
     
@@ -1425,6 +1446,16 @@ def api_post_reaction(post_id):
         })
 
 if __name__ == '__main__':
+    # Auto-migrate if on Vercel
+    try:
+        from auto_migrate import auto_migrate
+        auto_migrate()
+    except Exception as e:
+        print(f"Note: Auto-migration check: {e}")
+    
+    # Initialize database
+    init_database()
+    
     # Run forum web server (real-time server runs separately)
     app.run(host='0.0.0.0', port=3001, debug=False)
 
