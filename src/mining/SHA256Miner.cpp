@@ -160,8 +160,8 @@ bool SHA256Miner::mineSHA256Block(const MiningJob& job, uint64_t nonce) {
     std::string blockHeader = constructBlockHeader(job, nonce);
     
     // Double SHA256 hash (Bitcoin-style)
-    std::string hash1 = HashUtils::sha256(blockHeader);
-    std::string hash2 = HashUtils::sha256(hash1);
+    std::string hash1 = sha256(blockHeader);
+    std::string hash2 = sha256(hash1);
     
     // Check if hash meets difficulty target
     return checkDifficultyTarget(hash2, job.difficulty);
@@ -247,10 +247,11 @@ void SHA256Miner::updateThreadStats(uint32_t threadId, uint64_t hashCount, std::
         threadHashRates[threadId] = threadHashRate;
         
         // Update total hash rate
-        hashRate = 0.0;
+        double totalRate = 0.0;
         for (const auto& pair : threadHashRates) {
-            hashRate += pair.second;
+            totalRate += pair.second;
         }
+        hashRate.store(totalRate);
         
         totalHashes += hashCount;
     }
@@ -264,7 +265,7 @@ void SHA256Miner::statsLoop() {
             auto stats = getStats();
             
             LOG_MINING(LogLevel::INFO, "SHA256 Stats - Hash Rate: " + 
-                      Utils::formatAmount(stats.hashRate, 2) + " H/s, Total: " + 
+                      std::to_string(stats.hashRate) + " H/s, Total: " + 
                       std::to_string(stats.totalHashes) + " hashes");
             
             std::this_thread::sleep_for(std::chrono::seconds(30));

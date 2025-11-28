@@ -162,4 +162,4 @@ public:
 // Additional convenience macros
 #define LOG_CORE(level, msg) Logger::getInstance().info(msg)
 #define LOG_CONFIG(level, msg) Logger::getInstance().info(msg)
-#define LOG_DATABASE(level, msg) Logger::getInstance().info(msg)
+// LOG_DATABASE already defined above

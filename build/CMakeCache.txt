@@ -478,7 +478,7 @@ cryptopp_DIR:PATH=cryptopp_DIR-NOTFOUND
 leveldb_DIR:PATH=leveldb_DIR-NOTFOUND
 
 //The directory containing a CMake configuration file for nlohmann_json.
-nlohmann_json_DIR:PATH=nlohmann_json_DIR-NOTFOUND
+nlohmann_json_DIR:PATH=/usr/share/cmake/nlohmann_json
 
 //The directory containing a CMake configuration file for pybind11.
 pybind11_DIR:PATH=pybind11_DIR-NOTFOUND
