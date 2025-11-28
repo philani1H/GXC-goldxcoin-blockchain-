@@ -9,16 +9,34 @@
 #include <atomic>
 #include <mutex>
 #include <cstdint>
-#include "json/json.h"
+#include <nlohmann/json.hpp>
+using JsonValue = nlohmann::json;
 
 class Blockchain;
 class NetworkNode;
+class Network;
 class Wallet;
+
+// RPC Exception class
+class RPCException : public std::runtime_error {
+private:
+    int errorCode;
+    
+public:
+    RPCException(int code, const std::string& message);
+    int getCode() const;
+    
+    // Error code constants
+    static constexpr int RPC_INVALID_PARAMETER = -8;
+    static constexpr int RPC_METHOD_NOT_FOUND = -32601;
+    static constexpr int RPC_INVALID_REQUEST = -32600;
+    static constexpr int RPC_INTERNAL_ERROR = -32603;
+};
 
 // RPC method result
 struct RPCResult {
     bool success = true;
-    Json::Value result;
+    JsonValue result;
     std::string error;
     int errorCode = 0;
 };
@@ -26,7 +44,7 @@ struct RPCResult {
 // RPC request structure
 struct RPCRequest {
     std::string method;
-    Json::Value params;
+    JsonValue params;
     std::string id;
     std::string jsonrpc = "2.0";
 };
@@ -55,8 +73,8 @@ struct TransactionInfo {
     uint32_t vsize;
     uint32_t weight;
     uint32_t locktime;
-    std::vector<Json::Value> vin;
-    std::vector<Json::Value> vout;
+    std::vector<JsonValue> vin;
+    std::vector<JsonValue> vout;
     std::string hex;
     std::string blockhash;
     uint32_t confirmations;
@@ -135,7 +153,7 @@ private:
     std::mutex walletMutex;
     
     // RPC method handlers
-    std::unordered_map<std::string, std::function<RPCResult(const Json::Value&)>> methodHandlers;
+    std::unordered_map<std::string, std::function<RPCResult(const JsonValue&)>> methodHandlers;
     
     // Wallet management
     std::unordered_map<std::string, std::shared_ptr<Wallet>> wallets;
@@ -165,7 +183,7 @@ public:
     
     // Request processing
     std::string processRequest(const std::string& request);
-    RPCResult executeMethod(const std::string& method, const Json::Value& params);
+    RPCResult executeMethod(const std::string& method, const JsonValue& params);
     
 private:
     // Server setup
@@ -180,137 +198,137 @@ private:
     // === BLOCKCHAIN RPC METHODS ===
     
     // Block and blockchain info
-    RPCResult getbestblockhash(const Json::Value& params);
-    RPCResult getblock(const Json::Value& params);
-    RPCResult getblockchaininfo(const Json::Value& params);
-    RPCResult getblockcount(const Json::Value& params);
-    RPCResult getblockhash(const Json::Value& params);
-    RPCResult getblockheader(const Json::Value& params);
-    RPCResult getchaintips(const Json::Value& params);
-    RPCResult getdifficulty(const Json::Value& params);
+    RPCResult getbestblockhash(const JsonValue& params);
+    RPCResult getblock(const JsonValue& params);
+    RPCResult getblockchaininfo(const JsonValue& params);
+    RPCResult getblockcount(const JsonValue& params);
+    RPCResult getblockhash(const JsonValue& params);
+    RPCResult getblockheader(const JsonValue& params);
+    RPCResult getchaintips(const JsonValue& params);
+    RPCResult getdifficulty(const JsonValue& params);
     
     // Transaction methods
-    RPCResult getrawtransaction(const Json::Value& params);
-    RPCResult sendrawtransaction(const Json::Value& params);
-    RPCResult gettransaction(const Json::Value& params);
-    RPCResult listtransactions(const Json::Value& params);
-    RPCResult gettxout(const Json::Value& params);
-    RPCResult gettxoutproof(const Json::Value& params);
-    RPCResult verifytxoutproof(const Json::Value& params);
+    RPCResult getrawtransaction(const JsonValue& params);
+    RPCResult sendrawtransaction(const JsonValue& params);
+    RPCResult gettransaction(const JsonValue& params);
+    RPCResult listtransactions(const JsonValue& params);
+    RPCResult gettxout(const JsonValue& params);
+    RPCResult gettxoutproof(const JsonValue& params);
+    RPCResult verifytxoutproof(const JsonValue& params);
     
     // === WALLET RPC METHODS ===
     
     // Wallet management
-    RPCResult createwallet(const Json::Value& params);
-    RPCResult loadwallet(const Json::Value& params);
-    RPCResult unloadwallet(const Json::Value& params);
-    RPCResult listwallets(const Json::Value& params);
-    RPCResult getwalletinfo(const Json::Value& params);
-    RPCResult encryptwallet(const Json::Value& params);
-    RPCResult walletpassphrase(const Json::Value& params);
-    RPCResult walletlock(const Json::Value& params);
+    RPCResult createwallet(const JsonValue& params);
+    RPCResult loadwallet(const JsonValue& params);
+    RPCResult unloadwallet(const JsonValue& params);
+    RPCResult listwallets(const JsonValue& params);
+    RPCResult getwalletinfo(const JsonValue& params);
+    RPCResult encryptwallet(const JsonValue& params);
+    RPCResult walletpassphrase(const JsonValue& params);
+    RPCResult walletlock(const JsonValue& params);
     
     // Address management
-    RPCResult getnewaddress(const Json::Value& params);
-    RPCResult getaddressinfo(const Json::Value& params);
-    RPCResult validateaddress(const Json::Value& params);
-    RPCResult listreceivedbyaddress(const Json::Value& params);
-    RPCResult listaddressgroupings(const Json::Value& params);
+    RPCResult getnewaddress(const JsonValue& params);
+    RPCResult getaddressinfo(const JsonValue& params);
+    RPCResult validateaddress(const JsonValue& params);
+    RPCResult listreceivedbyaddress(const JsonValue& params);
+    RPCResult listaddressgroupings(const JsonValue& params);
     
     // Balance and funds
-    RPCResult getbalance(const Json::Value& params);
-    RPCResult getunconfirmedbalance(const Json::Value& params);
-    RPCResult listunspent(const Json::Value& params);
-    RPCResult lockunspent(const Json::Value& params);
-    RPCResult listlockunspent(const Json::Value& params);
+    RPCResult getbalance(const JsonValue& params);
+    RPCResult getunconfirmedbalance(const JsonValue& params);
+    RPCResult listunspent(const JsonValue& params);
+    RPCResult lockunspent(const JsonValue& params);
+    RPCResult listlockunspent(const JsonValue& params);
     
     // Sending transactions
-    RPCResult sendtoaddress(const Json::Value& params);
-    RPCResult sendmany(const Json::Value& params);
-    RPCResult createrawtransaction(const Json::Value& params);
-    RPCResult signrawtransaction(const Json::Value& params);
-    RPCResult fundrawtransaction(const Json::Value& params);
+    RPCResult sendtoaddress(const JsonValue& params);
+    RPCResult sendmany(const JsonValue& params);
+    RPCResult createrawtransaction(const JsonValue& params);
+    RPCResult signrawtransaction(const JsonValue& params);
+    RPCResult fundrawtransaction(const JsonValue& params);
     
     // HD wallet methods
-    RPCResult getmnemonic(const Json::Value& params);
-    RPCResult importmnemonic(const Json::Value& params);
-    RPCResult derivenewaddress(const Json::Value& params);
+    RPCResult getmnemonic(const JsonValue& params);
+    RPCResult importmnemonic(const JsonValue& params);
+    RPCResult derivenewaddress(const JsonValue& params);
     
     // === MINING RPC METHODS ===
     
     // Mining operations
-    RPCResult getblocktemplate(const Json::Value& params);
-    RPCResult submitblock(const Json::Value& params);
-    RPCResult getmininginfo(const Json::Value& params);
-    RPCResult getnetworkhashps(const Json::Value& params);
-    RPCResult prioritisetransaction(const Json::Value& params);
+    RPCResult getblocktemplate(const JsonValue& params);
+    RPCResult submitblock(const JsonValue& params);
+    RPCResult getmininginfo(const JsonValue& params);
+    RPCResult getnetworkhashps(const JsonValue& params);
+    RPCResult prioritisetransaction(const JsonValue& params);
     
     // Mining pool methods
-    RPCResult getwork(const Json::Value& params);
-    RPCResult submitwork(const Json::Value& params);
-    RPCResult getauxblock(const Json::Value& params);
+    RPCResult getwork(const JsonValue& params);
+    RPCResult submitwork(const JsonValue& params);
+    RPCResult getauxblock(const JsonValue& params);
     
     // === STAKING RPC METHODS ===
     
     // Staking operations
-    RPCResult getstakinginfo(const Json::Value& params);
-    RPCResult setstaking(const Json::Value& params);
-    RPCResult liststaking(const Json::Value& params);
-    RPCResult createstake(const Json::Value& params);
-    RPCResult withdrawstake(const Json::Value& params);
-    RPCResult getvalidators(const Json::Value& params);
-    RPCResult getvalidatorinfo(const Json::Value& params);
+    RPCResult getstakinginfo(const JsonValue& params);
+    RPCResult setstaking(const JsonValue& params);
+    RPCResult liststaking(const JsonValue& params);
+    RPCResult createstake(const JsonValue& params);
+    RPCResult withdrawstake(const JsonValue& params);
+    RPCResult getvalidators(const JsonValue& params);
+    RPCResult getvalidatorinfo(const JsonValue& params);
     
     // === NETWORK RPC METHODS ===
     
     // Network information
-    RPCResult getnetworkinfo(const Json::Value& params);
-    RPCResult getpeerinfo(const Json::Value& params);
-    RPCResult getconnectioncount(const Json::Value& params);
-    RPCResult addnode(const Json::Value& params);
-    RPCResult removenode(const Json::Value& params);
-    RPCResult getnettotals(const Json::Value& params);
+    RPCResult getnetworkinfo(const JsonValue& params);
+    RPCResult getpeerinfo(const JsonValue& params);
+    RPCResult getconnectioncount(const JsonValue& params);
+    RPCResult addnode(const JsonValue& params);
+    RPCResult removenode(const JsonValue& params);
+    RPCResult getnettotals(const JsonValue& params);
     
     // === ORACLE RPC METHODS ===
     
     // Price oracle methods
-    RPCResult getprice(const Json::Value& params);
-    RPCResult getpricehistory(const Json::Value& params);
-    RPCResult submitprice(const Json::Value& params);
-    RPCResult getoracles(const Json::Value& params);
+    RPCResult getprice(const JsonValue& params);
+    RPCResult getpricehistory(const JsonValue& params);
+    RPCResult submitprice(const JsonValue& params);
+    RPCResult getoracles(const JsonValue& params);
     
     // === GOLD TOKEN RPC METHODS ===
     
     // GXC-G token methods
-    RPCResult mintgoldtokens(const Json::Value& params);
-    RPCResult burngoldtokens(const Json::Value& params);
-    RPCResult getgoldbalance(const Json::Value& params);
-    RPCResult getgoldreserves(const Json::Value& params);
-    RPCResult transfergoldtokens(const Json::Value& params);
+    RPCResult mintgoldtokens(const JsonValue& params);
+    RPCResult burngoldtokens(const JsonValue& params);
+    RPCResult getgoldbalance(const JsonValue& params);
+    RPCResult getgoldreserves(const JsonValue& params);
+    RPCResult transfergoldtokens(const JsonValue& params);
     
     // === GOVERNANCE RPC METHODS ===
     
     // Governance methods
-    RPCResult submitproposal(const Json::Value& params);
-    RPCResult listvotes(const Json::Value& params);
-    RPCResult vote(const Json::Value& params);
-    RPCResult getproposal(const Json::Value& params);
-    RPCResult listproposals(const Json::Value& params);
+    RPCResult submitproposal(const JsonValue& params);
+    RPCResult listvotes(const JsonValue& params);
+    RPCResult vote(const JsonValue& params);
+    RPCResult getproposal(const JsonValue& params);
+    RPCResult listproposals(const JsonValue& params);
     
     // === UTILITY RPC METHODS ===
     
     // Utility methods
-    RPCResult help(const Json::Value& params);
-    RPCResult stop(const Json::Value& params);
-    RPCResult uptime(const Json::Value& params);
-    RPCResult getmemoryinfo(const Json::Value& params);
-    RPCResult ping(const Json::Value& params);
+    RPCResult help(const JsonValue& params);
+    RPCResult stop(const JsonValue& params);
+    RPCResult uptime(const JsonValue& params);
+    RPCResult getmemoryinfo(const JsonValue& params);
+    RPCResult ping(const JsonValue& params);
     
     // Helper methods
-    Json::Value transactionToJson(const TransactionInfo& tx);
-    Json::Value blockToJson(const BlockInfo& block);
-    Json::Value walletToJson(const WalletInfo& wallet);
-    Json::Value peerToJson(const struct PeerInfo& peer);
+    JsonValue transactionToJson(const TransactionInfo& tx);
+    JsonValue blockToJson(const BlockInfo& block);
+    JsonValue walletToJson(const WalletInfo& wallet);
+    JsonValue peerToJson(const struct PeerInfo& peer);
     
     // Error codes
     static constexpr int RPC_MISC_ERROR = -1;
@@ -334,6 +352,61 @@ private:
     static constexpr int RPC_WALLET_WRONG_ENC_STATE = -15;
     static constexpr int RPC_WALLET_ENCRYPTION_FAILED = -16;
     static constexpr int RPC_WALLET_ALREADY_UNLOCKED = -17;
+};
+
+// RPC API class (simplified interface for node_main)
+class RPCAPI {
+private:
+    Blockchain* blockchain;
+    Network* network;
+    uint16_t serverPort;
+    std::atomic<bool> isRunning;
+    std::thread serverThread;
+    std::unordered_map<std::string, std::function<JsonValue(const JsonValue&)>> rpcMethods;
+    
+    void registerMethods();
+    void serverLoop();
+    std::string createSuccessResponse(const JsonValue& result, const JsonValue& id);
+    std::string createErrorResponse(int code, const std::string& message, const JsonValue& id);
+    
+    // RPC method implementations
+    JsonValue getBlockchainInfo(const JsonValue& params);
+    JsonValue getBestBlockHash(const JsonValue& params);
+    JsonValue getBlockCount(const JsonValue& params);
+    JsonValue getDifficulty(const JsonValue& params);
+    JsonValue getBlock(const JsonValue& params);
+    JsonValue getBlockHash(const JsonValue& params);
+    JsonValue getRawTransaction(const JsonValue& params);
+    JsonValue sendRawTransaction(const JsonValue& params);
+    JsonValue getTransaction(const JsonValue& params);
+    JsonValue listTransactions(const JsonValue& params);
+    JsonValue getBalance(const JsonValue& params);
+    JsonValue getNewAddress(const JsonValue& params);
+    JsonValue sendToAddress(const JsonValue& params);
+    JsonValue validateAddress(const JsonValue& params);
+    JsonValue listAccounts(const JsonValue& params);
+    JsonValue getMiningInfo(const JsonValue& params);
+    JsonValue getNetworkHashPS(const JsonValue& params);
+    JsonValue submitBlock(const JsonValue& params);
+    JsonValue getBlockTemplate(const JsonValue& params);
+    JsonValue getPeerInfo(const JsonValue& params);
+    JsonValue getConnectionCount(const JsonValue& params);
+    JsonValue addNode(const JsonValue& params);
+    JsonValue disconnectNode(const JsonValue& params);
+    JsonValue help(const JsonValue& params);
+    JsonValue stopNode(const JsonValue& params);
+    JsonValue getInfo(const JsonValue& params);
+    
+public:
+    RPCAPI(Blockchain* blockchain, uint16_t port);
+    RPCAPI(Blockchain* blockchain, Network* network, uint16_t port);
+    ~RPCAPI();
+    
+    bool start();
+    bool start(uint16_t port);
+    void stop();
+    void processRequests();
+    std::string processRequest(const std::string& request);
 };
 
 // REST API server for lightweight access
@@ -385,8 +458,8 @@ public:
     // Broadcasting
     void broadcastNewBlock(const std::string& blockHash);
     void broadcastNewTransaction(const std::string& txHash);
-    void broadcastPriceUpdate(const Json::Value& priceData);
-    void broadcastMiningUpdate(const Json::Value& miningData);
+    void broadcastPriceUpdate(const JsonValue& priceData);
+    void broadcastMiningUpdate(const JsonValue& miningData);
     
 private:
     void handleConnection(int clientSocket);

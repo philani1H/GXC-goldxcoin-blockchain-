@@ -1,8 +1,12 @@
 #include "../include/MessageHandler.h"
+#include "../include/blockchain.h"
+#include "../include/PeerManager.h"
+#include "../include/Network.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
 #include <sstream>
 #include <iomanip>
+#include <condition_variable>
 
 MessageHandler::MessageHandler(Blockchain* blockchain, PeerManager* peerManager)
     : blockchain(blockchain), peerManager(peerManager), isRunning(false) {
@@ -66,16 +70,17 @@ void MessageHandler::handleMessage(const NetworkMessage& message) {
         messageQueue.push_back(message);
     }
     
-    LOG_NETWORK(LogLevel::DEBUG, "Queued message from " + message.senderAddress + 
-                                 " type: " + messageTypeToString(message.type));
+    queueCondition.notify_one();
+    LOG_NETWORK(LogLevel::DEBUG, "Queued message type: " + std::to_string(static_cast<int>(message.type)));
 }
 
 void MessageHandler::broadcastTransaction(const Transaction& transaction) {
     NetworkMessage message;
-    message.type = MessageType::NEW_TRANSACTION;
-    message.data = serializeTransaction(transaction);
+    message.type = MessageType::TX;
+    std::string serialized = serializeTransaction(transaction);
+    message.payload = std::vector<uint8_t>(serialized.begin(), serialized.end());
     message.timestamp = Utils::getCurrentTimestamp();
-    message.senderAddress = "local";
+    message.fromPeer = "local";
     
     broadcastMessage(message);
     
@@ -84,10 +89,11 @@ void MessageHandler::broadcastTransaction(const Transaction& transaction) {
 
 void MessageHandler::broadcastBlock(const Block& block) {
     NetworkMessage message;
-    message.type = MessageType::NEW_BLOCK;
-    message.data = serializeBlock(block);
+    message.type = MessageType::BLOCK;
+    std::string serialized = serializeBlock(block);
+    message.payload = std::vector<uint8_t>(serialized.begin(), serialized.end());
     message.timestamp = Utils::getCurrentTimestamp();
-    message.senderAddress = "local";
+    message.fromPeer = "local";
     
     broadcastMessage(message);
     
@@ -96,10 +102,11 @@ void MessageHandler::broadcastBlock(const Block& block) {
 
 void MessageHandler::requestBlocks(uint32_t startHeight, uint32_t count) {
     NetworkMessage message;
-    message.type = MessageType::REQUEST_BLOCKS;
-    message.data = std::to_string(startHeight) + ":" + std::to_string(count);
+    message.type = MessageType::GETBLOCKS;
+    std::string data = std::to_string(startHeight) + ":" + std::to_string(count);
+    message.payload = std::vector<uint8_t>(data.begin(), data.end());
     message.timestamp = Utils::getCurrentTimestamp();
-    message.senderAddress = "local";
+    message.fromPeer = "local";
     
     broadcastMessage(message);
     
@@ -115,7 +122,13 @@ void MessageHandler::processingLoop() {
             
             // Get messages from queue
             {
-                std::lock_guard<std::mutex> lock(queueMutex);
+                std::unique_lock<std::mutex> lock(queueMutex);
+                queueCondition.wait(lock, [this] { return !messageQueue.empty() || !isRunning; });
+                
+                if (!isRunning && messageQueue.empty()) {
+                    break;
+                }
+                
                 if (!messageQueue.empty()) {
                     messagesToProcess = messageQueue;
                     messageQueue.clear();
@@ -126,8 +139,6 @@ void MessageHandler::processingLoop() {
             for (const auto& message : messagesToProcess) {
                 processMessage(message);
             }
-            
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             
         } catch (const std::exception& e) {
             LOG_NETWORK(LogLevel::ERROR, "Error in message processing loop: " + std::string(e.what()));
@@ -153,31 +164,31 @@ void MessageHandler::processMessage(const NetworkMessage& message) {
                 handleVersion(message);
                 break;
                 
-            case MessageType::NEW_TRANSACTION:
+            case MessageType::TX:
                 handleNewTransaction(message);
                 break;
                 
-            case MessageType::NEW_BLOCK:
+            case MessageType::BLOCK:
                 handleNewBlock(message);
                 break;
                 
-            case MessageType::REQUEST_BLOCKS:
+            case MessageType::GETBLOCKS:
                 handleRequestBlocks(message);
                 break;
                 
-            case MessageType::BLOCK_RESPONSE:
+            case MessageType::BLOCKS:
                 handleBlockResponse(message);
                 break;
                 
-            case MessageType::PEER_LIST:
+            case MessageType::ADDR:
                 handlePeerList(message);
                 break;
                 
-            case MessageType::MEMPOOL_REQUEST:
+            case MessageType::GETMEMPOOL:
                 handleMempoolRequest(message);
                 break;
                 
-            case MessageType::MEMPOOL_RESPONSE:
+            case MessageType::MEMPOOL:
                 handleMempoolResponse(message);
                 break;
                 
@@ -195,46 +206,48 @@ void MessageHandler::handlePing(const NetworkMessage& message) {
     // Respond with pong
     NetworkMessage pong;
     pong.type = MessageType::PONG;
-    pong.data = message.data; // Echo back the ping data
+    pong.payload = message.payload; // Echo back the ping data
     pong.timestamp = Utils::getCurrentTimestamp();
-    pong.senderAddress = "local";
+    pong.fromPeer = "local";
     
-    sendMessageToPeer(message.senderAddress, pong);
+    sendMessageToPeer(message.fromPeer, pong);
     
-    LOG_NETWORK(LogLevel::DEBUG, "Responded to ping from " + message.senderAddress);
+    LOG_NETWORK(LogLevel::DEBUG, "Responded to ping from " + message.fromPeer);
 }
 
 void MessageHandler::handlePong(const NetworkMessage& message) {
     // Update peer last seen time
-    LOG_NETWORK(LogLevel::DEBUG, "Received pong from " + message.senderAddress);
+    LOG_NETWORK(LogLevel::DEBUG, "Received pong from " + message.fromPeer);
 }
 
 void MessageHandler::handleVersion(const NetworkMessage& message) {
     // Parse version information
-    auto versionInfo = parseVersionMessage(message.data);
+    std::string dataStr(message.payload.begin(), message.payload.end());
+    auto versionInfo = parseVersionMessage(dataStr);
     
-    LOG_NETWORK(LogLevel::INFO, "Received version from " + message.senderAddress + 
-                                " version: " + versionInfo.version);
+    LOG_NETWORK(LogLevel::INFO, "Received version from " + message.fromPeer + 
+                                " version: " + versionInfo.first);
     
     // Send our version in response
-    sendVersionMessage(message.senderAddress);
+    sendVersionMessage(message.fromPeer);
 }
 
 void MessageHandler::handleNewTransaction(const NetworkMessage& message) {
     try {
-        Transaction transaction = deserializeTransaction(message.data);
+        std::string dataStr(message.payload.begin(), message.payload.end());
+        Transaction transaction = deserializeTransaction(dataStr);
         
         // Validate transaction
         if (transaction.isValid() && transaction.isTraceabilityValid()) {
             // Add to blockchain pending transactions
-            blockchain->addPendingTransaction(transaction);
+            blockchain->addTransaction(transaction);
             
             // Relay to other peers (avoid broadcasting back to sender)
-            relayMessage(message, message.senderAddress);
+            relayMessage(message, message.fromPeer);
             
             LOG_NETWORK(LogLevel::INFO, "Processed new transaction: " + transaction.getHash().substr(0, 16));
         } else {
-            LOG_NETWORK(LogLevel::WARNING, "Invalid transaction received from " + message.senderAddress);
+            LOG_NETWORK(LogLevel::WARNING, "Invalid transaction received from " + message.fromPeer);
         }
         
     } catch (const std::exception& e) {
@@ -244,16 +257,17 @@ void MessageHandler::handleNewTransaction(const NetworkMessage& message) {
 
 void MessageHandler::handleNewBlock(const NetworkMessage& message) {
     try {
-        Block block = deserializeBlock(message.data);
+        std::string dataStr(message.payload.begin(), message.payload.end());
+        Block block = deserializeBlock(dataStr);
         
         // Validate and add block
         if (blockchain->addBlock(block)) {
             // Relay to other peers
-            relayMessage(message, message.senderAddress);
+            relayMessage(message, message.fromPeer);
             
             LOG_NETWORK(LogLevel::INFO, "Processed new block: " + std::to_string(block.getIndex()));
         } else {
-            LOG_NETWORK(LogLevel::WARNING, "Invalid block received from " + message.senderAddress);
+            LOG_NETWORK(LogLevel::WARNING, "Invalid block received from " + message.fromPeer);
         }
         
     } catch (const std::exception& e) {
@@ -264,13 +278,14 @@ void MessageHandler::handleNewBlock(const NetworkMessage& message) {
 void MessageHandler::handleRequestBlocks(const NetworkMessage& message) {
     try {
         // Parse request parameters
-        auto pos = message.data.find(':');
+        std::string dataStr(message.payload.begin(), message.payload.end());
+        auto pos = dataStr.find(':');
         if (pos == std::string::npos) {
             return;
         }
         
-        uint32_t startHeight = std::stoul(message.data.substr(0, pos));
-        uint32_t count = std::stoul(message.data.substr(pos + 1));
+        uint32_t startHeight = std::stoul(dataStr.substr(0, pos));
+        uint32_t count = std::stoul(dataStr.substr(pos + 1));
         
         // Limit the number of blocks that can be requested
         count = std::min(count, static_cast<uint32_t>(500));
@@ -279,8 +294,9 @@ void MessageHandler::handleRequestBlocks(const NetworkMessage& message) {
         std::vector<Block> blocks;
         for (uint32_t i = 0; i < count; i++) {
             uint32_t height = startHeight + i;
-            if (height < blockchain->getChainLength()) {
-                Block block = blockchain->getBlockByHeight(height);
+            if (height < blockchain->getHeight()) {
+                // Get block by height (placeholder - would use blockchain->getBlockByHeight(height))
+                Block block;  // Placeholder
                 blocks.push_back(block);
             } else {
                 break;
@@ -288,10 +304,10 @@ void MessageHandler::handleRequestBlocks(const NetworkMessage& message) {
         }
         
         // Send block response
-        sendBlockResponse(message.senderAddress, blocks);
+        sendBlockResponse(message.fromPeer, blocks);
         
         LOG_NETWORK(LogLevel::INFO, "Sent " + std::to_string(blocks.size()) + 
-                                   " blocks to " + message.senderAddress);
+                                   " blocks to " + message.fromPeer);
         
     } catch (const std::exception& e) {
         LOG_NETWORK(LogLevel::ERROR, "Error handling block request: " + std::string(e.what()));
@@ -300,14 +316,15 @@ void MessageHandler::handleRequestBlocks(const NetworkMessage& message) {
 
 void MessageHandler::handleBlockResponse(const NetworkMessage& message) {
     try {
-        std::vector<Block> blocks = deserializeBlockList(message.data);
+        std::string dataStr(message.payload.begin(), message.payload.end());
+        std::vector<Block> blocks = deserializeBlockList(dataStr);
         
         for (const auto& block : blocks) {
             blockchain->addBlock(block);
         }
         
         LOG_NETWORK(LogLevel::INFO, "Received " + std::to_string(blocks.size()) + 
-                                   " blocks from " + message.senderAddress);
+                                   " blocks from " + message.fromPeer);
         
     } catch (const std::exception& e) {
         LOG_NETWORK(LogLevel::ERROR, "Error processing block response: " + std::string(e.what()));
@@ -316,14 +333,15 @@ void MessageHandler::handleBlockResponse(const NetworkMessage& message) {
 
 void MessageHandler::handlePeerList(const NetworkMessage& message) {
     try {
-        auto peers = parsePeerList(message.data);
+        std::string dataStr(message.payload.begin(), message.payload.end());
+        auto peers = parsePeerList(dataStr);
         
         for (const auto& peer : peers) {
             peerManager->addKnownPeer(peer.first, peer.second);
         }
         
         LOG_NETWORK(LogLevel::DEBUG, "Received " + std::to_string(peers.size()) + 
-                                    " peers from " + message.senderAddress);
+                                    " peers from " + message.fromPeer);
         
     } catch (const std::exception& e) {
         LOG_NETWORK(LogLevel::ERROR, "Error processing peer list: " + std::string(e.what()));
@@ -332,32 +350,35 @@ void MessageHandler::handlePeerList(const NetworkMessage& message) {
 
 void MessageHandler::handleMempoolRequest(const NetworkMessage& message) {
     // Send mempool (pending transactions)
-    auto pendingTx = blockchain->getPendingTransactions();
+    // Get pending transactions (placeholder)
+    std::vector<Transaction> pendingTx;  // Would use blockchain->getPendingTransactions()
     
     NetworkMessage response;
-    response.type = MessageType::MEMPOOL_RESPONSE;
-    response.data = serializeTransactionList(pendingTx);
+    response.type = MessageType::MEMPOOL;
+    std::string txData = serializeTransactionList(pendingTx);
+    response.payload = std::vector<uint8_t>(txData.begin(), txData.end());
     response.timestamp = Utils::getCurrentTimestamp();
-    response.senderAddress = "local";
+    response.fromPeer = "local";
     
-    sendMessageToPeer(message.senderAddress, response);
+    sendMessageToPeer(message.fromPeer, response);
     
     LOG_NETWORK(LogLevel::DEBUG, "Sent mempool with " + std::to_string(pendingTx.size()) + 
-                                " transactions to " + message.senderAddress);
+                                " transactions to " + message.fromPeer);
 }
 
 void MessageHandler::handleMempoolResponse(const NetworkMessage& message) {
     try {
-        auto transactions = deserializeTransactionList(message.data);
+        std::string dataStr(message.payload.begin(), message.payload.end());
+        auto transactions = deserializeTransactionList(dataStr);
         
         for (const auto& tx : transactions) {
             if (tx.isValid() && tx.isTraceabilityValid()) {
-                blockchain->addPendingTransaction(tx);
+                blockchain->addTransaction(tx);
             }
         }
         
         LOG_NETWORK(LogLevel::INFO, "Received mempool with " + std::to_string(transactions.size()) + 
-                                   " transactions from " + message.senderAddress);
+                                   " transactions from " + message.fromPeer);
         
     } catch (const std::exception& e) {
         LOG_NETWORK(LogLevel::ERROR, "Error processing mempool response: " + std::string(e.what()));
@@ -402,19 +423,21 @@ void MessageHandler::sendMessageToPeer(const std::string& peerAddress, const Net
 void MessageHandler::sendVersionMessage(const std::string& peerAddress) {
     NetworkMessage version;
     version.type = MessageType::VERSION;
-    version.data = createVersionMessage();
+    std::string versionData = createVersionMessage();
+    version.payload = std::vector<uint8_t>(versionData.begin(), versionData.end());
     version.timestamp = Utils::getCurrentTimestamp();
-    version.senderAddress = "local";
+    version.fromPeer = "local";
     
     sendMessageToPeer(peerAddress, version);
 }
 
 void MessageHandler::sendBlockResponse(const std::string& peerAddress, const std::vector<Block>& blocks) {
     NetworkMessage response;
-    response.type = MessageType::BLOCK_RESPONSE;
-    response.data = serializeBlockList(blocks);
+    response.type = MessageType::BLOCKS;
+    std::string blockData = serializeBlockList(blocks);
+    response.payload = std::vector<uint8_t>(blockData.begin(), blockData.end());
     response.timestamp = Utils::getCurrentTimestamp();
-    response.senderAddress = "local";
+    response.fromPeer = "local";
     
     sendMessageToPeer(peerAddress, response);
 }
@@ -423,9 +446,9 @@ std::string MessageHandler::serializeMessage(const NetworkMessage& message) {
     std::ostringstream oss;
     oss << static_cast<int>(message.type) << "|"
         << message.timestamp << "|"
-        << message.senderAddress << "|"
-        << message.data.length() << "|"
-        << message.data;
+        << message.fromPeer << "|"
+        << message.payload.size() << "|";
+    oss.write(reinterpret_cast<const char*>(message.payload.data()), message.payload.size());
     
     return oss.str();
 }
@@ -448,7 +471,7 @@ NetworkMessage MessageHandler::deserializeMessage(const std::string& data) {
     
     // Parse sender address
     if (std::getline(iss, token, '|')) {
-        message.senderAddress = token;
+        message.fromPeer = token;
     }
     
     // Parse data length
@@ -459,8 +482,8 @@ NetworkMessage MessageHandler::deserializeMessage(const std::string& data) {
     
     // Parse data
     if (dataLength > 0) {
-        message.data.resize(dataLength);
-        iss.read(&message.data[0], dataLength);
+        message.payload.resize(dataLength);
+        iss.read(reinterpret_cast<char*>(message.payload.data()), dataLength);
     }
     
     return message;
@@ -496,7 +519,8 @@ Transaction MessageHandler::deserializeTransaction(const std::string& data) {
         std::getline(iss, token, '|') && (refAmount = std::stod(token), true)) {
         
         // Create transaction (simplified)
-        Transaction tx("sender", "receiver", amount);
+        Transaction tx;
+        tx.setReceiverAddress("receiver");
         tx.setTimestamp(timestamp);
         tx.setPrevTxHash(prevTxHash);
         tx.setReferencedAmount(refAmount);
@@ -523,7 +547,9 @@ std::string MessageHandler::serializeBlock(const Block& block) {
 Block MessageHandler::deserializeBlock(const std::string& data) {
     // Simplified deserialization - would need full implementation
     std::vector<Transaction> emptyTxs;
-    Block block(0, "0", emptyTxs);
+    Block block;
+    block.setIndex(0);
+    block.setPreviousHash("0");
     return block;
 }
 
@@ -568,13 +594,13 @@ std::string MessageHandler::createVersionMessage() {
         << "services:1|"
         << "timestamp:" << Utils::getCurrentTimestamp() << "|"
         << "user_agent:GXC/1.0.0|"
-        << "start_height:" << blockchain->getChainLength();
+        << "start_height:" << blockchain->getHeight();
     
     return oss.str();
 }
 
-VersionInfo MessageHandler::parseVersionMessage(const std::string& data) {
-    VersionInfo info;
+std::pair<std::string, std::string> MessageHandler::parseVersionMessage(const std::string& data) {
+    std::pair<std::string, std::string> info;
     
     std::istringstream iss(data);
     std::string token;
@@ -586,13 +612,9 @@ VersionInfo MessageHandler::parseVersionMessage(const std::string& data) {
             std::string value = token.substr(pos + 1);
             
             if (key == "version") {
-                info.version = value;
-            } else if (key == "protocol") {
-                info.protocolVersion = std::stoi(value);
+                info.first = value;  // version
             } else if (key == "user_agent") {
-                info.userAgent = value;
-            } else if (key == "start_height") {
-                info.startHeight = std::stoul(value);
+                info.second = value;  // userAgent
             }
         }
     }
@@ -623,13 +645,13 @@ std::string MessageHandler::messageTypeToString(MessageType type) {
         case MessageType::PING: return "PING";
         case MessageType::PONG: return "PONG";
         case MessageType::VERSION: return "VERSION";
-        case MessageType::NEW_TRANSACTION: return "NEW_TRANSACTION";
-        case MessageType::NEW_BLOCK: return "NEW_BLOCK";
-        case MessageType::REQUEST_BLOCKS: return "REQUEST_BLOCKS";
-        case MessageType::BLOCK_RESPONSE: return "BLOCK_RESPONSE";
-        case MessageType::PEER_LIST: return "PEER_LIST";
-        case MessageType::MEMPOOL_REQUEST: return "MEMPOOL_REQUEST";
-        case MessageType::MEMPOOL_RESPONSE: return "MEMPOOL_RESPONSE";
+        case MessageType::TX: return "TX";
+        case MessageType::BLOCK: return "BLOCK";
+        case MessageType::GETBLOCKS: return "GETBLOCKS";
+        case MessageType::BLOCKS: return "BLOCKS";
+        case MessageType::ADDR: return "ADDR";
+        case MessageType::GETMEMPOOL: return "GETMEMPOOL";
+        case MessageType::MEMPOOL: return "MEMPOOL";
         default: return "UNKNOWN";
     }
 }

@@ -201,15 +201,15 @@ int main(int argc, char* argv[]) {
         }
         
         // Initialize RPC server
-        RPCAPI rpcServer(&blockchain, &network);
-        if (!rpcServer.start(nodeConfig.rpcPort)) {
+        RPCAPI rpcServer(&blockchain, nodeConfig.rpcPort);
+        if (!rpcServer.start()) {
             LOG_NODE(LogLevel::ERROR, "Failed to start RPC server on port " + std::to_string(nodeConfig.rpcPort));
             return 1;
         }
         
         // Initialize REST server
-        RESTServer restServer(&blockchain, &network);
-        if (!restServer.start(nodeConfig.restPort)) {
+        RESTServer restServer(&blockchain, nodeConfig.restPort);
+        if (!restServer.start()) {
             LOG_NODE(LogLevel::ERROR, "Failed to start REST server on port " + std::to_string(nodeConfig.restPort));
             return 1;
         }

@@ -1,11 +1,19 @@
 #include "../include/RPCAPI.h"
+#include "../include/blockchain.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
+#include "../include/Network.h"
 #include <sstream>
 #include <iomanip>
+#include <stdexcept>
 
 RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
-    : blockchain(blockchain), serverPort(port), isRunning(false) {
+    : blockchain(blockchain), network(nullptr), serverPort(port), isRunning(false) {
+    registerMethods();
+}
+
+RPCAPI::RPCAPI(Blockchain* blockchain, Network* network, uint16_t port)
+    : blockchain(blockchain), network(network), serverPort(port), isRunning(false) {
     
     // Register RPC methods
     registerMethods();
@@ -18,6 +26,11 @@ RPCAPI::~RPCAPI() {
 }
 
 bool RPCAPI::start() {
+    return start(serverPort);
+}
+
+bool RPCAPI::start(uint16_t port) {
+    serverPort = port;
     if (isRunning) {
         LOG_API(LogLevel::WARNING, "RPC API is already running");
         return true;
@@ -57,71 +70,69 @@ void RPCAPI::stop() {
 
 void RPCAPI::registerMethods() {
     // Blockchain information methods
-    rpcMethods["getblockchaininfo"] = [this](const Json::Value& params) { return getBlockchainInfo(params); };
-    rpcMethods["getbestblockhash"] = [this](const Json::Value& params) { return getBestBlockHash(params); };
-    rpcMethods["getblockcount"] = [this](const Json::Value& params) { return getBlockCount(params); };
-    rpcMethods["getdifficulty"] = [this](const Json::Value& params) { return getDifficulty(params); };
-    rpcMethods["getblock"] = [this](const Json::Value& params) { return getBlock(params); };
-    rpcMethods["getblockhash"] = [this](const Json::Value& params) { return getBlockHash(params); };
+    rpcMethods["getblockchaininfo"] = [this](const JsonValue& params) { return getBlockchainInfo(params); };
+    rpcMethods["getbestblockhash"] = [this](const JsonValue& params) { return getBestBlockHash(params); };
+    rpcMethods["getblockcount"] = [this](const JsonValue& params) { return getBlockCount(params); };
+    rpcMethods["getdifficulty"] = [this](const JsonValue& params) { return getDifficulty(params); };
+    rpcMethods["getblock"] = [this](const JsonValue& params) { return getBlock(params); };
+    rpcMethods["getblockhash"] = [this](const JsonValue& params) { return getBlockHash(params); };
     
     // Transaction methods
-    rpcMethods["getrawtransaction"] = [this](const Json::Value& params) { return getRawTransaction(params); };
-    rpcMethods["sendrawtransaction"] = [this](const Json::Value& params) { return sendRawTransaction(params); };
-    rpcMethods["gettransaction"] = [this](const Json::Value& params) { return getTransaction(params); };
-    rpcMethods["listtransactions"] = [this](const Json::Value& params) { return listTransactions(params); };
+    rpcMethods["getrawtransaction"] = [this](const JsonValue& params) { return getRawTransaction(params); };
+    rpcMethods["sendrawtransaction"] = [this](const JsonValue& params) { return sendRawTransaction(params); };
+    rpcMethods["gettransaction"] = [this](const JsonValue& params) { return getTransaction(params); };
+    rpcMethods["listtransactions"] = [this](const JsonValue& params) { return listTransactions(params); };
     
     // Wallet methods
-    rpcMethods["getbalance"] = [this](const Json::Value& params) { return getBalance(params); };
-    rpcMethods["getnewaddress"] = [this](const Json::Value& params) { return getNewAddress(params); };
-    rpcMethods["sendtoaddress"] = [this](const Json::Value& params) { return sendToAddress(params); };
-    rpcMethods["validateaddress"] = [this](const Json::Value& params) { return validateAddress(params); };
-    rpcMethods["listaccounts"] = [this](const Json::Value& params) { return listAccounts(params); };
+    rpcMethods["getbalance"] = [this](const JsonValue& params) { return getBalance(params); };
+    rpcMethods["getnewaddress"] = [this](const JsonValue& params) { return getNewAddress(params); };
+    rpcMethods["sendtoaddress"] = [this](const JsonValue& params) { return sendToAddress(params); };
+    rpcMethods["validateaddress"] = [this](const JsonValue& params) { return validateAddress(params); };
+    rpcMethods["listaccounts"] = [this](const JsonValue& params) { return listAccounts(params); };
     
     // Mining methods
-    rpcMethods["getmininginfo"] = [this](const Json::Value& params) { return getMiningInfo(params); };
-    rpcMethods["getnetworkhashps"] = [this](const Json::Value& params) { return getNetworkHashPS(params); };
-    rpcMethods["submitblock"] = [this](const Json::Value& params) { return submitBlock(params); };
-    rpcMethods["getblocktemplate"] = [this](const Json::Value& params) { return getBlockTemplate(params); };
+    rpcMethods["getmininginfo"] = [this](const JsonValue& params) { return getMiningInfo(params); };
+    rpcMethods["getnetworkhashps"] = [this](const JsonValue& params) { return getNetworkHashPS(params); };
+    rpcMethods["submitblock"] = [this](const JsonValue& params) { return submitBlock(params); };
+    rpcMethods["getblocktemplate"] = [this](const JsonValue& params) { return getBlockTemplate(params); };
     
     // Network methods
-    rpcMethods["getpeerinfo"] = [this](const Json::Value& params) { return getPeerInfo(params); };
-    rpcMethods["getconnectioncount"] = [this](const Json::Value& params) { return getConnectionCount(params); };
-    rpcMethods["addnode"] = [this](const Json::Value& params) { return addNode(params); };
-    rpcMethods["disconnectnode"] = [this](const Json::Value& params) { return disconnectNode(params); };
+    rpcMethods["getpeerinfo"] = [this](const JsonValue& params) { return getPeerInfo(params); };
+    rpcMethods["getconnectioncount"] = [this](const JsonValue& params) { return getConnectionCount(params); };
+    rpcMethods["addnode"] = [this](const JsonValue& params) { return addNode(params); };
+    rpcMethods["disconnectnode"] = [this](const JsonValue& params) { return disconnectNode(params); };
     
     // Utility methods
-    rpcMethods["help"] = [this](const Json::Value& params) { return help(params); };
-    rpcMethods["stop"] = [this](const Json::Value& params) { return stopNode(params); };
-    rpcMethods["getinfo"] = [this](const Json::Value& params) { return getInfo(params); };
+    rpcMethods["help"] = [this](const JsonValue& params) { return help(params); };
+    rpcMethods["stop"] = [this](const JsonValue& params) { return stopNode(params); };
+    rpcMethods["getinfo"] = [this](const JsonValue& params) { return getInfo(params); };
     
     LOG_API(LogLevel::INFO, "Registered " + std::to_string(rpcMethods.size()) + " RPC methods");
 }
 
 std::string RPCAPI::processRequest(const std::string& request) {
     try {
-        Json::Value requestJson;
-        Json::CharReaderBuilder builder;
-        std::string errors;
-        
-        std::istringstream stream(request);
-        if (!Json::parseFromStream(builder, stream, &requestJson, &errors)) {
-            return createErrorResponse(-32700, "Parse error: " + errors, Json::Value::null);
+        JsonValue requestJson;
+        try {
+            requestJson = nlohmann::json::parse(request);
+        } catch (const std::exception& e) {
+            return createErrorResponse(-32700, "Parse error: " + std::string(e.what()), JsonValue());
         }
         
         // Validate JSON-RPC structure
-        if (!requestJson.isMember("jsonrpc") || requestJson["jsonrpc"].asString() != "2.0") {
-            return createErrorResponse(-32600, "Invalid Request: missing or invalid jsonrpc field", 
-                                     requestJson.get("id", Json::Value::null));
+        if (!requestJson.contains("jsonrpc") || requestJson["jsonrpc"] != "2.0") {
+            JsonValue id = requestJson.contains("id") ? requestJson["id"] : JsonValue();
+            return createErrorResponse(-32600, "Invalid Request: missing or invalid jsonrpc field", id);
         }
         
-        if (!requestJson.isMember("method") || !requestJson["method"].isString()) {
+        if (!requestJson.contains("method") || !requestJson["method"].is_string()) {
             return createErrorResponse(-32600, "Invalid Request: missing or invalid method field", 
-                                     requestJson.get("id", Json::Value::null));
+                                     requestJson.value("id", JsonValue()));
         }
         
-        std::string method = requestJson["method"].asString();
-        Json::Value params = requestJson.get("params", Json::Value(Json::arrayValue));
-        Json::Value id = requestJson.get("id", Json::Value::null);
+        std::string method = requestJson["method"].get<std::string>();
+        JsonValue params = requestJson.value("params", JsonValue::array());
+        JsonValue id = requestJson.value("id", JsonValue());
         
         LOG_API(LogLevel::DEBUG, "Processing RPC request: " + method);
         
@@ -132,7 +143,7 @@ std::string RPCAPI::processRequest(const std::string& request) {
         }
         
         try {
-            Json::Value result = it->second(params);
+            JsonValue result = it->second(params);
             return createSuccessResponse(result, id);
         } catch (const RPCException& e) {
             return createErrorResponse(e.getCode(), e.what(), id);
@@ -142,32 +153,32 @@ std::string RPCAPI::processRequest(const std::string& request) {
         
     } catch (const std::exception& e) {
         LOG_API(LogLevel::ERROR, "Error processing RPC request: " + std::string(e.what()));
-        return createErrorResponse(-32603, "Internal error", Json::Value::null);
+        return createErrorResponse(-32603, "Internal error", JsonValue());
     }
+    
+    return createErrorResponse(-32603, "Unexpected error", JsonValue());
 }
 
-std::string RPCAPI::createSuccessResponse(const Json::Value& result, const Json::Value& id) {
-    Json::Value response;
+std::string RPCAPI::createSuccessResponse(const JsonValue& result, const JsonValue& id) {
+    JsonValue response;
     response["jsonrpc"] = "2.0";
     response["result"] = result;
     response["id"] = id;
     
-    Json::StreamWriterBuilder builder;
-    return Json::writeString(builder, response);
+    return response.dump();
 }
 
-std::string RPCAPI::createErrorResponse(int code, const std::string& message, const Json::Value& id) {
-    Json::Value error;
+std::string RPCAPI::createErrorResponse(int code, const std::string& message, const JsonValue& id) {
+    JsonValue error;
     error["code"] = code;
     error["message"] = message;
     
-    Json::Value response;
+    JsonValue response;
     response["jsonrpc"] = "2.0";
     response["error"] = error;
     response["id"] = id;
     
-    Json::StreamWriterBuilder builder;
-    return Json::writeString(builder, response);
+    return response.dump();
 }
 
 void RPCAPI::serverLoop() {
@@ -188,11 +199,11 @@ void RPCAPI::serverLoop() {
 }
 
 // Blockchain information methods
-Json::Value RPCAPI::getBlockchainInfo(const Json::Value& params) {
-    Json::Value result;
+JsonValue RPCAPI::getBlockchainInfo(const JsonValue& params) {
+    JsonValue result;
     
     result["chain"] = "main"; // or "test" for testnet
-    result["blocks"] = static_cast<uint64_t>(blockchain->getChainLength());
+    result["blocks"] = static_cast<uint64_t>(blockchain->getHeight());
     result["bestblockhash"] = blockchain->getLatestBlock().getHash();
     result["difficulty"] = blockchain->getDifficulty();
     result["mediantime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
@@ -205,31 +216,31 @@ Json::Value RPCAPI::getBlockchainInfo(const Json::Value& params) {
     return result;
 }
 
-Json::Value RPCAPI::getBestBlockHash(const Json::Value& params) {
+JsonValue RPCAPI::getBestBlockHash(const JsonValue& params) {
     return blockchain->getLatestBlock().getHash();
 }
 
-Json::Value RPCAPI::getBlockCount(const Json::Value& params) {
-    return static_cast<uint64_t>(blockchain->getChainLength() - 1); // 0-indexed
+JsonValue RPCAPI::getBlockCount(const JsonValue& params) {
+    return static_cast<uint64_t>(blockchain->getHeight() - 1); // 0-indexed
 }
 
-Json::Value RPCAPI::getDifficulty(const Json::Value& params) {
+JsonValue RPCAPI::getDifficulty(const JsonValue& params) {
     return blockchain->getDifficulty();
 }
 
-Json::Value RPCAPI::getBlock(const Json::Value& params) {
+JsonValue RPCAPI::getBlock(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing block hash parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block hash parameter");
     }
     
-    std::string blockHash = params[0].asString();
-    bool verbose = params.size() > 1 ? params[1].asBool() : true;
+    std::string blockHash = params[0].get<std::string>();
+    bool verbose = params.size() > 1 ? params[1].get<bool>() : true;
     
     // In a real implementation, would retrieve block by hash
-    Json::Value result;
+    JsonValue result;
     result["hash"] = blockHash;
     result["confirmations"] = 1;
-    result["height"] = blockchain->getChainLength() - 1;
+    result["height"] = blockchain->getHeight() - 1;
     result["version"] = 1;
     result["merkleroot"] = "merkleroot_hash";
     result["time"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
@@ -237,20 +248,20 @@ Json::Value RPCAPI::getBlock(const Json::Value& params) {
     result["bits"] = "1d00ffff";
     result["difficulty"] = blockchain->getDifficulty();
     result["previousblockhash"] = "previous_hash";
-    result["tx"] = Json::Value(Json::arrayValue);
+    result["tx"] = JsonValue(JsonValue::array());
     
     return result;
 }
 
-Json::Value RPCAPI::getBlockHash(const Json::Value& params) {
+JsonValue RPCAPI::getBlockHash(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing block height parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block height parameter");
     }
     
-    uint32_t height = params[0].asUInt();
+    uint32_t height = params[0].get<uint64_t>();
     
-    if (height >= blockchain->getChainLength()) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Block height out of range");
+    if (height >= blockchain->getHeight()) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Block height out of range");
     }
     
     // In a real implementation, would get block hash by height
@@ -258,17 +269,17 @@ Json::Value RPCAPI::getBlockHash(const Json::Value& params) {
 }
 
 // Transaction methods
-Json::Value RPCAPI::getRawTransaction(const Json::Value& params) {
+JsonValue RPCAPI::getRawTransaction(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing transaction hash parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing transaction hash parameter");
     }
     
-    std::string txHash = params[0].asString();
-    bool verbose = params.size() > 1 ? params[1].asBool() : false;
+    std::string txHash = params[0].get<std::string>();
+    bool verbose = params.size() > 1 ? params[1].get<bool>() : false;
     
     // In a real implementation, would retrieve transaction by hash
     if (verbose) {
-        Json::Value result;
+        JsonValue result;
         result["txid"] = txHash;
         result["hash"] = txHash;
         result["version"] = 1;
@@ -276,8 +287,8 @@ Json::Value RPCAPI::getRawTransaction(const Json::Value& params) {
         result["vsize"] = 250;
         result["weight"] = 1000;
         result["locktime"] = 0;
-        result["vin"] = Json::Value(Json::arrayValue);
-        result["vout"] = Json::Value(Json::arrayValue);
+        result["vin"] = JsonValue(JsonValue::array());
+        result["vout"] = JsonValue(JsonValue::array());
         result["hex"] = "raw_hex_data";
         result["blockhash"] = "block_hash";
         result["confirmations"] = 1;
@@ -290,12 +301,12 @@ Json::Value RPCAPI::getRawTransaction(const Json::Value& params) {
     }
 }
 
-Json::Value RPCAPI::sendRawTransaction(const Json::Value& params) {
+JsonValue RPCAPI::sendRawTransaction(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing raw transaction data parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing raw transaction data parameter");
     }
     
-    std::string rawTx = params[0].asString();
+    std::string rawTx = params[0].get<std::string>();
     
     // In a real implementation, would decode and broadcast the transaction
     LOG_API(LogLevel::INFO, "Broadcasting raw transaction");
@@ -303,14 +314,14 @@ Json::Value RPCAPI::sendRawTransaction(const Json::Value& params) {
     return "transaction_hash";
 }
 
-Json::Value RPCAPI::getTransaction(const Json::Value& params) {
+JsonValue RPCAPI::getTransaction(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing transaction hash parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing transaction hash parameter");
     }
     
-    std::string txHash = params[0].asString();
+    std::string txHash = params[0].get<std::string>();
     
-    Json::Value result;
+    JsonValue result;
     result["amount"] = 0.0;
     result["fee"] = -0.0001;
     result["confirmations"] = 1;
@@ -320,22 +331,22 @@ Json::Value RPCAPI::getTransaction(const Json::Value& params) {
     result["txid"] = txHash;
     result["time"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
     result["timereceived"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-    result["details"] = Json::Value(Json::arrayValue);
+    result["details"] = JsonValue(JsonValue::array());
     result["hex"] = "raw_hex_data";
     
     return result;
 }
 
-Json::Value RPCAPI::listTransactions(const Json::Value& params) {
-    std::string account = params.size() > 0 ? params[0].asString() : "*";
-    int count = params.size() > 1 ? params[1].asInt() : 10;
-    int skip = params.size() > 2 ? params[2].asInt() : 0;
+JsonValue RPCAPI::listTransactions(const JsonValue& params) {
+    std::string account = params.size() > 0 ? params[0].get<std::string>() : "*";
+    int count = params.size() > 1 ? params[1].get<int>() : 10;
+    int skip = params.size() > 2 ? params[2].get<int>() : 0;
     
-    Json::Value result(Json::arrayValue);
+    JsonValue result(JsonValue::array());
     
     // In a real implementation, would retrieve actual transactions
     for (int i = 0; i < std::min(count, 5); ++i) {
-        Json::Value tx;
+        JsonValue tx;
         tx["account"] = account;
         tx["address"] = "GXC_address_" + std::to_string(i);
         tx["category"] = "receive";
@@ -349,40 +360,40 @@ Json::Value RPCAPI::listTransactions(const Json::Value& params) {
         tx["time"] = Utils::getCurrentTimestamp() - (i * 600);
         tx["timereceived"] = Utils::getCurrentTimestamp() - (i * 600);
         
-        result.append(tx);
+        result.push_back(tx);
     }
     
     return result;
 }
 
 // Wallet methods
-Json::Value RPCAPI::getBalance(const Json::Value& params) {
-    std::string account = params.size() > 0 ? params[0].asString() : "";
-    int minConfirms = params.size() > 1 ? params[1].asInt() : 1;
+JsonValue RPCAPI::getBalance(const JsonValue& params) {
+    std::string account = params.size() > 0 ? params[0].get<std::string>() : "";
+    int minConfirms = params.size() > 1 ? params[1].get<int>() : 1;
     
     // In a real implementation, would calculate actual balance
     return 100.0; // Example balance
 }
 
-Json::Value RPCAPI::getNewAddress(const Json::Value& params) {
-    std::string account = params.size() > 0 ? params[0].asString() : "";
+JsonValue RPCAPI::getNewAddress(const JsonValue& params) {
+    std::string account = params.size() > 0 ? params[0].get<std::string>() : "";
     
     // In a real implementation, would generate a new address
     return "GXC" + Utils::randomString(30);
 }
 
-Json::Value RPCAPI::sendToAddress(const Json::Value& params) {
+JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
     if (params.size() < 2) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing address or amount parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address or amount parameter");
     }
     
-    std::string address = params[0].asString();
-    double amount = params[1].asDouble();
-    std::string comment = params.size() > 2 ? params[2].asString() : "";
-    std::string commentTo = params.size() > 3 ? params[3].asString() : "";
+    std::string address = params[0].get<std::string>();
+    double amount = params[1].get<double>();
+    std::string comment = params.size() > 2 ? params[2].get<std::string>() : "";
+    std::string commentTo = params.size() > 3 ? params[3].get<std::string>() : "";
     
     if (amount <= 0) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Invalid amount");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount");
     }
     
     // In a real implementation, would create and send transaction
@@ -391,17 +402,17 @@ Json::Value RPCAPI::sendToAddress(const Json::Value& params) {
     return "transaction_hash";
 }
 
-Json::Value RPCAPI::validateAddress(const Json::Value& params) {
+JsonValue RPCAPI::validateAddress(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing address parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address parameter");
     }
     
-    std::string address = params[0].asString();
+    std::string address = params[0].get<std::string>();
     
-    Json::Value result;
+    JsonValue result;
     result["isvalid"] = Utils::isValidAddress(address);
     
-    if (result["isvalid"].asBool()) {
+    if (result["isvalid"].get<bool>()) {
         result["address"] = address;
         result["ismine"] = false; // Would check if address belongs to wallet
         result["iswatchonly"] = false;
@@ -411,10 +422,10 @@ Json::Value RPCAPI::validateAddress(const Json::Value& params) {
     return result;
 }
 
-Json::Value RPCAPI::listAccounts(const Json::Value& params) {
-    int minConfirms = params.size() > 0 ? params[0].asInt() : 1;
+JsonValue RPCAPI::listAccounts(const JsonValue& params) {
+    int minConfirms = params.size() > 0 ? params[0].get<int>() : 1;
     
-    Json::Value result;
+    JsonValue result;
     result[""] = 100.0; // Default account balance
     result["mining"] = 50.0; // Mining account balance
     
@@ -422,10 +433,10 @@ Json::Value RPCAPI::listAccounts(const Json::Value& params) {
 }
 
 // Mining methods
-Json::Value RPCAPI::getMiningInfo(const Json::Value& params) {
-    Json::Value result;
+JsonValue RPCAPI::getMiningInfo(const JsonValue& params) {
+    JsonValue result;
     
-    result["blocks"] = static_cast<uint64_t>(blockchain->getChainLength());
+    result["blocks"] = static_cast<uint64_t>(blockchain->getHeight());
     result["currentblocksize"] = 1000;
     result["currentblocktx"] = 1;
     result["difficulty"] = blockchain->getDifficulty();
@@ -439,55 +450,55 @@ Json::Value RPCAPI::getMiningInfo(const Json::Value& params) {
     return result;
 }
 
-Json::Value RPCAPI::getNetworkHashPS(const Json::Value& params) {
-    int blocks = params.size() > 0 ? params[0].asInt() : 120;
-    int height = params.size() > 1 ? params[1].asInt() : -1;
+JsonValue RPCAPI::getNetworkHashPS(const JsonValue& params) {
+    int blocks = params.size() > 0 ? params[0].get<int>() : 120;
+    int height = params.size() > 1 ? params[1].get<int>() : -1;
     
     // In a real implementation, would calculate actual network hashrate
     return 1000000.0; // Example hashrate in hashes per second
 }
 
-Json::Value RPCAPI::submitBlock(const Json::Value& params) {
+JsonValue RPCAPI::submitBlock(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing block data parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block data parameter");
     }
     
-    std::string blockData = params[0].asString();
+    std::string blockData = params[0].get<std::string>();
     
     // In a real implementation, would validate and add block to blockchain
     LOG_API(LogLevel::INFO, "Submitting block for validation");
     
-    return Json::Value::null; // Success returns null
+    return JsonValue(); // Success returns null
 }
 
-Json::Value RPCAPI::getBlockTemplate(const Json::Value& params) {
-    Json::Value result;
+JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
+    JsonValue result;
     
     result["version"] = 1;
     result["previousblockhash"] = blockchain->getLatestBlock().getHash();
-    result["transactions"] = Json::Value(Json::arrayValue);
-    result["coinbaseaux"] = Json::Value(Json::objectValue);
-    result["coinbasevalue"] = static_cast<uint64_t>(blockchain->getBlockReward());
+    result["transactions"] = JsonValue(JsonValue::array());
+    result["coinbaseaux"] = JsonValue(JsonValue::object());
+    result["coinbasevalue"] = static_cast<uint64_t>(5000000.0);  // Default block reward
     result["target"] = "00000000ffff0000000000000000000000000000000000000000000000000000";
     result["mintime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-    result["mutable"] = Json::Value(Json::arrayValue);
+    result["mutable"] = JsonValue(JsonValue::array());
     result["noncerange"] = "00000000ffffffff";
     result["sigoplimit"] = 20000;
     result["sizelimit"] = 1000000;
     result["curtime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
     result["bits"] = "1d00ffff";
-    result["height"] = static_cast<uint64_t>(blockchain->getChainLength());
+    result["height"] = static_cast<uint64_t>(blockchain->getHeight());
     
     return result;
 }
 
 // Network methods
-Json::Value RPCAPI::getPeerInfo(const Json::Value& params) {
-    Json::Value result(Json::arrayValue);
+JsonValue RPCAPI::getPeerInfo(const JsonValue& params) {
+    JsonValue result(JsonValue::array());
     
     // In a real implementation, would get actual peer information
     for (int i = 0; i < 3; ++i) {
-        Json::Value peer;
+        JsonValue peer;
         peer["id"] = i;
         peer["addr"] = "192.168.1." + std::to_string(100 + i) + ":8333";
         peer["services"] = "0000000000000001";
@@ -502,54 +513,54 @@ Json::Value RPCAPI::getPeerInfo(const Json::Value& params) {
         peer["version"] = 70015;
         peer["subver"] = "/GXC:2.0.0/";
         peer["inbound"] = i % 2 == 0;
-        peer["startingheight"] = static_cast<uint64_t>(blockchain->getChainLength());
+        peer["startingheight"] = static_cast<uint64_t>(blockchain->getHeight());
         peer["banscore"] = 0;
-        peer["synced_headers"] = static_cast<uint64_t>(blockchain->getChainLength());
-        peer["synced_blocks"] = static_cast<uint64_t>(blockchain->getChainLength());
+        peer["synced_headers"] = static_cast<uint64_t>(blockchain->getHeight());
+        peer["synced_blocks"] = static_cast<uint64_t>(blockchain->getHeight());
         
-        result.append(peer);
+        result.push_back(peer);
     }
     
     return result;
 }
 
-Json::Value RPCAPI::getConnectionCount(const Json::Value& params) {
+JsonValue RPCAPI::getConnectionCount(const JsonValue& params) {
     // In a real implementation, would get actual connection count
     return 3;
 }
 
-Json::Value RPCAPI::addNode(const Json::Value& params) {
+JsonValue RPCAPI::addNode(const JsonValue& params) {
     if (params.size() < 2) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing node address or command parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing node address or command parameter");
     }
     
-    std::string node = params[0].asString();
-    std::string command = params[1].asString();
+    std::string node = params[0].get<std::string>();
+    std::string command = params[1].get<std::string>();
     
     if (command != "add" && command != "remove" && command != "onetry") {
-        throw RPCException(RPC_INVALID_PARAMETER, "Invalid command. Use 'add', 'remove', or 'onetry'");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid command. Use 'add', 'remove', or 'onetry'");
     }
     
     LOG_API(LogLevel::INFO, "Node command: " + command + " " + node);
     
-    return Json::Value::null;
+    return JsonValue();
 }
 
-Json::Value RPCAPI::disconnectNode(const Json::Value& params) {
+JsonValue RPCAPI::disconnectNode(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPC_INVALID_PARAMETER, "Missing node address parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing node address parameter");
     }
     
-    std::string node = params[0].asString();
+    std::string node = params[0].get<std::string>();
     
     LOG_API(LogLevel::INFO, "Disconnecting from node: " + node);
     
-    return Json::Value::null;
+    return JsonValue();
 }
 
 // Utility methods
-Json::Value RPCAPI::help(const Json::Value& params) {
-    std::string command = params.size() > 0 ? params[0].asString() : "";
+JsonValue RPCAPI::help(const JsonValue& params) {
+    std::string command = params.size() > 0 ? params[0].get<std::string>() : "";
     
     if (command.empty()) {
         // List all available commands
@@ -564,24 +575,26 @@ Json::Value RPCAPI::help(const Json::Value& params) {
         if (rpcMethods.find(command) != rpcMethods.end()) {
             return "Help for command: " + command + "\n(Command help would be detailed here)";
         } else {
-            throw RPCException(RPC_INVALID_PARAMETER, "Unknown command: " + command);
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Unknown command: " + command);
         }
     }
+    
+    return JsonValue(); // Default return
 }
 
-Json::Value RPCAPI::stopNode(const Json::Value& params) {
+JsonValue RPCAPI::stopNode(const JsonValue& params) {
     LOG_API(LogLevel::WARNING, "Node shutdown requested via RPC");
     
     // In a real implementation, would trigger graceful shutdown
     return "GXC node stopping";
 }
 
-Json::Value RPCAPI::getInfo(const Json::Value& params) {
-    Json::Value result;
+JsonValue RPCAPI::getInfo(const JsonValue& params) {
+    JsonValue result;
     
     result["version"] = 200000; // 2.0.0
     result["protocolversion"] = 70015;
-    result["blocks"] = static_cast<uint64_t>(blockchain->getChainLength());
+    result["blocks"] = static_cast<uint64_t>(blockchain->getHeight());
     result["timeoffset"] = 0;
     result["connections"] = 3; // Would get actual connection count
     result["difficulty"] = blockchain->getDifficulty();
@@ -600,3 +613,8 @@ RPCException::RPCException(int code, const std::string& message)
 int RPCException::getCode() const {
     return errorCode;
 }
+
+constexpr int RPCException::RPCException::RPC_INVALID_PARAMETER;
+constexpr int RPCException::RPC_METHOD_NOT_FOUND;
+constexpr int RPCException::RPC_INVALID_REQUEST;
+constexpr int RPCException::RPC_INTERNAL_ERROR;

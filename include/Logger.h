@@ -49,11 +49,12 @@ private:
     std::string getCurrentTimestamp() const;
     std::string logLevelToString(LogLevel level) const;
     
-    // Constructor/Destructor (private for singleton)
+    // Constructor (private for singleton)
     Logger();
-    ~Logger();
 
 public:
+    // Destructor (public so unique_ptr can delete)
+    ~Logger();
     // Singleton access
     static Logger& getInstance();
     static void cleanup();

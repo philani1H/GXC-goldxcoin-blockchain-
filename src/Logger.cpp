@@ -10,8 +10,7 @@
 std::unique_ptr<Logger> Logger::instance = nullptr;
 std::mutex Logger::instanceMutex;
 
-const uint32_t Logger::DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const uint32_t Logger::DEFAULT_MAX_FILES = 10;
+// Static const members are defined inline in C++17
 const std::string Logger::DEFAULT_LOG_FILE = "gxc.log";
 const std::string Logger::LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S";
 
@@ -51,17 +50,12 @@ bool Logger::initialize() {
 }
 
 bool Logger::initialize(const std::string& logPath, LogLevel minLevel) {
-    return getInstance().initialize(logPath, minLevel);
-}
-
-void Logger::shutdown() {
-    cleanup();
-}
-    logFilePath = logPath;
-    minLogLevel = minLevel;
+    Logger& logger = getInstance();
+    logger.logFilePath = logPath;
+    logger.minLogLevel = minLevel;
     
     // Create log directory if it doesn't exist
-    std::filesystem::path path(logFilePath);
+    std::filesystem::path path(logger.logFilePath);
     std::filesystem::path dir = path.parent_path();
     
     if (!dir.empty() && !std::filesystem::exists(dir)) {
@@ -69,18 +63,18 @@ void Logger::shutdown() {
     }
     
     // Open log file
-    logFile.open(logFilePath, std::ios::app);
-    if (!logFile.is_open()) {
-        std::cerr << "Failed to open log file: " << logFilePath << std::endl;
+    logger.logFile.open(logger.logFilePath, std::ios::app);
+    if (!logger.logFile.is_open()) {
+        std::cerr << "Failed to open log file: " << logger.logFilePath << std::endl;
         return false;
     }
     
     // Start async logging thread if enabled
-    if (asyncLogging) {
-        logThread = std::thread(&Logger::processLogQueue, this);
+    if (logger.asyncLogging) {
+        logger.logThread = std::thread(&Logger::processLogQueue, &logger);
     }
     
-    info("Logger initialized: " + logFilePath);
+    logger.info("Logger initialized: " + logger.logFilePath);
     return true;
 }
 

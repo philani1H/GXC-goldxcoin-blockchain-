@@ -1,9 +1,16 @@
 #include "../include/Network.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
+#include "../include/Block.h"
+#include "../include/transaction.h"
 #include <thread>
 #include <chrono>
 #include <algorithm>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 Network::Network() : isRunning(false), serverSocket(-1), port(0) {
     LOG_NETWORK(LogLevel::INFO, "Network instance created");
@@ -265,6 +272,8 @@ bool Network::connectToPeer(const std::string& host, int peerPort) {
         LOG_NETWORK(LogLevel::ERROR, "Exception connecting to peer: " + std::string(e.what()));
         return false;
     }
+    
+    return false; // Default return
 }
 
 bool Network::addPeer(const std::string& host, int peerPort, int socket) {
@@ -279,6 +288,8 @@ bool Network::addPeer(const std::string& host, int peerPort, int socket) {
     }
     
     // Check peer limit
+    const size_t MAX_PEERS = 125;
+    const size_t MIN_PEERS = 3;
     if (peers.size() >= MAX_PEERS) {
         LOG_NETWORK(LogLevel::WARNING, "Maximum peer count reached");
         return false;
@@ -342,7 +353,8 @@ void Network::maintainPeerConnections() {
     std::lock_guard<std::mutex> lock(peersMutex);
     
     // Try to maintain at least MIN_PEERS connections
-    if (peers.size() < MIN_PEERS) {
+        const size_t MIN_PEERS = 3;
+        if (peers.size() < MIN_PEERS) {
         // Try to connect to seed nodes
         connectToSeedNodes();
     }
@@ -357,6 +369,7 @@ void Network::connectToSeedNodes() {
         {"127.0.0.1", 9334} // Local test node
     };
     
+    const size_t MIN_PEERS = 3;
     for (const auto& [host, port] : seedNodes) {
         if (peers.size() >= MIN_PEERS) {
             break;
@@ -528,7 +541,7 @@ void Network::sendHandshake(const std::string& peerKey) {
 }
 
 bool Network::broadcastTransaction(const Transaction& tx) {
-    std::string message = R"({"type":"transaction","data":)" + tx.toJson() + "}";
+    std::string message = R"({"type":"transaction","hash":")" + tx.getHash() + "\"}";
     broadcastMessage(message);
     
     LOG_NETWORK(LogLevel::DEBUG, "Broadcasted transaction: " + tx.getHash());
@@ -536,7 +549,7 @@ bool Network::broadcastTransaction(const Transaction& tx) {
 }
 
 bool Network::broadcastBlock(const Block& block) {
-    std::string message = R"({"type":"block","data":)" + block.toJson() + "}";
+    std::string message = R"({"type":"block","hash":")" + block.getHash() + "\"}";
     broadcastMessage(message);
     
     LOG_NETWORK(LogLevel::DEBUG, "Broadcasted block: " + block.getHash());
@@ -544,7 +557,7 @@ bool Network::broadcastBlock(const Block& block) {
 }
 
 std::vector<std::string> Network::getPeers() const {
-    std::lock_guard<std::mutex> lock(peersMutex);
+    std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(peersMutex));
     
     std::vector<std::string> peerList;
     for (const auto& [peerKey, peer] : peers) {
@@ -557,7 +570,7 @@ std::vector<std::string> Network::getPeers() const {
 }
 
 size_t Network::getPeerCount() const {
-    std::lock_guard<std::mutex> lock(peersMutex);
+    std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(peersMutex));
     
     size_t count = 0;
     for (const auto& [peerKey, peer] : peers) {
@@ -569,28 +582,7 @@ size_t Network::getPeerCount() const {
     return count;
 }
 
-NetworkStats Network::getNetworkStats() const {
-    std::lock_guard<std::mutex> lock(peersMutex);
-    
-    NetworkStats stats;
-    stats.peersConnected = 0;
-    stats.bytesSent = 0;
-    stats.bytesReceived = 0;
-    stats.messagesSent = 0;
-    stats.messagesReceived = 0;
-    
-    for (const auto& [peerKey, peer] : peers) {
-        if (peer.connected) {
-            stats.peersConnected++;
-        }
-        stats.bytesSent += peer.bytesSent;
-        stats.bytesReceived += peer.bytesReceived;
-        stats.messagesSent += peer.messagesSent;
-        stats.messagesReceived += peer.messagesReceived;
-    }
-    
-    return stats;
-}
+// NetworkStats method removed - functionality moved to getPeerCount()
 
 void Network::update() {
     // Periodic network maintenance

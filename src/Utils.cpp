@@ -9,8 +9,8 @@
 
 namespace Utils {
 
-std::time_t getCurrentTimestamp() {
-    return std::time(nullptr);
+uint64_t getCurrentTimestamp() {
+    return static_cast<uint64_t>(std::time(nullptr));
 }
 
 uint32_t randomUint32() {

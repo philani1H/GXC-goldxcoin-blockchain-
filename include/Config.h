@@ -58,6 +58,12 @@ public:
     static uint32_t getMaxConnections();
     static std::vector<std::string> getBootstrapNodes();
     static bool isTestNet();
+    static bool isTestnet();
+    static int getNetworkPort();
+    static int getRPCPort();
+    static int getRESTPort();
+    static bool isInitialized();
+    static bool isTraceabilityEnabled();
     
     // Mining configuration
     static bool isMiningEnabled();
