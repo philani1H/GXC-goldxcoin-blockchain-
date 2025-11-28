@@ -2,13 +2,11 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "echo 'Using pre-built C++ binaries'"
+    "buildCommand": "pip install -r requirements.txt"
   },
   "deploy": {
-    "startCommand": "./start_gxc_node_railway.sh",
+    "startCommand": "python testnet_blockchain_node.py",
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10,
-    "healthcheckPath": "/",
-    "healthcheckTimeout": 100
+    "restartPolicyMaxRetries": 10
   }
 }
