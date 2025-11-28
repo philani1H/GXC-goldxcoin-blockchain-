@@ -1,9 +1,11 @@
 #include "../../include/mining/MiningManager.h"
 #include "../../include/Logger.h"
 #include "../../include/Utils.h"
+#include "../../include/HashUtils.h"
 #include <thread>
 #include <chrono>
 #include <algorithm>
+#include <sstream>
 
 MiningManager::MiningManager(Blockchain* blockchain)
     : blockchain(blockchain), isRunning(false), currentAlgorithm(MiningAlgorithm::SHA256),
@@ -131,7 +133,14 @@ std::vector<MinerInfo> MiningManager::getActiveMiners() const {
     std::vector<MinerInfo> activeMiners;
     for (const auto& miner : miners) {
         if (miner.second.active) {
-            activeMiners.push_back(miner.second);
+            MinerInfo info;
+            info.id = miner.second.id;
+            info.algorithm = miner.second.algorithm;
+            info.active = miner.second.active;
+            info.hashRate = miner.second.hashRate;
+            info.startTime = miner.second.startTime;
+            // Note: thread is not copied as it's not copyable
+            activeMiners.push_back(std::move(info));
         }
     }
     
@@ -267,20 +276,21 @@ BlockTemplate MiningManager::getCurrentBlockTemplate() {
     
     template_.previousHash = latestBlock.getHash();
     template_.height = latestBlock.getIndex() + 1;
-    template_.difficulty = blockchain->getCurrentDifficulty(BlockType::NORMAL);
+    template_.difficulty = blockchain->getDifficulty();
     template_.timestamp = Utils::getCurrentTimestamp();
     template_.minerAddress = minerAddress;
     
     // Add pending transactions with traceability validation
-    auto pendingTx = blockchain->getPendingTransactions();
+    auto pendingTx = blockchain->getPendingTransactions(100); // Get up to 100 pending transactions
     for (const auto& tx : pendingTx) {
         if (tx.isTraceabilityValid()) {
             template_.transactions.push_back(tx);
         }
     }
     
-    // Create coinbase transaction
-    Transaction coinbase(minerAddress, blockchain->getBlockReward());
+    // Create coinbase transaction (use default reward of 12.5 GXC)
+    double blockReward = 12.5; // Default block reward
+    Transaction coinbase(minerAddress, blockReward);
     template_.transactions.insert(template_.transactions.begin(), coinbase);
     
     return template_;
@@ -289,7 +299,7 @@ BlockTemplate MiningManager::getCurrentBlockTemplate() {
 bool MiningManager::mineSHA256(const BlockTemplate& blockTemplate, uint64_t nonce) {
     // Simplified SHA256 mining - in real implementation would use proper SHA256
     std::string blockData = serializeBlockTemplate(blockTemplate, nonce);
-    std::string hash = HashUtils::sha256(blockData);
+    std::string hash = sha256(blockData);
     
     // Check if hash meets difficulty target
     return checkDifficultyTarget(hash, blockTemplate.difficulty);
@@ -298,7 +308,7 @@ bool MiningManager::mineSHA256(const BlockTemplate& blockTemplate, uint64_t nonc
 bool MiningManager::mineEthash(const BlockTemplate& blockTemplate, uint64_t nonce) {
     // Simplified Ethash mining - in real implementation would use proper Ethash
     std::string blockData = serializeBlockTemplate(blockTemplate, nonce);
-    std::string hash = HashUtils::sha256(blockData + "ethash");
+    std::string hash = sha256(blockData + "ethash");
     
     return checkDifficultyTarget(hash, blockTemplate.difficulty);
 }
@@ -314,7 +324,7 @@ bool MiningManager::mineGXHash(const BlockTemplate& blockTemplate, uint64_t nonc
         }
     }
     
-    std::string hash = HashUtils::sha256(blockData + "gxhash");
+    std::string hash = sha256(blockData + "gxhash");
     
     return checkDifficultyTarget(hash, blockTemplate.difficulty);
 }
@@ -374,11 +384,16 @@ void MiningManager::submitToPool(const BlockTemplate& blockTemplate, uint64_t no
 }
 
 Block MiningManager::createBlockFromTemplate(const BlockTemplate& blockTemplate, uint64_t nonce) {
-    Block block(blockTemplate.height, blockTemplate.previousHash, blockTemplate.transactions);
+    Block block(blockTemplate.height, blockTemplate.previousHash, BlockType::POW_SHA256);
     block.setTimestamp(blockTemplate.timestamp);
     block.setNonce(nonce);
     block.setDifficulty(blockTemplate.difficulty);
     block.setMinerAddress(blockTemplate.minerAddress);
+    
+    // Add transactions
+    for (const auto& tx : blockTemplate.transactions) {
+        block.addTransaction(tx);
+    }
     
     return block;
 }
@@ -422,7 +437,8 @@ void MiningManager::updateMinerHashRate(const std::string& minerId, uint64_t has
 
 void MiningManager::checkForNewBlocks() {
     // Check if blockchain height has changed
-    uint32_t currentHeight = blockchain->getChainLength();
+    Block latestBlock = blockchain->getLatestBlock();
+    uint32_t currentHeight = latestBlock.getIndex();
     
     static uint32_t lastKnownHeight = 0;
     if (currentHeight > lastKnownHeight) {
@@ -430,13 +446,13 @@ void MiningManager::checkForNewBlocks() {
         lastKnownHeight = currentHeight;
         
         // Update difficulty
-        currentDifficulty = blockchain->getCurrentDifficulty(BlockType::NORMAL);
+        currentDifficulty = blockchain->getDifficulty();
     }
 }
 
 void MiningManager::adjustDifficulty() {
     // Let the blockchain handle difficulty adjustment
-    double newDifficulty = blockchain->getCurrentDifficulty(BlockType::NORMAL);
+    double newDifficulty = blockchain->getDifficulty();
     
     if (std::abs(newDifficulty - currentDifficulty) > 0.001) {
         setDifficulty(newDifficulty);
@@ -448,15 +464,15 @@ void MiningManager::printMiningStats() {
     
     LOG_MINING(LogLevel::INFO, "=== Mining Statistics ===");
     LOG_MINING(LogLevel::INFO, "Algorithm: " + algorithmToString(currentAlgorithm));
-    LOG_MINING(LogLevel::INFO, "Hash Rate: " + Utils::formatAmount(hashRate, 2) + " H/s");
+    LOG_MINING(LogLevel::INFO, "Hash Rate: " + std::to_string(hashRate) + " H/s");
     LOG_MINING(LogLevel::INFO, "Accepted Shares: " + std::to_string(acceptedShares));
     LOG_MINING(LogLevel::INFO, "Rejected Shares: " + std::to_string(rejectedShares));
-    LOG_MINING(LogLevel::INFO, "Difficulty: " + Utils::formatAmount(currentDifficulty, 2));
+    LOG_MINING(LogLevel::INFO, "Difficulty: " + std::to_string(currentDifficulty));
     LOG_MINING(LogLevel::INFO, "Active Miners: " + std::to_string(miners.size()));
     
     double efficiency = (acceptedShares + rejectedShares) > 0 ? 
         (static_cast<double>(acceptedShares) / (acceptedShares + rejectedShares)) * 100.0 : 0.0;
-    LOG_MINING(LogLevel::INFO, "Efficiency: " + Utils::formatAmount(efficiency, 1) + "%");
+    LOG_MINING(LogLevel::INFO, "Efficiency: " + std::to_string(efficiency) + "%");
     LOG_MINING(LogLevel::INFO, "========================");
 }
 
