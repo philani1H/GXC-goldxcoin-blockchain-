@@ -1,0 +1,16 @@
+[2025-11-28 08:33:36.258] [INFO] Logger initialized: gxc.log
+[2025-11-28 08:33:36.259] [INFO] GXC Node starting up
+[2025-11-28 08:33:36.259] [INFO] Configuration system initialized
+[2025-11-28 08:33:36.259] [INFO] Config updated: data_dir = ./gxc_data
+[2025-11-28 08:33:36.259] [INFO] Config updated: network_port = 9333
+[2025-11-28 08:33:36.259] [INFO] Config updated: rpc_port = 8545
+[2025-11-28 08:33:36.259] [INFO] Config updated: rest_port = 8080
+[2025-11-28 08:33:36.259] [INFO] Config updated: testnet = false
+[2025-11-28 08:33:36.259] [INFO] Data directory: ./gxc_data
+[2025-11-28 08:33:36.259] [INFO] [DATABASE] Database instance created
+[2025-11-28 08:33:36.259] [INFO] [DATABASE] Opening database: ./gxc_data/blockchain.db
+[2025-11-28 08:33:36.286] [INFO] [DATABASE] Database tables created successfully
+[2025-11-28 08:33:36.286] [INFO] [DATABASE] Database opened successfully
+[2025-11-28 08:33:36.286] [INFO] [BLOCKCHAIN] Blockchain instance created
+[2025-11-28 08:33:36.286] [INFO] [BLOCKCHAIN] Initializing blockchain
+[2025-11-28 08:33:36.286] [INFO] [BLOCKCHAIN] Creating genesis block
