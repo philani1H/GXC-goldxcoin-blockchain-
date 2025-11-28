@@ -232,7 +232,15 @@ class RPCHandler(BaseHTTPRequestHandler):
             elif method == 'submitblock' or method == 'gxc_submitBlock':
                 block_data = params[0] if params else {}
                 success = self.blockchain.submit_block(block_data)
-                result = None if success else "Block rejected"
+                if success:
+                    result = {
+                        'success': True,
+                        'height': block_data.get('height'),
+                        'hash': block_data.get('hash'),
+                        'reward': BLOCK_REWARD
+                    }
+                else:
+                    result = "Block rejected"
             elif method == 'getbestblockhash':
                 latest = self.blockchain.get_latest_block()
                 result = latest['hash'] if latest else '0' * 64

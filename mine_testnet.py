@@ -55,13 +55,23 @@ def mine_block():
     
     while True:
         # Create block hash
-        block_data = f"{template.get('height')}{template.get('previousblockhash')}{nonce}{time.time()}"
-        block_hash = hashlib.sha256(block_data.encode()).hexdigest()
+        block_string = f"{template.get('height')}{template.get('previousblockhash')}{nonce}{time.time()}"
+        block_hash = hashlib.sha256(block_string.encode()).hexdigest()
         
         # Check if valid (simple difficulty check)
         if block_hash.startswith('0'):  # Very easy for testnet
+            # Prepare complete block data
+            block_data = {
+                'hash': block_hash,
+                'previousblockhash': template.get('previousblockhash'),
+                'height': template.get('height'),
+                'nonce': nonce,
+                'miner': MINER_ADDRESS,
+                'timestamp': int(time.time())
+            }
+            
             # Submit block
-            result = rpc_call("submitblock", [{"nonce": nonce}, MINER_ADDRESS])
+            result = rpc_call("submitblock", [block_data])
             
             if result:
                 elapsed = time.time() - start_time
