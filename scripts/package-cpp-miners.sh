@@ -227,6 +227,11 @@ package_gui_miners() {
         "gxc-wallet"
         "gxc-node-gui"
         "gxc-mining-gui"
+        "gxc-miner-gui"
+        "gxc-gxhash-miner-gui"
+        "gxc-sha256-miner-gui"
+        "gxc-ethash-miner-gui"
+        "gxc-pool-proxy-gui"
     )
     
     local found_count=0

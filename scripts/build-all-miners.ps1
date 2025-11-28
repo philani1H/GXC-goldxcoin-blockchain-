@@ -32,7 +32,11 @@ try {
         cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_MINING_CLIENT=ON -DBUILD_GUI=ON -DBUILD_TESTS=OFF
         
         if ($LASTEXITCODE -ne 0) {
-            throw "CMake configuration failed"
+            Write-Host "⚠️  GUI build failed, trying without GUI..." -ForegroundColor Yellow
+            cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_MINING_CLIENT=ON -DBUILD_TESTS=OFF
+            if ($LASTEXITCODE -ne 0) {
+                throw "CMake configuration failed"
+            }
         }
     }
     
@@ -57,7 +61,16 @@ try {
     
     # Build GUI miners
     Write-Host "`nBuilding GUI miners (if Qt available)..." -ForegroundColor Cyan
-    $GuiMiners = @("gxc-mining-gui", "gxc-wallet", "gxc-node-gui")
+    $GuiMiners = @(
+        "gxc-mining-gui",
+        "gxc-wallet",
+        "gxc-node-gui",
+        "gxc-miner-gui",
+        "gxc-gxhash-miner-gui",
+        "gxc-sha256-miner-gui",
+        "gxc-ethash-miner-gui",
+        "gxc-pool-proxy-gui"
+    )
     
     foreach ($Miner in $GuiMiners) {
         Write-Host "Building $Miner..." -ForegroundColor Gray

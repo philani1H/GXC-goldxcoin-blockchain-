@@ -25,7 +25,10 @@ cd "$BUILD_DIR"
 
 if [ ! -f "CMakeCache.txt" ]; then
     echo "Configuring CMake..."
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_MINING_CLIENT=ON -DBUILD_GUI=ON -DBUILD_TESTS=OFF
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_MINING_CLIENT=ON -DBUILD_GUI=ON -DBUILD_TESTS=OFF || {
+        echo "⚠️  GUI build failed, trying without GUI..."
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_MINING_CLIENT=ON -DBUILD_TESTS=OFF
+    }
 fi
 
 echo "Building all miners..."
@@ -36,12 +39,17 @@ cmake --build . --target gxc-ethash-miner -j$(nproc) || echo "⚠️  gxc-ethash
 cmake --build . --target gxc-sha256-miner -j$(nproc) || echo "⚠️  gxc-sha256-miner build failed"
 cmake --build . --target gxc-pool-proxy -j$(nproc) || echo "⚠️  gxc-pool-proxy build failed"
 
-# Build GUI miners if Qt is available
-echo ""
-echo "Building GUI miners (if Qt available)..."
-cmake --build . --target gxc-mining-gui -j$(nproc) || echo "⚠️  gxc-mining-gui build failed (Qt may not be available)"
-cmake --build . --target gxc-wallet -j$(nproc) || echo "⚠️  gxc-wallet build failed (Qt may not be available)"
-cmake --build . --target gxc-node-gui -j$(nproc) || echo "⚠️  gxc-node-gui build failed (Qt may not be available)"
+    # Build GUI miners if Qt is available
+    echo ""
+    echo "Building GUI miners (if Qt available)..."
+    cmake --build . --target gxc-mining-gui -j$(nproc) || echo "⚠️  gxc-mining-gui build failed (Qt may not be available)"
+    cmake --build . --target gxc-wallet -j$(nproc) || echo "⚠️  gxc-wallet build failed (Qt may not be available)"
+    cmake --build . --target gxc-node-gui -j$(nproc) || echo "⚠️  gxc-node-gui build failed (Qt may not be available)"
+    cmake --build . --target gxc-miner-gui -j$(nproc) || echo "⚠️  gxc-miner-gui build failed (Qt may not be available)"
+    cmake --build . --target gxc-gxhash-miner-gui -j$(nproc) || echo "⚠️  gxc-gxhash-miner-gui build failed (Qt may not be available)"
+    cmake --build . --target gxc-sha256-miner-gui -j$(nproc) || echo "⚠️  gxc-sha256-miner-gui build failed (Qt may not be available)"
+    cmake --build . --target gxc-ethash-miner-gui -j$(nproc) || echo "⚠️  gxc-ethash-miner-gui build failed (Qt may not be available)"
+    cmake --build . --target gxc-pool-proxy-gui -j$(nproc) || echo "⚠️  gxc-pool-proxy-gui build failed (Qt may not be available)"
 
 cd "$PROJECT_ROOT"
 

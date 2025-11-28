@@ -178,7 +178,12 @@ function Package-GuiMiners {
     $GuiApps = @(
         "gxc-wallet",
         "gxc-node-gui",
-        "gxc-mining-gui"
+        "gxc-mining-gui",
+        "gxc-miner-gui",
+        "gxc-gxhash-miner-gui",
+        "gxc-sha256-miner-gui",
+        "gxc-ethash-miner-gui",
+        "gxc-pool-proxy-gui"
     )
     
     $FoundCount = 0
