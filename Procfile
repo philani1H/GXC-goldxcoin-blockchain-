@@ -1,1 +1,1 @@
-web: python testnet_blockchain_node.py
+web: ./start_gxc_node_railway.sh

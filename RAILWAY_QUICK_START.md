@@ -1,10 +1,17 @@
-# 🚀 Railway Quick Start - Deploy in 5 Minutes
+# 🚀 Railway Quick Start - Deploy C++ Node in 5 Minutes
 
 ## 📋 What You're Deploying
 
 ```
-ONLY the blockchain node → Railway (cloud)
+Production C++ Blockchain Node → Railway (cloud)
+- All mining algorithms (SHA-256, Ethash, GXHash)
+- RPC + REST + WebSocket APIs
+- High performance, production-ready
+
 Everything else → Runs locally, connects via URL
+- Miners (all algorithms)
+- Wallets
+- Explorers
 ```
 
 ---
@@ -36,7 +43,20 @@ When prompted:
 - Project name: `gxc-blockchain-node` (or any name)
 - Start from: `Empty project`
 
-### 4️⃣ Deploy (2 min)
+### 4️⃣ Create Volume for Blockchain Data (30 sec)
+
+```bash
+railway volume create gxc_blockchain_data
+```
+
+### 5️⃣ Set Environment Variables (30 sec)
+
+```bash
+railway variables set GXC_NETWORK=testnet
+railway variables set GXC_LOG_LEVEL=info
+```
+
+### 6️⃣ Deploy (2 min)
 
 ```bash
 railway up
@@ -48,7 +68,7 @@ Wait for:
 ✓ Deployment successful
 ```
 
-### 5️⃣ Get Your URL (30 sec)
+### 7️⃣ Get Your URL (30 sec)
 
 ```bash
 railway domain
@@ -59,7 +79,7 @@ Copy the URL, something like:
 https://gxc-blockchain-node-production.up.railway.app
 ```
 
-### 6️⃣ Test It (30 sec)
+### 8️⃣ Test It (30 sec)
 
 ```bash
 python test_railway_node.py https://gxc-blockchain-node-production.up.railway.app

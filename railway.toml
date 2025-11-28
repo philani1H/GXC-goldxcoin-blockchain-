@@ -1,0 +1,18 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "echo 'Using pre-built C++ binaries'"
+
+[deploy]
+startCommand = "./start_gxc_node_railway.sh"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# Persistent storage for blockchain data
+[[deploy.volumes]]
+name = "gxc_blockchain_data"
+mountPath = "/app/gxc_data"
+
+# Environment variables
+[deploy.env]
+GXC_NETWORK = "testnet"
+GXC_LOG_LEVEL = "info"
