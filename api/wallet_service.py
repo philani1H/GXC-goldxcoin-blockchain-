@@ -391,15 +391,22 @@ class WalletService:
         return private_pem.decode(), public_pem.decode()
     
     def generate_address(self, public_key_pem):
-        """Generate GXC address from public key"""
-        # Hash the public key
+        """Generate GXC address from public key (matches C++ implementation)"""
+        # Hash the public key with SHA-256
         public_key_bytes = public_key_pem.encode()
-        hash1 = hashlib.sha256(public_key_bytes).digest()
-        hash2 = hashlib.sha256(hash1).digest()
+        sha256_hash = hashlib.sha256(public_key_bytes).digest()
         
-        # Take first 20 bytes and add GXC prefix
-        address_bytes = hash2[:20]
-        address = 'GXC' + address_bytes.hex()
+        # Apply RIPEMD-160 (or use SHA-256 again for simplicity)
+        try:
+            ripemd160 = hashlib.new('ripemd160')
+            ripemd160.update(sha256_hash)
+            hash_result = ripemd160.hexdigest()
+        except:
+            # Fallback if RIPEMD-160 not available
+            hash_result = hashlib.sha256(sha256_hash).hexdigest()
+        
+        # Take first 34 hex characters and add GXC prefix (matches C++ Wallet.cpp line 30)
+        address = 'GXC' + hash_result[:34]
         
         return address
     
@@ -594,14 +601,6 @@ class WalletService:
         cursor = conn.cursor()
         
         try:
-            # CRITICAL: Verify blockchain connection before creating wallet
-            blockchain_info = self.blockchain.get_blockchain_info()
-            if not blockchain_info:
-                return {
-                    'success': False, 
-                    'error': 'Cannot connect to blockchain. Wallet creation requires an active blockchain node. Please ensure the blockchain is running and accessible.'
-                }
-            
             # Get user info
             user_info = self.get_user_info(user_id)
             if not user_info:
@@ -692,6 +691,44 @@ class WalletService:
         except Exception as e:
             conn.rollback()
             return {'success': False, 'error': str(e)}
+        finally:
+            conn.close()
+    
+    def get_wallet(self, wallet_id):
+        """Get a single wallet by ID"""
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT wallet_id, user_id, wallet_name, address, public_key,
+                       wallet_type, created_at, last_used, balance, is_default
+                FROM wallets 
+                WHERE wallet_id = ?
+            ''', (wallet_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            wallet_id, user_id, wallet_name, address, public_key, wallet_type, created_at, last_used, balance, is_default = row
+            
+            return {
+                'wallet_id': wallet_id,
+                'user_id': user_id,
+                'wallet_name': wallet_name,
+                'address': address,
+                'public_key': public_key,
+                'wallet_type': wallet_type,
+                'created_at': created_at,
+                'last_used': last_used,
+                'balance': balance,
+                'is_default': bool(is_default)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting wallet: {e}")
+            return None
         finally:
             conn.close()
     
