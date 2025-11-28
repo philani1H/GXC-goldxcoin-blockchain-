@@ -35,10 +35,10 @@ if __name__ == '__main__':
     print("=" * 60)
     print("GXC ASIC Mining Pool (SHA-256)")
     print("=" * 60)
-    print(f"Stratum: stratum+tcp://asic-pool.gxc.network:3333")
-    print(f"Dashboard: http://localhost:5001")
+    print(f"Stratum: stratum+tcp://localhost:3335")
+    print(f"Dashboard: http://localhost:6002")
     print(f"Algorithm: SHA-256 (ASIC)")
     print("=" * 60)
     
-    pool.run(host='0.0.0.0', port=5001, debug=False)
+    pool.run(host='0.0.0.0', port=6002, debug=False, allow_unsafe_werkzeug=True)
 

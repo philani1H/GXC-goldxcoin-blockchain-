@@ -35,10 +35,10 @@ if __name__ == '__main__':
     print("=" * 60)
     print("GXC General Mining Pool (All Algorithms)")
     print("=" * 60)
-    print(f"Stratum: stratum+tcp://pool.gxc.network:3333")
-    print(f"Dashboard: http://localhost:5000")
+    print(f"Stratum: stratum+tcp://localhost:3333")
+    print(f"Dashboard: http://localhost:6000")
     print(f"Algorithms: SHA-256, Ethash, GXHash")
     print("=" * 60)
     
-    pool.run(host='0.0.0.0', port=5000, debug=False)
+    pool.run(host='0.0.0.0', port=6000, debug=False, allow_unsafe_werkzeug=True)
 

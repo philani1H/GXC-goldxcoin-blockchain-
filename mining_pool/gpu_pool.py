@@ -35,10 +35,10 @@ if __name__ == '__main__':
     print("=" * 60)
     print("GXC GPU Mining Pool (Ethash)")
     print("=" * 60)
-    print(f"Stratum: stratum+tcp://gpu-pool.gxc.network:4444")
-    print(f"Dashboard: http://localhost:5002")
+    print(f"Stratum: stratum+tcp://localhost:3334")
+    print(f"Dashboard: http://localhost:6001")
     print(f"Algorithm: Ethash (GPU)")
     print("=" * 60)
     
-    pool.run(host='0.0.0.0', port=5002, debug=False)
+    pool.run(host='0.0.0.0', port=6001, debug=False, allow_unsafe_werkzeug=True)
 

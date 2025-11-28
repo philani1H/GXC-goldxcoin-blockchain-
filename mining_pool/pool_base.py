@@ -1212,11 +1212,11 @@ class MiningPool:
         conn.close()
         return blocks
     
-    def run(self, host='0.0.0.0', port=5000, debug=False):
+    def run(self, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=False):
         """Run the pool web server"""
         print(f"[{self.pool_name}] Starting web server on {host}:{port}")
         if self.socketio:
-            self.socketio.run(self.app, host=host, port=port, debug=debug)
+            self.socketio.run(self.app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=allow_unsafe_werkzeug)
         else:
             # For Vercel/serverless, just run Flask directly
             self.app.run(host=host, port=port, debug=debug)
