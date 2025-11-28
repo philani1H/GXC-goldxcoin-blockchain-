@@ -94,6 +94,17 @@
 
             <form method="POST" action="/create-wallet">
                 <div class="mb-3">
+                    <label class="form-label">Network</label>
+                    <select class="form-control" name="network" id="networkSelect" required>
+                        <option value="mainnet">Mainnet (Real GXC - Permanent)</option>
+                        <option value="testnet">Testnet (Test GXC - For Testing)</option>
+                    </select>
+                    <small class="form-text text-muted">
+                        <strong>Mainnet:</strong> Real coins with value. <strong>Testnet:</strong> Test coins for practice.
+                    </small>
+                </div>
+                
+                <div class="mb-3">
                     <label class="form-label">Wallet Name</label>
                     <input type="text" class="form-control" name="wallet_name" 
                            placeholder="My GXC Wallet" required>

@@ -1151,7 +1151,15 @@ def create_wallet_page():
     
     if request.method == 'POST':
         data = request.form
-        result = wallet_service.create_wallet(
+        
+        # Get network selection (mainnet or testnet)
+        network = data.get('network', 'mainnet')
+        testnet = (network == 'testnet')
+        
+        # Create appropriate wallet service for selected network
+        service = WalletService(testnet=testnet)
+        
+        result = service.create_wallet(
             user['user_id'],
             data.get('wallet_name'),
             data.get('password'),
@@ -1159,6 +1167,10 @@ def create_wallet_page():
         )
         
         if result['success']:
+            # Add network info to result
+            result['network'] = network
+            result['network_name'] = 'Testnet' if testnet else 'Mainnet'
+            
             # Store wallet data in session temporarily for success page
             session['new_wallet_data'] = result
             return redirect(url_for('wallet_success'))
