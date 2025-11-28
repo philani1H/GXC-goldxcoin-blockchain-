@@ -1,1 +1,0 @@
-/usr/bin/g++ -O3 -DNDEBUG "CMakeFiles/gxc-cli.dir/tools/cli_main.cpp.o" "CMakeFiles/gxc-cli.dir/tools/CliInterface.cpp.o" -o gxc-cli  libgxc_core.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl 

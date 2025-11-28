@@ -1,1 +1,0 @@
-/usr/bin/g++ -O3 -DNDEBUG "CMakeFiles/gxc-keygen.dir/tools/keygen_main.cpp.o" "CMakeFiles/gxc-keygen.dir/tools/KeyGenerator.cpp.o" -o gxc-keygen  libgxc_core.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl 

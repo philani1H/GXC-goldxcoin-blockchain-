@@ -862,14 +862,14 @@ endif()
 
 # Mining client executables
 if(BUILD_MINING_CLIENT)
-    # GXC Miner (all algorithms)
+    # GXC Miner (all algorithms) - CLI
     add_executable(gxc-miner
         mining/main.cpp
         mining/MinerGUI.cpp
     )
     target_link_libraries(gxc-miner gxc_mining gxc_core)
     
-    # Specialized miners
+    # Specialized miners - CLI
     add_executable(gxc-sha256-miner
         mining/sha256_main.cpp
     )
@@ -885,11 +885,49 @@ if(BUILD_MINING_CLIENT)
     )
     target_link_libraries(gxc-gxhash-miner gxc_mining gxc_core)
     
-    # Pool mining proxy
+    # Pool mining proxy - CLI
     add_executable(gxc-pool-proxy
         mining/pool_proxy_main.cpp
     )
     target_link_libraries(gxc-pool-proxy gxc_mining gxc_core)
+endif()
+
+# Mining GUI executables (if Qt available)
+if(BUILD_MINING_CLIENT AND BUILD_GUI AND QT_VERSION)
+    # Universal Miner GUI
+    add_executable(gxc-miner-gui
+        mining/miner_gui_main.cpp
+        mining/MinerGUI.cpp
+    )
+    target_link_libraries(gxc-miner-gui gxc_mining gxc_core ${QT_LIBRARIES})
+    
+    # GXHash Miner GUI
+    add_executable(gxc-gxhash-miner-gui
+        mining/gxhash_gui_main.cpp
+        mining/MinerGUI.cpp
+    )
+    target_link_libraries(gxc-gxhash-miner-gui gxc_mining gxc_core ${QT_LIBRARIES})
+    
+    # SHA256 Miner GUI
+    add_executable(gxc-sha256-miner-gui
+        mining/sha256_gui_main.cpp
+        mining/MinerGUI.cpp
+    )
+    target_link_libraries(gxc-sha256-miner-gui gxc_mining gxc_core ${QT_LIBRARIES})
+    
+    # Ethash Miner GUI
+    add_executable(gxc-ethash-miner-gui
+        mining/ethash_gui_main.cpp
+        mining/MinerGUI.cpp
+    )
+    target_link_libraries(gxc-ethash-miner-gui gxc_mining gxc_core ${QT_LIBRARIES})
+    
+    # Pool Proxy GUI
+    add_executable(gxc-pool-proxy-gui
+        mining/pool_proxy_gui_main.cpp
+        mining/MinerGUI.cpp
+    )
+    target_link_libraries(gxc-pool-proxy-gui gxc_mining gxc_core ${QT_LIBRARIES})
 endif()
 
 # Qt GUI applications
@@ -1121,6 +1159,12 @@ install(TARGETS gxc-node gxc-cli gxc-keygen gxc-tx gxc-explorer gxc-netdiag
 
 if(BUILD_MINING_CLIENT)
     install(TARGETS gxc-miner gxc-sha256-miner gxc-ethash-miner gxc-gxhash-miner gxc-pool-proxy
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
+
+if(BUILD_MINING_CLIENT AND BUILD_GUI AND QT_VERSION)
+    install(TARGETS gxc-miner-gui gxc-gxhash-miner-gui gxc-sha256-miner-gui gxc-ethash-miner-gui gxc-pool-proxy-gui
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()

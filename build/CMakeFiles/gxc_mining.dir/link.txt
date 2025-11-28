@@ -1,2 +1,0 @@
-/usr/bin/ar qc libgxc_mining.a CMakeFiles/gxc_mining.dir/src/mining/MiningManager.cpp.o CMakeFiles/gxc_mining.dir/src/mining/SHA256Miner.cpp.o CMakeFiles/gxc_mining.dir/src/mining/EthashMiner.cpp.o CMakeFiles/gxc_mining.dir/src/mining/GXHashMiner.cpp.o CMakeFiles/gxc_mining.dir/src/mining/PoolManager.cpp.o CMakeFiles/gxc_mining.dir/src/mining/HardwareDetector.cpp.o CMakeFiles/gxc_mining.dir/src/mining/MiningOptimizer.cpp.o
-/usr/bin/ranlib libgxc_mining.a
