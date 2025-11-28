@@ -137,8 +137,11 @@ echo ""
 echo "Step 3: Packaging C++ miners..."
 echo "=============================="
 if [ -d "$BUILD_DIR" ]; then
-    package_cpp_miners "linux"
-    package_cpp_miners "windows"
+    if [ -f "$SCRIPT_DIR/package-cpp-miners.sh" ]; then
+        bash "$SCRIPT_DIR/package-cpp-miners.sh"
+    else
+        echo "⚠️  Package script not found, skipping C++ miner packaging"
+    fi
 else
     echo "⚠️  Build directory not found. Build miners first:"
     echo "   cd build && cmake .. -DBUILD_MINING_CLIENT=ON && make"

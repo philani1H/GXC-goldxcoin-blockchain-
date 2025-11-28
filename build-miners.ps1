@@ -266,8 +266,17 @@ For issues or questions, check the documentation or contact support.
     
     Write-Host "`n✅ All miners built and packaged!" -ForegroundColor Green
     Write-Host "`nMiners are available in: $minersDir\" -ForegroundColor Cyan
+    
+    # Package C++ miners for installation
+    Write-Host "`nPackaging C++ miners for installation..." -ForegroundColor Yellow
+    if (Test-Path "scripts\package-cpp-miners.ps1") {
+        & "scripts\package-cpp-miners.ps1"
+    } else {
+        Write-Host "⚠️  Package script not found, skipping C++ miner packaging" -ForegroundColor Yellow
+    }
+    
     Write-Host "`nTo create a release package:" -ForegroundColor Yellow
-    Write-Host "   Compress-RestPath -Path $minersDir -DestinationPath gxc-miners-release.zip" -ForegroundColor White
+    Write-Host "   Compress-Archive -Path $minersDir -DestinationPath gxc-miners-release.zip" -ForegroundColor White
     
 } catch {
     Write-Host "`n❌ Build failed: $_" -ForegroundColor Red
