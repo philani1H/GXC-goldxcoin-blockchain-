@@ -3736,6 +3736,52 @@ def handle_disconnect():
     """Handle client disconnection"""
     print('Client disconnected')
 
+# ==================== MINER DOWNLOADS ====================
+
+@app.route('/downloads')
+def downloads_page():
+    """Miner downloads page"""
+    return render_template('downloads.html')
+
+@app.route('/api/downloads/<platform>/<algorithm>')
+def download_miner(platform, algorithm):
+    """Download miner binary"""
+    from flask import send_file, abort
+    
+    # Map algorithm names
+    algo_map = {
+        'sha256': 'sha256_miner_gui',
+        'ethash': 'ethash_miner_gui',
+        'gxhash': 'gxhash_miner_gui'
+    }
+    
+    if algorithm not in algo_map:
+        abort(404)
+    
+    miner_name = algo_map[algorithm]
+    
+    # Determine file path
+    if platform == 'windows':
+        file_path = f'miners/installers/windows/{miner_name}-windows-x64.zip'
+        mimetype = 'application/zip'
+    elif platform == 'linux':
+        file_path = f'miners/installers/linux/{miner_name}-linux-x64.tar.gz'
+        mimetype = 'application/gzip'
+    else:
+        abort(404)
+    
+    # Check if file exists
+    if not os.path.exists(file_path):
+        # Return a helpful message if miners haven't been built yet
+        return jsonify({
+            'error': 'Miner not built yet',
+            'message': 'Please run ./build_miners_installers.sh to build the miners',
+            'platform': platform,
+            'algorithm': algorithm
+        }), 404
+    
+    return send_file(file_path, as_attachment=True, mimetype=mimetype)
+
 if __name__ == '__main__':
     # Ensure database is initialized
     explorer.init_database()
