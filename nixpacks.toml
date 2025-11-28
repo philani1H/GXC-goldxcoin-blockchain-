@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["python311", "cmake", "gcc"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[phases.build]
+cmds = ["chmod +x start_complete_ecosystem.sh"]
+
+[start]
+cmd = "./start_complete_ecosystem.sh"
