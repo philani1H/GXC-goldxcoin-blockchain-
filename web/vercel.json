@@ -15,6 +15,10 @@
       "source": "/(.*)",
       "destination": "/api.py"
     }
-  ]
+  ],
+  "env": {
+    "USE_POSTGRES": "true",
+    "VERCEL": "1"
+  }
 }
 
