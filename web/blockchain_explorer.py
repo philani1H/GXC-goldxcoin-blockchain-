@@ -23,6 +23,54 @@ BLOCKCHAIN_NODE_URL = os.environ.get('BLOCKCHAIN_NODE_URL', 'http://localhost:85
 # Use /tmp for Vercel (writable), otherwise use local path
 DATABASE_PATH = os.environ.get('DATABASE_PATH', '/tmp/gxc_explorer.db' if os.path.exists('/tmp') else 'gxc_explorer.db')
 
+# Helper function for safe integer conversion from request parameters
+def safe_int(value, default=0, min_val=None, max_val=None):
+    """
+    Safely convert a value to integer with bounds checking.
+    
+    Args:
+        value: The value to convert
+        default: Default value if conversion fails
+        min_val: Minimum allowed value (optional)
+        max_val: Maximum allowed value (optional)
+    
+    Returns:
+        Integer value within specified bounds
+    """
+    try:
+        result = int(value)
+        if min_val is not None:
+            result = max(result, min_val)
+        if max_val is not None:
+            result = min(result, max_val)
+        return result
+    except (ValueError, TypeError):
+        return default
+
+# Helper function for safe float conversion from request parameters
+def safe_float(value, default=0.0, min_val=None, max_val=None):
+    """
+    Safely convert a value to float with bounds checking.
+    
+    Args:
+        value: The value to convert
+        default: Default value if conversion fails
+        min_val: Minimum allowed value (optional)
+        max_val: Maximum allowed value (optional)
+    
+    Returns:
+        Float value within specified bounds
+    """
+    try:
+        result = float(value)
+        if min_val is not None:
+            result = max(result, min_val)
+        if max_val is not None:
+            result = min(result, max_val)
+        return result
+    except (ValueError, TypeError):
+        return default
+
 # Detect environment (Vercel or local)
 IS_VERCEL = os.environ.get('VERCEL', '0') == '1' or 'vercel' in os.environ.get('VERCEL_URL', '').lower()
 EXPLORER_URL = os.environ.get('EXPLORER_URL', 'https://gxc-blockchain.vercel.app' if IS_VERCEL else 'http://localhost:3000')
@@ -2675,14 +2723,14 @@ def api_docs():
 @app.route('/api/blocks')
 def api_blocks():
     """API endpoint for recent blocks"""
-    limit = min(int(request.args.get('limit', 10)), 100)
+    limit = safe_int(request.args.get('limit', 10), default=10, min_val=1, max_val=100)
     blocks = explorer.get_recent_blocks(limit)
     return jsonify(blocks)
 
 @app.route('/api/transactions')
 def api_transactions():
     """API endpoint for recent transactions"""
-    limit = min(int(request.args.get('limit', 20)), 100)
+    limit = safe_int(request.args.get('limit', 20), default=20, min_val=1, max_val=100)
     transactions = explorer.get_recent_transactions(limit)
     return jsonify(transactions)
 
@@ -2695,14 +2743,14 @@ def api_stats():
 @app.route('/api/charts')
 def api_charts():
     """API endpoint for chart data"""
-    days = int(request.args.get('days', 14))
+    days = safe_int(request.args.get('days', 14), default=14, min_val=1, max_val=365)
     chart_data = explorer.get_chart_data(days)
     return jsonify(chart_data)
 
 @app.route('/api/hashrate')
 def api_hashrate():
     """API endpoint for hashrate history"""
-    days = int(request.args.get('days', 7))
+    days = safe_int(request.args.get('days', 7), default=7, min_val=1, max_val=365)
     hashrate_data = explorer.get_hashrate_history(days)
     return jsonify(hashrate_data)
 
@@ -2791,7 +2839,7 @@ def pending_transactions():
 @app.route('/api/pending')
 def api_pending():
     """API endpoint for pending transactions"""
-    limit = min(int(request.args.get('limit', 50)), 200)
+    limit = safe_int(request.args.get('limit', 50), default=50, min_val=1, max_val=200)
     pending_txs = explorer.get_pending_transactions(limit)
     return jsonify(pending_txs)
 
@@ -2799,7 +2847,7 @@ def api_pending():
 def export_transactions():
     """Export transactions as CSV"""
     format_type = request.args.get('format', 'csv')
-    limit = min(int(request.args.get('limit', 1000)), 10000)
+    limit = safe_int(request.args.get('limit', 1000), default=1000, min_val=1, max_val=10000)
     
     # Check for filters
     filters = {
@@ -2882,7 +2930,7 @@ def export_transactions():
 def export_blocks():
     """Export blocks as CSV with all fields"""
     format_type = request.args.get('format', 'csv')
-    limit = min(int(request.args.get('limit', 1000)), 10000)
+    limit = safe_int(request.args.get('limit', 1000), default=1000, min_val=1, max_val=10000)
     
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
@@ -3064,7 +3112,7 @@ def api_gold_reserves():
 @app.route('/api/gold/transfers')
 def api_gold_transfers():
     """API endpoint for gold token transfers"""
-    limit = min(int(request.args.get('limit', 50)), 200)
+    limit = safe_int(request.args.get('limit', 50), default=50, min_val=1, max_val=200)
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
@@ -3232,7 +3280,7 @@ def bridge_explorer():
 def api_bridge_transfers():
     """API endpoint for bridge transfers"""
     status = request.args.get('status')
-    limit = min(int(request.args.get('limit', 50)), 200)
+    limit = safe_int(request.args.get('limit', 50), default=50, min_val=1, max_val=200)
     transfers = explorer.get_bridge_transfers(status, limit)
     return jsonify(transfers)
 
@@ -3488,9 +3536,9 @@ def transaction_simulator():
 @app.route('/api/simulator/estimate')
 def api_simulator_estimate():
     """Estimate transaction fee and confirmation time"""
-    amount = float(request.args.get('amount', 0))
-    gas_price = float(request.args.get('gas_price', 0))
-    gas_limit = int(request.args.get('gas_limit', 21000))
+    amount = safe_float(request.args.get('amount', 0), default=0.0, min_val=0.0)
+    gas_price = safe_float(request.args.get('gas_price', 0), default=0.0, min_val=0.0)
+    gas_limit = safe_int(request.args.get('gas_limit', 21000), default=21000, min_val=21000, max_val=10000000)
     
     # Calculate fee
     fee = gas_price * gas_limit
