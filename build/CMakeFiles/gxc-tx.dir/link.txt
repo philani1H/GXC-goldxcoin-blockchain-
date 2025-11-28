@@ -1,0 +1,1 @@
+/usr/bin/g++ -O3 -DNDEBUG "CMakeFiles/gxc-tx.dir/tools/tx_main.cpp.o" "CMakeFiles/gxc-tx.dir/tools/TransactionBuilder.cpp.o" -o gxc-tx  libgxc_core.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl 

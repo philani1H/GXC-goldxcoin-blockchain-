@@ -1,0 +1,1 @@
+/usr/bin/g++ -O3 -DNDEBUG "CMakeFiles/gxc-netdiag.dir/tools/netdiag_main.cpp.o" "CMakeFiles/gxc-netdiag.dir/tools/NetworkDiagnostic.cpp.o" -o gxc-netdiag  libgxc_core.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl 

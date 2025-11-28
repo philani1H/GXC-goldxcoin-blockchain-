@@ -7,6 +7,7 @@
 #include <queue>
 #include <thread>
 #include <atomic>
+#include <condition_variable>
 
 enum class LogLevel {
     DEBUG = 0,
@@ -61,9 +62,6 @@ public:
     static bool initialize();
     static bool initialize(const std::string& logPath, LogLevel minLevel = LogLevel::INFO);
     static void shutdown();
-    
-    // Configuration
-    bool initialize(const std::string& logPath, LogLevel minLevel = LogLevel::INFO);
     void setLogLevel(LogLevel level);
     void setConsoleOutput(bool enabled);
     void setAsyncLogging(bool enabled);

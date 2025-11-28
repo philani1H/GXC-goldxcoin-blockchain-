@@ -91,7 +91,7 @@ Version 2.0.0
                     LOG_CORE(LogLevel::INFO, "Node Status - Height: " + 
                             std::to_string(blockchain.getHeight()) + 
                             ", Peers: " + std::to_string(network.getPeerCount()) +
-                            ", Difficulty: " + Utils::formatAmount(blockchain.getDifficulty(), 2));
+                            ", Difficulty: " + std::to_string(blockchain.getDifficulty()));
                     lastUpdate = currentTime;
                 }
                 

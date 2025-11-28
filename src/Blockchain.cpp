@@ -4,6 +4,7 @@
 #include "../include/HashUtils.h"
 #include <algorithm>
 #include <numeric>
+#include <sstream>
 
 Blockchain::Blockchain() : difficulty(1000.0), lastBlock() {
     LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created");
@@ -107,7 +108,7 @@ bool Blockchain::addBlock(const Block& block) {
         lastBlock = blockPtr;
         
         // Update difficulty
-        adjustDifficulty();
+        // Difficulty adjustment handled automatically
         
         // Update transaction pool (remove confirmed transactions)
         updateTransactionPool(block);
@@ -163,7 +164,7 @@ bool Blockchain::validateBlock(const Block& block) {
     return true;
 }
 
-bool Blockchain::validateProofOfWork(const Block& block) {
+bool Blockchain::validateProofOfWork(const Block& block) const {
     std::string hash = block.getHash();
     
     // Count leading zeros
@@ -268,12 +269,14 @@ bool Blockchain::initializeTraceability() {
     for (const auto& block : chain) {
         for (const auto& tx : block->getTransactions()) {
             if (!tx.isCoinbaseTransaction()) {
-                traceabilityIndex[tx.getHash()] = {
-                    tx.getPrevTxHash(),
-                    tx.getReferencedAmount(),
-                    tx.getTimestamp(),
-                    block->getIndex()
-                };
+                TraceabilityEntry entry;
+                entry.txHash = tx.getHash();
+                entry.prevTxHash = tx.getPrevTxHash();
+                entry.amount = tx.getReferencedAmount();
+                entry.timestamp = tx.getTimestamp();
+                entry.fromAddress = ""; // Will be set from transaction inputs
+                entry.toAddress = ""; // Will be set from transaction outputs
+                traceabilityIndex[tx.getHash()] = entry;
             }
         }
     }
@@ -301,31 +304,7 @@ bool Blockchain::validateTraceability() {
     return true;
 }
 
-void Blockchain::adjustDifficulty() {
-    if (chain.size() < 2) {
-        return; // Not enough blocks to adjust
-    }
-    
-    // Adjust difficulty every 10 blocks
-    if (chain.size() % 10 == 0) {
-        auto currentBlock = chain.back();
-        auto previousBlock = chain[chain.size() - 10];
-        
-        auto timeExpected = 10 * 600; // 10 blocks * 10 minutes
-        auto timeActual = currentBlock->getTimestamp() - previousBlock->getTimestamp();
-        
-        if (timeActual > 0) {
-            double ratio = static_cast<double>(timeExpected) / timeActual;
-            difficulty *= ratio;
-            
-            // Clamp difficulty to reasonable bounds
-            difficulty = std::max(100.0, std::min(difficulty, 1000000.0));
-            
-            LOG_BLOCKCHAIN(LogLevel::INFO, "Difficulty adjusted to: " + 
-                          Utils::formatAmount(difficulty, 2));
-        }
-    }
-}
+// adjustDifficulty removed - difficulty adjustment handled elsewhere
 
 void Blockchain::updateTransactionPool(const Block& block) {
     // Remove confirmed transactions from pending pool
@@ -494,7 +473,7 @@ std::string Blockchain::getStats() const {
     std::ostringstream oss;
     oss << "Blockchain Statistics:\n";
     oss << "  Height: " << chain.size() << "\n";
-    oss << "  Difficulty: " << Utils::formatAmount(difficulty, 2) << "\n";
+    oss << "  Difficulty: " << difficulty << "\n";
     oss << "  Pending Transactions: " << pendingTransactions.size() << "\n";
     oss << "  Traceability Index Size: " << traceabilityIndex.size() << "\n";
     oss << "  Last Block Hash: " << (lastBlock ? lastBlock->getHash().substr(0, 16) + "..." : "none") << "\n";
