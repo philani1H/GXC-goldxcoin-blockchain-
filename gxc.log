@@ -14,3 +14,27 @@
 [2025-11-28 08:33:36.286] [INFO] [BLOCKCHAIN] Blockchain instance created
 [2025-11-28 08:33:36.286] [INFO] [BLOCKCHAIN] Initializing blockchain
 [2025-11-28 08:33:36.286] [INFO] [BLOCKCHAIN] Creating genesis block
+[2025-11-28 12:39:10.467] [INFO] Logger initialized: gxc.log
+[2025-11-28 12:39:10.469] [INFO] GXC Node starting up
+[2025-11-28 12:39:10.469] [INFO] Configuration system initialized
+[2025-11-28 12:39:10.470] [INFO] Config updated: data_dir = ./gxc_testnet_data
+[2025-11-28 12:39:10.470] [INFO] Config updated: network_port = 19333
+[2025-11-28 12:39:10.470] [INFO] Config updated: rpc_port = 18332
+[2025-11-28 12:39:10.470] [INFO] Config updated: rest_port = 18080
+[2025-11-28 12:39:10.471] [INFO] Config updated: testnet = true
+[2025-11-28 12:39:10.472] [INFO] Data directory: ./gxc_testnet_data
+[2025-11-28 12:39:10.472] [INFO] [DATABASE] Database instance created
+[2025-11-28 12:39:10.472] [INFO] [DATABASE] Opening database: ./gxc_testnet_data/blockchain.db
+[2025-11-28 12:39:10.513] [ERROR] [DATABASE] SQL execution failed: no such column: hash
+[2025-11-28 12:39:10.513] [WARN] [DATABASE] Failed to create index: CREATE INDEX IF NOT EXISTS idx_transactions_hash ON transactions(hash)
+[2025-11-28 12:39:10.514] [ERROR] [DATABASE] SQL execution failed: no such column: block_hash
+[2025-11-28 12:39:10.514] [WARN] [DATABASE] Failed to create index: CREATE INDEX IF NOT EXISTS idx_transactions_block_hash ON transactions(block_hash)
+[2025-11-28 12:39:10.514] [ERROR] [DATABASE] SQL execution failed: no such column: sender_address
+[2025-11-28 12:39:10.514] [WARN] [DATABASE] Failed to create index: CREATE INDEX IF NOT EXISTS idx_transactions_sender ON transactions(sender_address)
+[2025-11-28 12:39:10.514] [ERROR] [DATABASE] SQL execution failed: no such column: recipient_address
+[2025-11-28 12:39:10.514] [WARN] [DATABASE] Failed to create index: CREATE INDEX IF NOT EXISTS idx_transactions_recipient ON transactions(recipient_address)
+[2025-11-28 12:39:10.556] [INFO] [DATABASE] Database tables created successfully
+[2025-11-28 12:39:10.556] [INFO] [DATABASE] Database opened successfully
+[2025-11-28 12:39:10.556] [INFO] [BLOCKCHAIN] Blockchain instance created
+[2025-11-28 12:39:10.556] [INFO] [BLOCKCHAIN] Initializing blockchain
+[2025-11-28 12:39:10.556] [INFO] [BLOCKCHAIN] Creating genesis block
