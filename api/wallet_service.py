@@ -41,7 +41,7 @@ NETWORK_INFO = {
     'network_name': 'GXC Mainnet',
     'chain_id': 'GXC',
     'rpc_url': os.environ.get('BLOCKCHAIN_RPC_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app'),
-    'rest_url': os.environ.get('BLOCKCHAIN_REST_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app:8080'),
+    'rest_url': os.environ.get('BLOCKCHAIN_REST_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app'),
     'explorer_url': os.environ.get('EXPLORER_URL', 'http://localhost:3000'),
     'api_url': os.environ.get('WALLET_API_URL', 'http://localhost:5000'),
     'currency': 'GXC',

@@ -9,10 +9,10 @@ import os
 # Railway Node URL
 RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
 
-# API Endpoints
+# API Endpoints (Railway uses single PORT, no separate ports)
 RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', RAILWAY_NODE_URL)
-REST_URL = os.environ.get('BLOCKCHAIN_REST_URL', f"{RAILWAY_NODE_URL}:8080")
-WEBSOCKET_URL = os.environ.get('BLOCKCHAIN_WS_URL', f"{RAILWAY_NODE_URL}:8081")
+REST_URL = os.environ.get('BLOCKCHAIN_REST_URL', RAILWAY_NODE_URL)
+WEBSOCKET_URL = os.environ.get('BLOCKCHAIN_WS_URL', RAILWAY_NODE_URL)
 
 # Network Configuration
 NETWORK = os.environ.get('GXC_NETWORK', 'testnet')

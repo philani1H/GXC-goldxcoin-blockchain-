@@ -22,7 +22,7 @@ import os
 class BlockchainClient:
     """Client for connecting to GXC blockchain node"""
     
-    def __init__(self, rpc_url: str = "https://gxc-chain112-blockchain-node-production.up.railway.app", rest_url: str = "https://gxc-chain112-blockchain-node-production.up.railway.app:8080"):
+    def __init__(self, rpc_url: str = "https://gxc-chain112-blockchain-node-production.up.railway.app", rest_url: str = "https://gxc-chain112-blockchain-node-production.up.railway.app"):
         self.rpc_url = rpc_url
         self.rest_url = rest_url
         self.session = requests.Session()
