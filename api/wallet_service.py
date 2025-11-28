@@ -253,13 +253,19 @@ class BlockchainClient:
             }
 
 class WalletService:
-    def __init__(self):
+    def __init__(self, testnet=False):
+        self.testnet = testnet
+        self.db_path = 'gxc_wallets_testnet.db' if testnet else DATABASE_PATH
         self.init_database()
         self.blockchain = BlockchainClient()
         
+    def get_db_connection(self):
+        """Get database connection (testnet or mainnet)"""
+        return sqlite3.connect(self.db_path)
+    
     def init_database(self):
         """Initialize the wallet database"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         # Users table
@@ -405,8 +411,13 @@ class WalletService:
             # Fallback if RIPEMD-160 not available
             hash_result = hashlib.sha256(sha256_hash).hexdigest()
         
-        # Take first 34 hex characters and add GXC prefix (matches C++ Wallet.cpp line 30)
-        address = 'GXC' + hash_result[:34]
+        # Take first 34 hex characters and add prefix
+        # TESTNET: tGXC prefix (different from mainnet)
+        # MAINNET: GXC prefix
+        if self.testnet:
+            address = 'tGXC' + hash_result[:33]  # tGXC + 33 chars = 37 total
+        else:
+            address = 'GXC' + hash_result[:34]   # GXC + 34 chars = 37 total
         
         return address
     
