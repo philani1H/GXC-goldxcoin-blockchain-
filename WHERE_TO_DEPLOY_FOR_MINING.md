@@ -1,5 +1,7 @@
 # Where to Deploy GXC Node for Mining
 
+> **🆓 Looking for FREE options?** See **[FREE_DEPLOYMENT_GUIDE.md](FREE_DEPLOYMENT_GUIDE.md)** for completely free deployment options including Oracle Cloud Free Tier!
+
 ## 🎯 Quick Answer: Best Deployment Options
 
 ### **Option 1: VPS/Cloud Server (Recommended for Mining)**
