@@ -3,594 +3,267 @@
 #include "../../include/Utils.h"
 #include <algorithm>
 #include <numeric>
+#include <mutex>
+#include <random>
 
-Governance::Governance(Blockchain* blockchain) 
-    : blockchain(blockchain), votingPeriod(7 * 24 * 3600), // 7 days in seconds
-      proposalFee(100.0), quorumThreshold(0.6), passThreshold(0.51) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Governance system initialized");
+static std::mutex proposalsMutex;
+
+GovernanceSystem::GovernanceSystem() {
+    LOG_CORE(LogLevel::INFO, "Governance system initialized");
 }
 
-Governance::~Governance() = default;
-
-bool Governance::submitProposal(const Proposal& proposal) {
-    // Validate proposal
+std::string GovernanceSystem::submitProposal(const std::string& proposer, const std::string& title,
+                                              const std::string& description, const std::vector<ParameterChange>& changes) {
+    Proposal proposal(proposer, title, description, changes);
+    
     if (!isValidProposal(proposal)) {
-        LOG_GOVERNANCE(LogLevel::ERROR, "Invalid proposal submitted: " + proposal.title);
-        return false;
+        LOG_CORE(LogLevel::ERROR, "Invalid proposal submitted: " + title);
+        return "";
     }
     
-    // Check if proposer has enough balance for fee
-    if (!hasEnoughBalance(proposal.proposer, proposalFee)) {
-        LOG_GOVERNANCE(LogLevel::ERROR, "Insufficient balance for proposal fee: " + proposal.proposer);
-        return false;
-    }
+    std::lock_guard<std::mutex> lock(proposalsMutex);
+    std::string proposalId = proposal.getId();
+    proposals[proposalId] = proposal;
     
-    // Create proposal with unique ID
-    Proposal newProposal = proposal;
-    newProposal.id = generateProposalId();
-    newProposal.status = ProposalStatus::ACTIVE;
-    newProposal.submitTime = Utils::getCurrentTimestamp();
-    newProposal.votingEndTime = newProposal.submitTime + votingPeriod;
-    newProposal.totalVotes = 0;
-    newProposal.yesVotes = 0;
-    newProposal.noVotes = 0;
-    
-    // Add to proposals map
-    {
-        std::lock_guard<std::mutex> lock(proposalsMutex);
-        proposals[newProposal.id] = newProposal;
-    }
-    
-    // Deduct proposal fee
-    deductProposalFee(proposal.proposer, proposalFee);
-    
-    LOG_GOVERNANCE(LogLevel::INFO, "Proposal submitted: " + newProposal.id + " - " + newProposal.title);
-    
-    return true;
+    LOG_CORE(LogLevel::INFO, "Proposal submitted: " + proposalId + " - " + title);
+    return proposalId;
 }
 
-bool Governance::vote(const std::string& proposalId, const std::string& voter, bool support, double weight) {
+bool GovernanceSystem::cancelProposal(const std::string& proposalId, const std::string& canceller) {
+    std::lock_guard<std::mutex> lock(proposalsMutex);
+    auto it = proposals.find(proposalId);
+    if (it != proposals.end()) {
+        Proposal& proposal = it->second;
+        if (proposal.getProposer() == canceller) {
+            proposal.cancel();
+            return true;
+        }
+    }
+    return false;
+}
+
+void GovernanceSystem::updateProposalStatus(const std::string& proposalId) {
+    std::lock_guard<std::mutex> lock(proposalsMutex);
+    auto it = proposals.find(proposalId);
+    if (it != proposals.end()) {
+        Proposal& proposal = it->second;
+        proposal.updateStatus();
+    }
+}
+
+bool GovernanceSystem::castVote(const std::string& voter, const std::string& proposalId, VoteType voteType, 
+                                 double stakeAmount, uint32_t stakingDays) {
     std::lock_guard<std::mutex> lock(proposalsMutex);
     
-    // Find proposal
     auto it = proposals.find(proposalId);
     if (it == proposals.end()) {
-        LOG_GOVERNANCE(LogLevel::ERROR, "Proposal not found: " + proposalId);
+        LOG_CORE(LogLevel::ERROR, "Proposal not found: " + proposalId);
         return false;
     }
     
     Proposal& proposal = it->second;
     
-    // Check if proposal is active
-    if (proposal.status != ProposalStatus::ACTIVE) {
-        LOG_GOVERNANCE(LogLevel::ERROR, "Proposal not active for voting: " + proposalId);
+    if (!proposal.isVotingOpen()) {
+        LOG_CORE(LogLevel::ERROR, "Voting not open for proposal: " + proposalId);
         return false;
     }
     
-    // Check if voting period has ended
-    if (Utils::getCurrentTimestamp() > proposal.votingEndTime) {
-        LOG_GOVERNANCE(LogLevel::ERROR, "Voting period ended for proposal: " + proposalId);
-        finalizeProposal(proposalId);
+    if (proposal.hasVoted(voter)) {
+        LOG_CORE(LogLevel::ERROR, "Voter already voted: " + voter);
         return false;
     }
     
-    // Check if voter has already voted
-    if (proposal.voters.find(voter) != proposal.voters.end()) {
-        LOG_GOVERNANCE(LogLevel::ERROR, "Voter already voted: " + voter);
-        return false;
-    }
+    double voteWeight = calculateVoteWeight(stakeAmount, stakingDays);
     
-    // Validate voter's voting power
-    double votingPower = calculateVotingPower(voter);
-    if (votingPower <= 0) {
-        LOG_GOVERNANCE(LogLevel::ERROR, "No voting power: " + voter);
-        return false;
-    }
-    
-    // Use provided weight or calculated voting power
-    double actualWeight = (weight > 0) ? std::min(weight, votingPower) : votingPower;
-    
-    // Record vote
     Vote vote;
     vote.voter = voter;
-    vote.support = support;
-    vote.weight = actualWeight;
-    vote.timestamp = Utils::getCurrentTimestamp();
+    vote.proposalId = proposalId;
+    vote.voteType = voteType;
+    vote.voteWeight = voteWeight;
+    vote.timestamp = std::time(nullptr);
     
-    proposal.votes.push_back(vote);
-    proposal.voters.insert(voter);
-    proposal.totalVotes += actualWeight;
-    
-    if (support) {
-        proposal.yesVotes += actualWeight;
-    } else {
-        proposal.noVotes += actualWeight;
+    if (proposal.addVote(vote)) {
+        proposalVotes[proposalId].push_back(vote);
+        voterLastActivity[voter] = std::time(nullptr);
+        return true;
     }
     
-    LOG_GOVERNANCE(LogLevel::INFO, "Vote recorded for proposal " + proposalId + 
-                                  " by " + voter + " (support: " + (support ? "YES" : "NO") + 
-                                  ", weight: " + Utils::formatAmount(actualWeight, 2) + ")");
+    return false;
+}
+
+void GovernanceSystem::tallyVotes(const std::string& proposalId) {
+    std::lock_guard<std::mutex> lock(proposalsMutex);
+    auto it = proposals.find(proposalId);
+    if (it != proposals.end()) {
+        Proposal& proposal = it->second;
+        proposal.tallyVotes();
+    }
+}
+
+bool GovernanceSystem::executeProposal(const std::string& proposalId) {
+    std::lock_guard<std::mutex> lock(proposalsMutex);
     
+    auto it = proposals.find(proposalId);
+    if (it == proposals.end()) {
+        LOG_CORE(LogLevel::ERROR, "Proposal not found: " + proposalId);
+        return false;
+    }
+    
+    Proposal& proposal = it->second;
+    
+    if (!proposal.canExecute()) {
+        LOG_CORE(LogLevel::ERROR, "Proposal cannot be executed: " + proposalId);
+        return false;
+    }
+    
+    applyParameterChanges(proposal.getParameterChanges());
+    proposal.markExecuted("exec_tx_" + proposalId);
+    
+    LOG_CORE(LogLevel::INFO, "Proposal executed: " + proposalId);
     return true;
 }
 
-std::vector<Proposal> Governance::getActiveProposals() const {
-    std::lock_guard<std::mutex> lock(proposalsMutex);
-    
-    std::vector<Proposal> activeProposals;
-    auto currentTime = Utils::getCurrentTimestamp();
-    
+void GovernanceSystem::applyParameterChanges(const std::vector<ParameterChange>& changes) {
+    for (const auto& change : changes) {
+        setParameter(change.paramType, change.newValue);
+        LOG_CORE(LogLevel::INFO, "Applied parameter change: " + std::to_string(static_cast<int>(change.paramType)) + 
+                                  " = " + std::to_string(change.newValue));
+    }
+}
+
+double GovernanceSystem::getParameter(ParameterType paramType) const {
+    auto it = parameters.find(paramType);
+    if (it != parameters.end()) {
+        return it->second;
+    }
+    return 0.0;
+}
+
+void GovernanceSystem::setParameter(ParameterType paramType, double value) {
+    parameters[paramType] = value;
+}
+
+std::vector<ParameterChange> GovernanceSystem::getPendingChanges() const {
+    // Return pending changes from active proposals
+    std::vector<ParameterChange> changes;
     for (const auto& pair : proposals) {
         const Proposal& proposal = pair.second;
-        if (proposal.status == ProposalStatus::ACTIVE && currentTime <= proposal.votingEndTime) {
-            activeProposals.push_back(proposal);
+        if (proposal.getStatus() == ProposalStatus::PASSED && !proposal.isExecuted()) {
+            const auto& proposalChanges = proposal.getParameterChanges();
+            changes.insert(changes.end(), proposalChanges.begin(), proposalChanges.end());
         }
     }
-    
-    return activeProposals;
+    return changes;
 }
 
-std::vector<Proposal> Governance::getProposalsByStatus(ProposalStatus status) const {
+std::vector<Proposal> GovernanceSystem::getActiveProposals() const {
     std::lock_guard<std::mutex> lock(proposalsMutex);
-    
-    std::vector<Proposal> filteredProposals;
-    
+    std::vector<Proposal> active;
     for (const auto& pair : proposals) {
-        if (pair.second.status == status) {
-            filteredProposals.push_back(pair.second);
+        if (pair.second.getStatus() == ProposalStatus::ACTIVE) {
+            active.push_back(pair.second);
         }
     }
-    
-    return filteredProposals;
+    return active;
 }
 
-Proposal Governance::getProposal(const std::string& proposalId) const {
+std::vector<Proposal> GovernanceSystem::getProposalHistory() const {
     std::lock_guard<std::mutex> lock(proposalsMutex);
-    
+    std::vector<Proposal> history;
+    for (const auto& pair : proposals) {
+        history.push_back(pair.second);
+    }
+    return history;
+}
+
+Proposal GovernanceSystem::getProposal(const std::string& proposalId) const {
+    std::lock_guard<std::mutex> lock(proposalsMutex);
     auto it = proposals.find(proposalId);
     if (it != proposals.end()) {
         return it->second;
     }
-    
     throw std::runtime_error("Proposal not found: " + proposalId);
 }
 
-bool Governance::executeProposal(const std::string& proposalId) {
+std::vector<Vote> GovernanceSystem::getProposalVotes(const std::string& proposalId) const {
     std::lock_guard<std::mutex> lock(proposalsMutex);
-    
-    auto it = proposals.find(proposalId);
-    if (it == proposals.end()) {
-        LOG_GOVERNANCE(LogLevel::ERROR, "Proposal not found for execution: " + proposalId);
-        return false;
+    auto it = proposalVotes.find(proposalId);
+    if (it != proposalVotes.end()) {
+        return it->second;
     }
-    
-    Proposal& proposal = it->second;
-    
-    // Check if proposal passed
-    if (proposal.status != ProposalStatus::PASSED) {
-        LOG_GOVERNANCE(LogLevel::ERROR, "Proposal not in passed status: " + proposalId);
-        return false;
-    }
-    
-    try {
-        // Execute based on proposal type
-        bool executed = false;
-        
-        switch (proposal.type) {
-            case ProposalType::PARAMETER_CHANGE:
-                executed = executeParameterChange(proposal);
-                break;
-                
-            case ProposalType::SYSTEM_UPGRADE:
-                executed = executeSystemUpgrade(proposal);
-                break;
-                
-            case ProposalType::TREASURY_ALLOCATION:
-                executed = executeTreasuryAllocation(proposal);
-                break;
-                
-            case ProposalType::EMERGENCY_ACTION:
-                executed = executeEmergencyAction(proposal);
-                break;
-                
-            case ProposalType::CUSTOM:
-                executed = executeCustomProposal(proposal);
-                break;
-                
-            default:
-                LOG_GOVERNANCE(LogLevel::ERROR, "Unknown proposal type: " + std::to_string(static_cast<int>(proposal.type)));
-                return false;
-        }
-        
-        if (executed) {
-            proposal.status = ProposalStatus::EXECUTED;
-            proposal.executionTime = Utils::getCurrentTimestamp();
-            
-            LOG_GOVERNANCE(LogLevel::INFO, "Proposal executed successfully: " + proposalId);
-            return true;
-        } else {
-            proposal.status = ProposalStatus::EXECUTION_FAILED;
-            LOG_GOVERNANCE(LogLevel::ERROR, "Proposal execution failed: " + proposalId);
-            return false;
-        }
-        
-    } catch (const std::exception& e) {
-        proposal.status = ProposalStatus::EXECUTION_FAILED;
-        LOG_GOVERNANCE(LogLevel::ERROR, "Proposal execution error: " + std::string(e.what()));
-        return false;
-    }
+    return std::vector<Vote>();
 }
 
-void Governance::finalizeProposal(const std::string& proposalId) {
-    auto it = proposals.find(proposalId);
-    if (it == proposals.end()) {
-        return;
-    }
-    
-    Proposal& proposal = it->second;
-    
-    if (proposal.status != ProposalStatus::ACTIVE) {
-        return;
-    }
-    
-    // Calculate total eligible voting power
-    double totalEligibleVotes = calculateTotalVotingPower();
-    
-    // Check quorum
-    double turnout = proposal.totalVotes / totalEligibleVotes;
-    if (turnout < quorumThreshold) {
-        proposal.status = ProposalStatus::REJECTED;
-        proposal.rejectionReason = "Insufficient quorum (turnout: " + 
-                                  Utils::formatAmount(turnout * 100, 2) + "%)";
-    } else {
-        // Check if proposal passed
-        double supportRatio = proposal.yesVotes / proposal.totalVotes;
-        if (supportRatio >= passThreshold) {
-            proposal.status = ProposalStatus::PASSED;
-        } else {
-            proposal.status = ProposalStatus::REJECTED;
-            proposal.rejectionReason = "Insufficient support (support: " + 
-                                     Utils::formatAmount(supportRatio * 100, 2) + "%)";
-        }
-    }
-    
-    proposal.finalizationTime = Utils::getCurrentTimestamp();
-    
-    LOG_GOVERNANCE(LogLevel::INFO, "Proposal finalized: " + proposalId + 
-                                  " - Status: " + proposalStatusToString(proposal.status));
+void GovernanceSystem::authorizeProposer(const std::string& address) {
+    authorizedProposers[address] = true;
 }
 
-void Governance::updateActiveProposals() {
-    std::lock_guard<std::mutex> lock(proposalsMutex);
-    
-    auto currentTime = Utils::getCurrentTimestamp();
-    
-    for (auto& pair : proposals) {
-        Proposal& proposal = pair.second;
-        
-        // Finalize expired active proposals
-        if (proposal.status == ProposalStatus::ACTIVE && currentTime > proposal.votingEndTime) {
-            finalizeProposal(pair.first);
-        }
-    }
+void GovernanceSystem::revokeProposer(const std::string& address) {
+    authorizedProposers.erase(address);
 }
 
-GovernanceStats Governance::getStats() const {
+bool GovernanceSystem::isAuthorizedProposer(const std::string& address) const {
+    auto it = authorizedProposers.find(address);
+    return it != authorizedProposers.end() && it->second;
+}
+
+uint32_t GovernanceSystem::getTotalProposals() const {
     std::lock_guard<std::mutex> lock(proposalsMutex);
-    
-    GovernanceStats stats;
-    stats.totalProposals = proposals.size();
-    stats.activeProposals = 0;
-    stats.passedProposals = 0;
-    stats.rejectedProposals = 0;
-    stats.executedProposals = 0;
-    stats.totalVoters = 0;
-    
-    std::set<std::string> uniqueVoters;
-    
+    return static_cast<uint32_t>(proposals.size());
+}
+
+uint32_t GovernanceSystem::getActiveProposalCount() const {
+    std::lock_guard<std::mutex> lock(proposalsMutex);
+    uint32_t count = 0;
     for (const auto& pair : proposals) {
-        const Proposal& proposal = pair.second;
-        
-        switch (proposal.status) {
-            case ProposalStatus::ACTIVE:
-                stats.activeProposals++;
-                break;
-            case ProposalStatus::PASSED:
-                stats.passedProposals++;
-                break;
-            case ProposalStatus::REJECTED:
-                stats.rejectedProposals++;
-                break;
-            case ProposalStatus::EXECUTED:
-                stats.executedProposals++;
-                break;
-            default:
-                break;
-        }
-        
-        // Count unique voters
-        for (const auto& voter : proposal.voters) {
-            uniqueVoters.insert(voter);
+        if (pair.second.getStatus() == ProposalStatus::ACTIVE) {
+            count++;
         }
     }
-    
-    stats.totalVoters = uniqueVoters.size();
-    
-    return stats;
+    return count;
 }
 
-bool Governance::isValidProposal(const Proposal& proposal) const {
+double GovernanceSystem::getAverageParticipation() const {
+    std::lock_guard<std::mutex> lock(proposalsMutex);
+    if (proposals.empty()) return 0.0;
+    
+    double total = 0.0;
+    for (const auto& pair : proposals) {
+        total += pair.second.getTotalVotes();
+    }
+    return total / proposals.size();
+}
+
+bool GovernanceSystem::isValidParameterChange(const ParameterChange& change) const {
     // Basic validation
-    if (proposal.title.empty() || proposal.description.empty()) {
+    if (change.newValue < 0) return false;
+    
+    // Type-specific validation could be added here
+    return true;
+}
+
+bool GovernanceSystem::isValidProposal(const Proposal& proposal) const {
+    if (proposal.getTitle().empty() || proposal.getDescription().empty()) {
         return false;
     }
     
-    if (proposal.title.length() > 200 || proposal.description.length() > 5000) {
+    if (proposal.getProposer().empty()) {
         return false;
     }
     
-    if (proposal.proposer.empty()) {
-        return false;
-    }
-    
-    // Type-specific validation
-    switch (proposal.type) {
-        case ProposalType::PARAMETER_CHANGE:
-            return validateParameterChangeProposal(proposal);
-            
-        case ProposalType::SYSTEM_UPGRADE:
-            return validateSystemUpgradeProposal(proposal);
-            
-        case ProposalType::TREASURY_ALLOCATION:
-            return validateTreasuryAllocationProposal(proposal);
-            
-        case ProposalType::EMERGENCY_ACTION:
-            return validateEmergencyActionProposal(proposal);
-            
-        case ProposalType::CUSTOM:
-            return validateCustomProposal(proposal);
-            
-        default:
+    // Validate parameter changes
+    for (const auto& change : proposal.getParameterChanges()) {
+        if (!isValidParameterChange(change)) {
             return false;
-    }
-}
-
-double Governance::calculateVotingPower(const std::string& address) const {
-    // In a real implementation, voting power could be based on:
-    // 1. Token holdings
-    // 2. Staking duration
-    // 3. Historical participation
-    // 4. Delegation
-    
-    // Simplified implementation: use token balance
-    double balance = getAddressBalance(address);
-    
-    // Apply voting power formula (e.g., square root to reduce whale influence)
-    return std::sqrt(balance);
-}
-
-double Governance::calculateTotalVotingPower() const {
-    // Calculate total voting power of all eligible voters
-    // In a real implementation, would iterate through all accounts
-    return 1000000.0; // Simplified
-}
-
-bool Governance::hasEnoughBalance(const std::string& address, double amount) const {
-    double balance = getAddressBalance(address);
-    return balance >= amount;
-}
-
-double Governance::getAddressBalance(const std::string& address) const {
-    // In a real implementation, would query the blockchain for balance
-    // Simplified implementation
-    return 1000.0;
-}
-
-void Governance::deductProposalFee(const std::string& address, double amount) {
-    // In a real implementation, would create a transaction to deduct the fee
-    LOG_GOVERNANCE(LogLevel::INFO, "Deducted proposal fee from " + address + 
-                                  ": " + Utils::formatAmount(amount, 2) + " GXC");
-}
-
-std::string Governance::generateProposalId() {
-    static uint64_t counter = 0;
-    auto timestamp = Utils::getCurrentTimestamp();
-    return "prop_" + std::to_string(timestamp) + "_" + std::to_string(++counter);
-}
-
-bool Governance::validateParameterChangeProposal(const Proposal& proposal) const {
-    // Validate parameter change proposals
-    if (proposal.parameters.empty()) {
-        return false;
-    }
-    
-    // Check for valid parameter names and values
-    for (const auto& param : proposal.parameters) {
-        if (param.first.empty() || param.second.empty()) {
-            return false;
-        }
-        
-        // Validate specific parameters
-        if (param.first == "block_reward" || param.first == "difficulty_adjustment") {
-            try {
-                double value = std::stod(param.second);
-                if (value <= 0) {
-                    return false;
-                }
-            } catch (...) {
-                return false;
-            }
         }
     }
     
     return true;
 }
 
-bool Governance::validateSystemUpgradeProposal(const Proposal& proposal) const {
-    // Validate system upgrade proposals
-    auto it = proposal.parameters.find("version");
-    if (it == proposal.parameters.end()) {
-        return false;
-    }
-    
-    // Check version format (e.g., "1.2.3")
-    std::string version = it->second;
-    return !version.empty() && version.find('.') != std::string::npos;
-}
-
-bool Governance::validateTreasuryAllocationProposal(const Proposal& proposal) const {
-    // Validate treasury allocation proposals
-    auto amountIt = proposal.parameters.find("amount");
-    auto recipientIt = proposal.parameters.find("recipient");
-    
-    if (amountIt == proposal.parameters.end() || recipientIt == proposal.parameters.end()) {
-        return false;
-    }
-    
-    try {
-        double amount = std::stod(amountIt->second);
-        if (amount <= 0) {
-            return false;
-        }
-    } catch (...) {
-        return false;
-    }
-    
-    return !recipientIt->second.empty();
-}
-
-bool Governance::validateEmergencyActionProposal(const Proposal& proposal) const {
-    // Emergency actions require special validation
-    auto actionIt = proposal.parameters.find("action");
-    if (actionIt == proposal.parameters.end()) {
-        return false;
-    }
-    
-    std::string action = actionIt->second;
-    return action == "pause_network" || action == "resume_network" || 
-           action == "emergency_patch" || action == "freeze_assets";
-}
-
-bool Governance::validateCustomProposal(const Proposal& proposal) const {
-    // Custom proposals have minimal validation
-    return !proposal.description.empty();
-}
-
-bool Governance::executeParameterChange(const Proposal& proposal) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Executing parameter change proposal: " + proposal.id);
-    
-    // Apply parameter changes to the system
-    for (const auto& param : proposal.parameters) {
-        applyParameterChange(param.first, param.second);
-    }
-    
-    return true;
-}
-
-bool Governance::executeSystemUpgrade(const Proposal& proposal) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Executing system upgrade proposal: " + proposal.id);
-    
-    auto versionIt = proposal.parameters.find("version");
-    if (versionIt != proposal.parameters.end()) {
-        // Schedule system upgrade
-        scheduleSystemUpgrade(versionIt->second);
-    }
-    
-    return true;
-}
-
-bool Governance::executeTreasuryAllocation(const Proposal& proposal) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Executing treasury allocation proposal: " + proposal.id);
-    
-    auto amountIt = proposal.parameters.find("amount");
-    auto recipientIt = proposal.parameters.find("recipient");
-    
-    if (amountIt != proposal.parameters.end() && recipientIt != proposal.parameters.end()) {
-        double amount = std::stod(amountIt->second);
-        std::string recipient = recipientIt->second;
-        
-        // Transfer funds from treasury
-        return transferFromTreasury(recipient, amount);
-    }
-    
-    return false;
-}
-
-bool Governance::executeEmergencyAction(const Proposal& proposal) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Executing emergency action proposal: " + proposal.id);
-    
-    auto actionIt = proposal.parameters.find("action");
-    if (actionIt != proposal.parameters.end()) {
-        return executeEmergencyCommand(actionIt->second);
-    }
-    
-    return false;
-}
-
-bool Governance::executeCustomProposal(const Proposal& proposal) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Executing custom proposal: " + proposal.id);
-    
-    // Custom proposals require manual implementation
-    // This would typically involve calling external systems or contracts
-    
-    return true; // Simplified
-}
-
-void Governance::applyParameterChange(const std::string& parameter, const std::string& value) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Applying parameter change: " + parameter + " = " + value);
-    
-    // Apply changes to blockchain parameters
-    if (parameter == "block_reward") {
-        blockchain->setBlockReward(std::stod(value));
-    } else if (parameter == "difficulty_adjustment") {
-        // Apply difficulty adjustment parameter
-    }
-    // Add more parameter handlers as needed
-}
-
-void Governance::scheduleSystemUpgrade(const std::string& version) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Scheduled system upgrade to version: " + version);
-    // Schedule upgrade for next maintenance window
-}
-
-bool Governance::transferFromTreasury(const std::string& recipient, double amount) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Transferring " + Utils::formatAmount(amount, 2) + 
-                                  " GXC from treasury to " + recipient);
-    
-    // Create treasury transaction
-    Transaction treasuryTx("treasury_address", recipient, amount);
-    
-    // Add to blockchain
-    return blockchain->addPendingTransaction(treasuryTx);
-}
-
-bool Governance::executeEmergencyCommand(const std::string& command) {
-    LOG_GOVERNANCE(LogLevel::INFO, "Executing emergency command: " + command);
-    
-    if (command == "pause_network") {
-        // Pause network operations
-        return true;
-    } else if (command == "resume_network") {
-        // Resume network operations
-        return true;
-    } else if (command == "emergency_patch") {
-        // Apply emergency patch
-        return true;
-    } else if (command == "freeze_assets") {
-        // Freeze specific assets
-        return true;
-    }
-    
-    return false;
-}
-
-std::string Governance::proposalStatusToString(ProposalStatus status) {
-    switch (status) {
-        case ProposalStatus::ACTIVE: return "ACTIVE";
-        case ProposalStatus::PASSED: return "PASSED";
-        case ProposalStatus::REJECTED: return "REJECTED";
-        case ProposalStatus::EXECUTED: return "EXECUTED";
-        case ProposalStatus::EXECUTION_FAILED: return "EXECUTION_FAILED";
-        default: return "UNKNOWN";
-    }
+double GovernanceSystem::calculateVoteWeight(double stakeAmount, uint32_t stakingDays) const {
+    // Simple formula: base weight from stake, bonus from staking duration
+    double baseWeight = stakeAmount;
+    double durationBonus = 1.0 + (stakingDays / 365.0) * 0.1; // 10% bonus per year
+    return baseWeight * durationBonus;
 }

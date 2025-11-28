@@ -305,11 +305,11 @@ CMakeFiles/gxc_core.dir/src/RESTServer.cpp.o: \
  /workspace/src/../include/Validator.h /workspace/src/../include/Wallet.h \
  /workspace/src/../include/ProofOfPrice.h \
  /workspace/src/../include/CrossChainBridge.h \
- /workspace/src/../include/Governance.h \
- /workspace/src/../include/GoldToken.h \
- /workspace/src/../include/StockContract.h /usr/include/c++/13/mutex \
+ /workspace/src/../include/Governance.h /usr/include/c++/13/mutex \
  /usr/include/c++/13/bits/std_mutex.h \
  /usr/include/c++/13/bits/unique_lock.h \
+ /workspace/src/../include/GoldToken.h \
+ /workspace/src/../include/StockContract.h \
  /workspace/src/../include/Logger.h /usr/include/c++/13/fstream \
  /usr/include/x86_64-linux-gnu/c++/13/bits/basic_file.h \
  /usr/include/x86_64-linux-gnu/c++/13/bits/c++io.h \

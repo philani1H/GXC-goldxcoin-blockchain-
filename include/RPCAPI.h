@@ -409,35 +409,7 @@ public:
     std::string processRequest(const std::string& request);
 };
 
-// REST API server for lightweight access
-class RESTServer {
-private:
-    RPCServer* rpcServer;
-    uint16_t port;
-    std::atomic<bool> running{false};
-    std::thread serverThread;
-    
-public:
-    RESTServer(RPCServer* rpcServerIn, uint16_t portIn = 8080);
-    ~RESTServer();
-    
-    bool start();
-    void stop();
-    
-private:
-    void handleHttpRequest(int clientSocket);
-    std::string processRestRequest(const std::string& path, const std::string& method);
-    
-    // REST endpoints
-    std::string getBlockchainInfo();
-    std::string getBlock(const std::string& hash);
-    std::string getTransaction(const std::string& txid);
-    std::string getAddress(const std::string& address);
-    std::string getMempool();
-    std::string getPeers();
-    std::string getMiningInfo();
-    std::string getStakingInfo();
-};
+// REST API server is defined in RESTServer.h
 
 // WebSocket server for real-time updates
 class WebSocketServer {

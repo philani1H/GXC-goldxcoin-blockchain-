@@ -198,6 +198,12 @@ void RPCAPI::serverLoop() {
     LOG_API(LogLevel::INFO, "RPC server loop stopped");
 }
 
+void RPCAPI::processRequests() {
+    // RPC requests are processed in the serverLoop thread
+    // This method can be used for synchronous processing if needed
+    // For now, it's a no-op since serverLoop handles requests asynchronously
+}
+
 // Blockchain information methods
 JsonValue RPCAPI::getBlockchainInfo(const JsonValue& params) {
     JsonValue result;

@@ -5,9 +5,11 @@
 #include "blockchain.h"
 #include <iostream>
 
-Proposal::Proposal(const std::string& proposerIn, const std::string& titleIn, const std::string& descriptionIn, const std::vector<ParameterChange>& changesIn, uint32_t votingPeriodDays, Blockchain* blockchain)
-    : proposer(proposerIn), title(titleIn), description(descriptionIn), parameterChanges(changesIn), createdAt(std::time(nullptr)), votingEndsAt(createdAt + votingPeriodDays * 86400), status(ProposalStatus::ACTIVE), forVotes(0), againstVotes(0), abstainVotes(0), totalVotes(0), quorumThreshold(DEFAULT_QUORUM_THRESHOLD), passThreshold(DEFAULT_PASS_THRESHOLD), executed(false), executedAt(0), blockchain(blockchain) {
-    if (blockchain) std::cout << "[Proposal] Blockchain height: " << blockchain->getHeight() << std::endl;
+Proposal::Proposal() : proposer(""), title(""), description(""), createdAt(std::time(nullptr)), votingEndsAt(createdAt + 7 * 86400), status(ProposalStatus::ACTIVE), forVotes(0), againstVotes(0), abstainVotes(0), totalVotes(0), quorumThreshold(DEFAULT_QUORUM_THRESHOLD), passThreshold(DEFAULT_PASS_THRESHOLD), executed(false), executedAt(0) {
+}
+
+Proposal::Proposal(const std::string& proposerIn, const std::string& titleIn, const std::string& descriptionIn, const std::vector<ParameterChange>& changesIn, uint32_t votingPeriodDays)
+    : proposer(proposerIn), title(titleIn), description(descriptionIn), parameterChanges(changesIn), createdAt(std::time(nullptr)), votingEndsAt(createdAt + votingPeriodDays * 86400), status(ProposalStatus::ACTIVE), forVotes(0), againstVotes(0), abstainVotes(0), totalVotes(0), quorumThreshold(DEFAULT_QUORUM_THRESHOLD), passThreshold(DEFAULT_PASS_THRESHOLD), executed(false), executedAt(0) {
 }
 
 bool Proposal::addVote(const Vote& vote) {
@@ -38,4 +40,4 @@ bool Proposal::hasPassed() const { return forVotes >= passThreshold * totalVotes
 double Proposal::getApprovalRatio() const { return totalVotes ? forVotes / totalVotes : 0.0; }
 double Proposal::getParticipationRatio(double totalStake) const { return totalStake ? totalVotes / totalStake : 0.0; }
 std::string Proposal::serialize() const { return "<proposal_serialized>"; }
-Proposal Proposal::deserialize(const std::string&) { return Proposal("","","",{}); }
+Proposal Proposal::deserialize(const std::string&) { return Proposal("","","",{}, 7); }

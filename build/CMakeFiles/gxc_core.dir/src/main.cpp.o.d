@@ -195,14 +195,14 @@ CMakeFiles/gxc_core.dir/src/main.cpp.o: /workspace/src/main.cpp \
  /workspace/src/../include/Wallet.h \
  /workspace/src/../include/ProofOfPrice.h \
  /workspace/src/../include/CrossChainBridge.h \
- /workspace/src/../include/Governance.h \
- /workspace/src/../include/GoldToken.h \
- /workspace/src/../include/StockContract.h /usr/include/c++/13/mutex \
+ /workspace/src/../include/Governance.h /usr/include/c++/13/mutex \
  /usr/include/c++/13/bits/chrono.h /usr/include/c++/13/ratio \
  /usr/include/c++/13/bits/parse_numbers.h \
  /usr/include/x86_64-linux-gnu/c++/13/bits/error_constants.h \
  /usr/include/c++/13/bits/std_mutex.h \
  /usr/include/c++/13/bits/unique_lock.h \
+ /workspace/src/../include/GoldToken.h \
+ /workspace/src/../include/StockContract.h \
  /workspace/src/../include/Logger.h /usr/include/c++/13/fstream \
  /usr/include/c++/13/istream /usr/include/c++/13/ios \
  /usr/include/c++/13/bits/ios_base.h \

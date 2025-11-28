@@ -443,3 +443,7 @@ std::vector<std::string> Logger::getLogsByTimeRange(uint64_t startTime, uint64_t
     // This would require implementing time range filtering
     return {};
 }
+
+void Logger::shutdown() {
+    cleanup();
+}

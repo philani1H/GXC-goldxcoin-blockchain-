@@ -4,10 +4,13 @@
 #include "StockContract.h"
 #include "blockchain.h"
 #include <iostream>
+#include <algorithm>
 
-StockContract::StockContract(const std::string& tickerIn, const std::string& companyNameIn, const std::string& exchangeIn, const std::string& priceOracleIn, Blockchain* blockchainPtr)
-    : ticker(tickerIn), companyName(companyNameIn), exchange(exchangeIn), priceOracle(priceOracleIn), totalShares(0), tradingHalted(false), dividendYield(0.0), marketCap(0), blockchain(blockchainPtr) {
-    if (blockchain) std::cout << "[StockContract] Blockchain height: " << blockchain->getHeight() << std::endl;
+StockContract::StockContract() : ticker(""), companyName(""), exchange(""), priceOracle(""), totalShares(0), tradingHalted(false), dividendYield(0.0), marketCap(0) {
+}
+
+StockContract::StockContract(const std::string& tickerIn, const std::string& companyNameIn, const std::string& exchangeIn, const std::string& priceOracleIn)
+    : ticker(tickerIn), companyName(companyNameIn), exchange(exchangeIn), priceOracle(priceOracleIn), totalShares(0), tradingHalted(false), dividendYield(0.0), marketCap(0) {
 }
 
 bool StockContract::updatePrice(double newPrice, std::time_t timestamp, const std::string& popHash, const std::string& source) {
@@ -71,14 +74,26 @@ bool StockContract::claimDividend(const std::string&) { return true; }
 bool StockContract::executeSplit(double ratio) { for (auto& [holder, shares] : shareBalances) shares = static_cast<uint64_t>(shares * ratio); totalShares = static_cast<uint64_t>(totalShares * ratio); return true; }
 bool StockContract::executeMerger(double, const std::string&) { return true; }
 void StockContract::addAuthorizedIssuer(const std::string& issuer) { authorizedIssuers.push_back(issuer); }
-void StockContract::removeAuthorizedIssuer(const std::string& issuer) { authorizedIssuers.erase(std::remove(authorizedIssuers.begin(), authorizedIssuers.end(), issuer), authorizedIssuers.end()); }
-bool StockContract::isAuthorizedIssuer(const std::string& issuer) const { return std::find(authorizedIssuers.begin(), authorizedIssuers.end(), issuer) != authorizedIssuers.end(); }
+void StockContract::removeAuthorizedIssuer(const std::string& issuer) { 
+    authorizedIssuers.erase(std::remove(authorizedIssuers.begin(), authorizedIssuers.end(), issuer), authorizedIssuers.end()); 
+}
+bool StockContract::isAuthorizedIssuer(const std::string& issuer) const { 
+    return std::find(authorizedIssuers.begin(), authorizedIssuers.end(), issuer) != authorizedIssuers.end(); 
+}
 void StockContract::addAuthorizedExecutor(const std::string& executor) { authorizedExecutors.push_back(executor); }
-void StockContract::removeAuthorizedExecutor(const std::string& executor) { authorizedExecutors.erase(std::remove(authorizedExecutors.begin(), authorizedExecutors.end(), executor), authorizedExecutors.end()); }
-bool StockContract::isAuthorizedExecutor(const std::string& executor) const { return std::find(authorizedExecutors.begin(), authorizedExecutors.end(), executor) != authorizedExecutors.end(); }
+void StockContract::removeAuthorizedExecutor(const std::string& executor) { 
+    authorizedExecutors.erase(std::remove(authorizedExecutors.begin(), authorizedExecutors.end(), executor), authorizedExecutors.end()); 
+}
+bool StockContract::isAuthorizedExecutor(const std::string& executor) const { 
+    return std::find(authorizedExecutors.begin(), authorizedExecutors.end(), executor) != authorizedExecutors.end(); 
+}
 void StockContract::addAuthorizedOracle(const std::string& oracle) { authorizedOracles.push_back(oracle); }
-void StockContract::removeAuthorizedOracle(const std::string& oracle) { authorizedOracles.erase(std::remove(authorizedOracles.begin(), authorizedOracles.end(), oracle), authorizedOracles.end()); }
-bool StockContract::isAuthorizedOracle(const std::string& oracle) const { return std::find(authorizedOracles.begin(), authorizedOracles.end(), oracle) != authorizedOracles.end(); }
+void StockContract::removeAuthorizedOracle(const std::string& oracle) { 
+    authorizedOracles.erase(std::remove(authorizedOracles.begin(), authorizedOracles.end(), oracle), authorizedOracles.end()); 
+}
+bool StockContract::isAuthorizedOracle(const std::string& oracle) const { 
+    return std::find(authorizedOracles.begin(), authorizedOracles.end(), oracle) != authorizedOracles.end(); 
+}
 void StockContract::setTransferRestriction(const std::string& address, bool restricted) { transferRestrictions[address] = restricted; }
 bool StockContract::hasTransferRestriction(const std::string& address) const { auto it = transferRestrictions.find(address); return it != transferRestrictions.end() && it->second; }
 void StockContract::setKYCStatus(const std::string& address, bool verified) { kycVerified[address] = verified; }

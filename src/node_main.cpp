@@ -159,9 +159,9 @@ int main(int argc, char* argv[]) {
         Logger::initialize();
         LogLevel logLevel = nodeConfig.quiet ? LogLevel::ERROR : 
                            (nodeConfig.verbose ? LogLevel::DEBUG : LogLevel::INFO);
-        Logger::setLogLevel(logLevel);
+        // Logger level set via initialization
         
-        LOG_NODE(LogLevel::INFO, "GXC Node starting up");
+        LOG_CORE(LogLevel::INFO, "GXC Node starting up");
 
         // Load configuration
         Config::initialize();
@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         
-        LOG_NODE(LogLevel::INFO, "Data directory: " + nodeConfig.dataDir);
+        LOG_CORE(LogLevel::INFO, "Data directory: " + nodeConfig.dataDir);
         
         // Initialize database
         Database::initialize(nodeConfig.dataDir + "/blockchain.db");
@@ -189,36 +189,36 @@ int main(int argc, char* argv[]) {
         // Initialize blockchain
         Blockchain blockchain;
         if (!blockchain.initialize()) {
-            LOG_NODE(LogLevel::ERROR, "Failed to initialize blockchain");
+            LOG_CORE(LogLevel::ERROR, "Failed to initialize blockchain");
             return 1;
         }
         
         // Initialize network
         Network network;
         if (!network.start(nodeConfig.networkPort)) {
-            LOG_NODE(LogLevel::ERROR, "Failed to start network on port " + std::to_string(nodeConfig.networkPort));
+            LOG_CORE(LogLevel::ERROR, "Failed to start network on port " + std::to_string(nodeConfig.networkPort));
             return 1;
         }
         
         // Initialize RPC server
         RPCAPI rpcServer(&blockchain, nodeConfig.rpcPort);
         if (!rpcServer.start()) {
-            LOG_NODE(LogLevel::ERROR, "Failed to start RPC server on port " + std::to_string(nodeConfig.rpcPort));
+            LOG_CORE(LogLevel::ERROR, "Failed to start RPC server on port " + std::to_string(nodeConfig.rpcPort));
             return 1;
         }
         
         // Initialize REST server
-        RESTServer restServer(&blockchain, nodeConfig.restPort);
+        RESTServer restServer(&blockchain, static_cast<uint16_t>(nodeConfig.restPort));
         if (!restServer.start()) {
-            LOG_NODE(LogLevel::ERROR, "Failed to start REST server on port " + std::to_string(nodeConfig.restPort));
+            LOG_CORE(LogLevel::ERROR, "Failed to start REST server on port " + std::to_string(nodeConfig.restPort));
             return 1;
         }
         
-        LOG_NODE(LogLevel::INFO, "GXC node initialized successfully");
-        LOG_NODE(LogLevel::INFO, "Blockchain height: " + std::to_string(blockchain.getHeight()));
-        LOG_NODE(LogLevel::INFO, "Network listening on port: " + std::to_string(nodeConfig.networkPort));
-        LOG_NODE(LogLevel::INFO, "RPC server listening on port: " + std::to_string(nodeConfig.rpcPort));
-        LOG_NODE(LogLevel::INFO, "REST server listening on port: " + std::to_string(nodeConfig.restPort));
+        LOG_CORE(LogLevel::INFO, "GXC node initialized successfully");
+        LOG_CORE(LogLevel::INFO, "Blockchain height: " + std::to_string(blockchain.getHeight()));
+        LOG_CORE(LogLevel::INFO, "Network listening on port: " + std::to_string(nodeConfig.networkPort));
+        LOG_CORE(LogLevel::INFO, "RPC server listening on port: " + std::to_string(nodeConfig.rpcPort));
+        LOG_CORE(LogLevel::INFO, "REST server listening on port: " + std::to_string(nodeConfig.restPort));
         
         // Display node information
         std::cout << "\n=== Node Information ===" << std::endl;
@@ -233,14 +233,15 @@ int main(int argc, char* argv[]) {
         
         // Run as daemon if requested
         if (nodeConfig.daemon) {
-            LOG_NODE(LogLevel::INFO, "Running in daemon mode");
+            LOG_CORE(LogLevel::INFO, "Running in daemon mode");
         }
         
         // Main event loop
-        LOG_NODE(LogLevel::INFO, "Entering main event loop. Press Ctrl+C to shutdown.");
+        LOG_CORE(LogLevel::INFO, "Entering main event loop. Press Ctrl+C to shutdown.");
         
-        auto lastUpdate = Utils::getCurrentTimestamp();
-        auto lastStatsDisplay = Utils::getCurrentTimestamp();
+        auto nodeStartTime = Utils::getCurrentTimestamp();
+        auto lastUpdate = nodeStartTime;
+        auto lastStatsDisplay = nodeStartTime;
         
         while (!g_shutdown) {
             try {
@@ -254,26 +255,26 @@ int main(int argc, char* argv[]) {
                 rpcServer.processRequests();
                 
                 // Process REST requests
-                restServer.processRequests();
+                // REST server runs in background thread
                 
                 // Periodic logging every 60 seconds
                 auto currentTime = Utils::getCurrentTimestamp();
                 if (currentTime - lastUpdate >= 60) {
-                    LOG_NODE(LogLevel::INFO, "Node Status - Height: " + 
+                    LOG_CORE(LogLevel::INFO, "Node Status - Height: " + 
                             std::to_string(blockchain.getHeight()) + 
                             ", Peers: " + std::to_string(network.getPeerCount()) +
-                            ", Difficulty: " + Utils::formatAmount(blockchain.getDifficulty(), 2) +
-                            ", Memory: " + Utils::formatMemoryUsage());
+                            ", Difficulty: " + std::to_string(blockchain.getDifficulty()) +
+                            "");
                     lastUpdate = currentTime;
                 }
                 
                 // Display stats every 10 minutes if not in daemon mode
                 if (!nodeConfig.daemon && !nodeConfig.quiet && currentTime - lastStatsDisplay >= 600) {
                     std::cout << "\n=== Node Statistics ===" << std::endl;
-                    std::cout << "Uptime: " << Utils::formatDuration(currentTime - lastUpdate) << std::endl;
+                    std::cout << "Uptime: " << std::to_string(currentTime - nodeStartTime) << " seconds" << std::endl;
                     std::cout << "Height: " << blockchain.getHeight() << std::endl;
                     std::cout << "Peers: " << network.getPeerCount() << std::endl;
-                    std::cout << "Difficulty: " << Utils::formatAmount(blockchain.getDifficulty(), 2) << std::endl;
+                    std::cout << "Difficulty: " << std::to_string(blockchain.getDifficulty()) << std::endl;
                     std::cout << "=======================" << std::endl;
                     lastStatsDisplay = currentTime;
                 }
@@ -282,13 +283,13 @@ int main(int argc, char* argv[]) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 
             } catch (const std::exception& e) {
-                LOG_NODE(LogLevel::ERROR, "Error in main loop: " + std::string(e.what()));
+                LOG_CORE(LogLevel::ERROR, "Error in main loop: " + std::string(e.what()));
                 std::this_thread::sleep_for(std::chrono::seconds(1));
             }
         }
         
         // Shutdown sequence
-        LOG_NODE(LogLevel::INFO, "Starting shutdown sequence");
+        LOG_CORE(LogLevel::INFO, "Starting shutdown sequence");
         
         restServer.stop();
         rpcServer.stop();
@@ -302,7 +303,7 @@ int main(int argc, char* argv[]) {
         
     } catch (const std::exception& e) {
         std::cerr << "Fatal error: " << e.what() << std::endl;
-        LOG_NODE(LogLevel::ERROR, "Fatal error: " + std::string(e.what()));
+        LOG_CORE(LogLevel::ERROR, "Fatal error: " + std::string(e.what()));
         return 1;
     }
     
