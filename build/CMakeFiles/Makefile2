@@ -180,8 +180,8 @@ CMakeFiles/gxc_mining.dir/clean:
 # Target rules for target CMakeFiles/gxc-miner.dir
 
 # All Build rule for target.
-CMakeFiles/gxc-miner.dir/all: CMakeFiles/gxc_mining.dir/all
 CMakeFiles/gxc-miner.dir/all: CMakeFiles/gxc_core.dir/all
+CMakeFiles/gxc-miner.dir/all: CMakeFiles/gxc_mining.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-miner.dir/build.make CMakeFiles/gxc-miner.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-miner.dir/build.make CMakeFiles/gxc-miner.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/workspace/build/CMakeFiles --progress-num=14,15,16 "Built target gxc-miner"
@@ -207,8 +207,8 @@ CMakeFiles/gxc-miner.dir/clean:
 # Target rules for target CMakeFiles/gxc-sha256-miner.dir
 
 # All Build rule for target.
-CMakeFiles/gxc-sha256-miner.dir/all: CMakeFiles/gxc_mining.dir/all
 CMakeFiles/gxc-sha256-miner.dir/all: CMakeFiles/gxc_core.dir/all
+CMakeFiles/gxc-sha256-miner.dir/all: CMakeFiles/gxc_mining.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-sha256-miner.dir/build.make CMakeFiles/gxc-sha256-miner.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-sha256-miner.dir/build.make CMakeFiles/gxc-sha256-miner.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/workspace/build/CMakeFiles --progress-num=24,25 "Built target gxc-sha256-miner"
@@ -234,8 +234,8 @@ CMakeFiles/gxc-sha256-miner.dir/clean:
 # Target rules for target CMakeFiles/gxc-ethash-miner.dir
 
 # All Build rule for target.
-CMakeFiles/gxc-ethash-miner.dir/all: CMakeFiles/gxc_mining.dir/all
 CMakeFiles/gxc-ethash-miner.dir/all: CMakeFiles/gxc_core.dir/all
+CMakeFiles/gxc-ethash-miner.dir/all: CMakeFiles/gxc_mining.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-ethash-miner.dir/build.make CMakeFiles/gxc-ethash-miner.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-ethash-miner.dir/build.make CMakeFiles/gxc-ethash-miner.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/workspace/build/CMakeFiles --progress-num=4,5 "Built target gxc-ethash-miner"
@@ -261,8 +261,8 @@ CMakeFiles/gxc-ethash-miner.dir/clean:
 # Target rules for target CMakeFiles/gxc-gxhash-miner.dir
 
 # All Build rule for target.
-CMakeFiles/gxc-gxhash-miner.dir/all: CMakeFiles/gxc_mining.dir/all
 CMakeFiles/gxc-gxhash-miner.dir/all: CMakeFiles/gxc_core.dir/all
+CMakeFiles/gxc-gxhash-miner.dir/all: CMakeFiles/gxc_mining.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-gxhash-miner.dir/build.make CMakeFiles/gxc-gxhash-miner.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-gxhash-miner.dir/build.make CMakeFiles/gxc-gxhash-miner.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/workspace/build/CMakeFiles --progress-num=9,10 "Built target gxc-gxhash-miner"
@@ -288,8 +288,8 @@ CMakeFiles/gxc-gxhash-miner.dir/clean:
 # Target rules for target CMakeFiles/gxc-pool-proxy.dir
 
 # All Build rule for target.
-CMakeFiles/gxc-pool-proxy.dir/all: CMakeFiles/gxc_mining.dir/all
 CMakeFiles/gxc-pool-proxy.dir/all: CMakeFiles/gxc_core.dir/all
+CMakeFiles/gxc-pool-proxy.dir/all: CMakeFiles/gxc_mining.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-pool-proxy.dir/build.make CMakeFiles/gxc-pool-proxy.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc-pool-proxy.dir/build.make CMakeFiles/gxc-pool-proxy.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/workspace/build/CMakeFiles --progress-num=22,23 "Built target gxc-pool-proxy"
