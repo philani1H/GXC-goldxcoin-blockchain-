@@ -405,12 +405,14 @@ class WalletService:
     
     def generate_mnemonic(self, strength=128):
         """
-        Generate BIP39 mnemonic seed phrase (12 words)
+        Generate BIP39 mnemonic seed phrase (12 words for 128-bit, 24 words for 256-bit)
         strength: entropy in bits (128 for 12 words, 256 for 24 words)
         """
-        # BIP39 English word list (first 2048 words)
-        # Using a subset - in production, use full BIP39 word list
-        BIP39_WORDLIST = [
+        # Import full BIP39 wordlist
+        from bip39_wordlist import BIP39_WORDLIST
+        
+        # Original incomplete wordlist kept for reference
+        # BIP39_WORDLIST_OLD = [
             "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
             "absurd", "abuse", "access", "accident", "account", "accuse", "achieve", "acid",
             "acoustic", "acquire", "across", "act", "action", "actor", "actual", "adapt",
