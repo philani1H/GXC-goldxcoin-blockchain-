@@ -24,7 +24,7 @@ class MiningPool:
         self.pool_name = pool_name
         self.algorithm = algorithm
         self.port = port
-        self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_NODE_URL', 'http://localhost:8545')
+        self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
         
         # Pool state
         self.miners = {}  # miner_id -> MinerInfo

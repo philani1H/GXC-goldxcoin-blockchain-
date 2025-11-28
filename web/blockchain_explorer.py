@@ -19,7 +19,7 @@ app.config['SECRET_KEY'] = 'gxc_explorer_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Configuration
-BLOCKCHAIN_NODE_URL = os.environ.get('BLOCKCHAIN_NODE_URL', 'http://localhost:8545')  # GXC node RPC endpoint
+BLOCKCHAIN_NODE_URL = os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')  # GXC node RPC endpoint
 # Use /tmp for Vercel (writable), otherwise use local path
 DATABASE_PATH = os.environ.get('DATABASE_PATH', '/tmp/gxc_explorer.db' if os.path.exists('/tmp') else 'gxc_explorer.db')
 

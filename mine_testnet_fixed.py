@@ -9,7 +9,7 @@ import time
 import json
 
 MINER_ADDRESS = "tGXC9fab7317231b966af85ac453e168c0932"
-RPC_URL = "http://localhost:18332"
+RPC_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
 
 def rpc_call(method, params=None):
     """Make RPC call to blockchain node"""
