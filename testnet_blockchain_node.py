@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 import os
 
 # Testnet configuration
-TESTNET_RPC_PORT = 18332
+TESTNET_RPC_PORT = int(os.environ.get('PORT', 18332))  # Railway compatibility
 TESTNET_DATA_DIR = "./gxc_testnet_data"
 BLOCK_TIME = 60  # 60 seconds for testnet (vs 150 for mainnet)
 INITIAL_DIFFICULTY = 0.1  # Lower difficulty for testnet
@@ -303,10 +303,12 @@ def main():
     RPCHandler.blockchain = blockchain
     
     # Start RPC server
-    server_address = ('127.0.0.1', TESTNET_RPC_PORT)
+    # Use 0.0.0.0 for Railway/cloud deployment, 127.0.0.1 for local
+    host = '0.0.0.0' if os.environ.get('RAILWAY_ENVIRONMENT') else '127.0.0.1'
+    server_address = (host, TESTNET_RPC_PORT)
     httpd = HTTPServer(server_address, RPCHandler)
     
-    print(f"[BLOCKCHAIN] RPC server started on http://localhost:{TESTNET_RPC_PORT}")
+    print(f"[BLOCKCHAIN] RPC server started on http://{host}:{TESTNET_RPC_PORT}")
     print(f"[BLOCKCHAIN] Current height: {blockchain.current_height}")
     print(f"[BLOCKCHAIN] Current difficulty: {blockchain.current_difficulty}")
     print()
