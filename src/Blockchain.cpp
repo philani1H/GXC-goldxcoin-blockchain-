@@ -501,3 +501,53 @@ void Blockchain::shutdown() {
     
     LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain shutdown complete");
 }
+
+double Blockchain::getBalance(const std::string& address) const {
+    // Query balance from UTXO set
+    double balance = 0.0;
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    for (const auto& [txHash, output] : utxoSet) {
+        if (output.address == address) {
+            balance += output.amount;
+        }
+    }
+    
+    return balance;
+}
+
+double Blockchain::getGoldBalance(const std::string& address) const {
+    // Query gold token balance
+    auto it = goldTokens.find("GXC-G");
+    if (it != goldTokens.end()) {
+        // Would call GoldToken::getBalance(address) in full implementation
+        return 0.0; // Placeholder
+    }
+    return 0.0;
+}
+
+std::vector<Transaction> Blockchain::getTransactionHistory(const std::string& address) const {
+    std::vector<Transaction> history;
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    // Search through all blocks for transactions involving this address
+    for (const auto& blockPtr : chain) {
+        if (!blockPtr) continue;
+        const Block& block = *blockPtr;
+        for (const auto& tx : block.getTransactions()) {
+            // Check if address is involved in transaction (check outputs)
+            bool involved = false;
+            for (const auto& output : tx.getOutputs()) {
+                if (output.address == address) {
+                    involved = true;
+                    break;
+                }
+            }
+            if (involved) {
+                history.push_back(tx);
+            }
+        }
+    }
+    
+    return history;
+}
