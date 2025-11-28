@@ -1,1 +1,0 @@
-/usr/bin/g++ -O3 -DNDEBUG "CMakeFiles/gxc-node.dir/src/node_main.cpp.o" -o gxc-node  libgxc_core.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl 

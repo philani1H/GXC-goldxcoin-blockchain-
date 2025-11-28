@@ -1,1 +1,0 @@
-/usr/bin/g++ -O3 -DNDEBUG "CMakeFiles/gxc-sha256-miner.dir/mining/sha256_main.cpp.o" -o gxc-sha256-miner  libgxc_mining.a libgxc_core.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl 

@@ -1,1 +1,0 @@
-/usr/bin/g++ -O3 -DNDEBUG "CMakeFiles/gxc-explorer.dir/tools/explorer_main.cpp.o" "CMakeFiles/gxc-explorer.dir/tools/BlockExplorer.cpp.o" -o gxc-explorer  libgxc_core.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl 

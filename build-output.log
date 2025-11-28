@@ -1,0 +1,337 @@
+========================================
+  Building ALL GXC Miners
+========================================
+
+Step 1: Building C++ Miners...
+==============================
+Building all miners...
+-- Checking for module 'libsystemd'
+--   Package 'libsystemd', required by 'virtual:world', not found
+CMake Warning at CMakeLists.txt:323 (message):
+  nlohmann_json not found.  Some features may be unavailable.
+
+
+CMake Warning (dev) at CMakeLists.txt:837 (find_package):
+  Policy CMP0146 is not set: The FindCUDA module is removed.  Run "cmake
+  --help-policy CMP0146" for policy details.  Use the cmake_policy command to
+  set the policy and suppress this warning.
+
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- OpenCL not found - GPU mining will use CUDA or CPU only
+CMake Warning at CMakeLists.txt:1049 (message):
+  Google Test not found.  Tests will not be built.
+
+
+-- 
+-- GXC Blockchain Build Configuration:
+--   Version: 2.0.0
+--   Build type: Release
+--   C++ compiler: GNU 13.3.0
+--   OpenSSL found: TRUE
+--   OpenSSL include: /usr/include
+--   OpenSSL crypto: /usr/lib/x86_64-linux-gnu/libcrypto.so
+--   OpenSSL SSL: /usr/lib/x86_64-linux-gnu/libssl.so
+--   Build GUI: OFF
+--   Build mining client: ON
+--   Build tests: OFF
+--   Build benchmarks: OFF
+--   Enable LTO: OFF
+--   Enable profiling: OFF
+--   Static build: OFF
+--   Python bindings: YES (3.12.3)
+--   Install prefix: /usr/local
+-- 
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /workspace/build
+[  3%] Building CXX object CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o
+[  6%] Building CXX object CMakeFiles/gxc_core.dir/src/Database.cpp.o
+[ 10%] Building CXX object CMakeFiles/gxc_core.dir/src/Logger.cpp.o
+[ 13%] Building CXX object CMakeFiles/gxc_core.dir/src/main.cpp.o
+/workspace/src/HashUtils.cpp:4:10: fatal error: openssl/sha.h: No such file or directory
+    4 | #include <openssl/sha.h>
+      |          ^~~~~~~~~~~~~~~
+In file included from /workspace/src/Database.cpp:1:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:216: CMakeFiles/gxc_core.dir/src/Database.cpp.o] Error 1
+gmake[3]: *** Waiting for unfinished jobs....
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:202: CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o] Error 1
+In file included from /workspace/src/main.cpp:4:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:76: CMakeFiles/gxc_core.dir/src/main.cpp.o] Error 1
+/workspace/src/Logger.cpp: In member function ‘uint64_t Logger::getLogEntriesByLevel(LogLevel) const’:
+/workspace/src/Logger.cpp:410:48: warning: unused parameter ‘level’ [-Wunused-parameter]
+  410 | uint64_t Logger::getLogEntriesByLevel(LogLevel level) const {
+      |                                       ~~~~~~~~~^~~~~
+/workspace/src/Logger.cpp: In member function ‘std::vector<std::__cxx11::basic_string<char> > Logger::searchLogs(const std::string&) const’:
+/workspace/src/Logger.cpp:427:64: warning: unused parameter ‘pattern’ [-Wunused-parameter]
+  427 | std::vector<std::string> Logger::searchLogs(const std::string& pattern) const {
+      |                                             ~~~~~~~~~~~~~~~~~~~^~~~~~~
+/workspace/src/Logger.cpp: In member function ‘std::vector<std::__cxx11::basic_string<char> > Logger::getLogsByCategory(const std::string&) const’:
+/workspace/src/Logger.cpp:432:71: warning: unused parameter ‘category’ [-Wunused-parameter]
+  432 | std::vector<std::string> Logger::getLogsByCategory(const std::string& category) const {
+      |                                                    ~~~~~~~~~~~~~~~~~~~^~~~~~~~
+/workspace/src/Logger.cpp: In member function ‘std::vector<std::__cxx11::basic_string<char> > Logger::getLogsByLevel(LogLevel) const’:
+/workspace/src/Logger.cpp:437:58: warning: unused parameter ‘level’ [-Wunused-parameter]
+  437 | std::vector<std::string> Logger::getLogsByLevel(LogLevel level) const {
+      |                                                 ~~~~~~~~~^~~~~
+/workspace/src/Logger.cpp: In member function ‘std::vector<std::__cxx11::basic_string<char> > Logger::getLogsByTimeRange(uint64_t, uint64_t) const’:
+/workspace/src/Logger.cpp:442:62: warning: unused parameter ‘startTime’ [-Wunused-parameter]
+  442 | std::vector<std::string> Logger::getLogsByTimeRange(uint64_t startTime, uint64_t endTime) const {
+      |                                                     ~~~~~~~~~^~~~~~~~~
+/workspace/src/Logger.cpp:442:82: warning: unused parameter ‘endTime’ [-Wunused-parameter]
+  442 | std::vector<std::string> Logger::getLogsByTimeRange(uint64_t startTime, uint64_t endTime) const {
+      |                                                                         ~~~~~~~~~^~~~~~~
+gmake[2]: *** [CMakeFiles/Makefile2:107: CMakeFiles/gxc_core.dir/all] Error 2
+gmake[1]: *** [CMakeFiles/Makefile2:140: CMakeFiles/gxc-node.dir/rule] Error 2
+gmake: *** [Makefile:212: gxc-node] Error 2
+⚠️  gxc-node build failed
+[  2%] Building CXX object CMakeFiles/gxc_core.dir/src/main.cpp.o
+[  5%] Building CXX object CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o
+[  7%] Building CXX object CMakeFiles/gxc_core.dir/src/Database.cpp.o
+[ 10%] Building CXX object CMakeFiles/gxc_core.dir/src/Utils.cpp.o
+/workspace/src/HashUtils.cpp:4:10: fatal error: openssl/sha.h: No such file or directory
+    4 | #include <openssl/sha.h>
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+In file included from /workspace/src/Database.cpp:1:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:202: CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o] Error 1
+gmake[3]: *** Waiting for unfinished jobs....
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:216: CMakeFiles/gxc_core.dir/src/Database.cpp.o] Error 1
+In file included from /workspace/src/main.cpp:4:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:76: CMakeFiles/gxc_core.dir/src/main.cpp.o] Error 1
+/workspace/src/Utils.cpp: In function ‘bool Utils::createDirectory(const std::string&)’:
+/workspace/src/Utils.cpp:112:41: warning: unused parameter ‘path’ [-Wunused-parameter]
+  112 | bool createDirectory(const std::string& path) {
+      |                      ~~~~~~~~~~~~~~~~~~~^~~~
+/workspace/src/Utils.cpp: In function ‘std::vector<unsigned char> Utils::decodeBase64(const std::string&)’:
+/workspace/src/Utils.cpp:337:54: warning: unused parameter ‘encoded’ [-Wunused-parameter]
+  337 | std::vector<uint8_t> decodeBase64(const std::string& encoded) {
+      |                                   ~~~~~~~~~~~~~~~~~~~^~~~~~~
+gmake[2]: *** [CMakeFiles/Makefile2:107: CMakeFiles/gxc_core.dir/all] Error 2
+gmake[1]: *** [CMakeFiles/Makefile2:193: CMakeFiles/gxc-miner.dir/rule] Error 2
+gmake: *** [Makefile:238: gxc-miner] Error 2
+⚠️  gxc-miner build failed
+[  2%] Building CXX object CMakeFiles/gxc_core.dir/src/main.cpp.o
+[  5%] Building CXX object CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o
+[  7%] Building CXX object CMakeFiles/gxc_core.dir/src/Database.cpp.o
+[ 10%] Building CXX object CMakeFiles/gxc_core.dir/src/Network.cpp.o
+In file included from /workspace/src/Database.cpp:1:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:216: CMakeFiles/gxc_core.dir/src/Database.cpp.o] Error 1
+gmake[3]: *** Waiting for unfinished jobs....
+/workspace/src/HashUtils.cpp:4:10: fatal error: openssl/sha.h: No such file or directory
+    4 | #include <openssl/sha.h>
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:202: CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o] Error 1
+In file included from /workspace/src/main.cpp:4:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:76: CMakeFiles/gxc_core.dir/src/main.cpp.o] Error 1
+/workspace/src/Network.cpp: In member function ‘bool Network::addPeer(const std::string&, int, int)’:
+/workspace/src/Network.cpp:292:18: warning: unused variable ‘MIN_PEERS’ [-Wunused-variable]
+  292 |     const size_t MIN_PEERS = 3;
+      |                  ^~~~~~~~~
+/workspace/src/Network.cpp: In member function ‘void Network::handlePingMessage(NetworkPeer&, const std::string&)’:
+/workspace/src/Network.cpp:449:71: warning: unused parameter ‘message’ [-Wunused-parameter]
+  449 | void Network::handlePingMessage(NetworkPeer& peer, const std::string& message) {
+      |                                                    ~~~~~~~~~~~~~~~~~~~^~~~~~~
+/workspace/src/Network.cpp: In member function ‘void Network::handlePongMessage(NetworkPeer&, const std::string&)’:
+/workspace/src/Network.cpp:454:71: warning: unused parameter ‘message’ [-Wunused-parameter]
+  454 | void Network::handlePongMessage(NetworkPeer& peer, const std::string& message) {
+      |                                                    ~~~~~~~~~~~~~~~~~~~^~~~~~~
+/workspace/src/Network.cpp: In member function ‘void Network::handleHandshakeMessage(NetworkPeer&, const std::string&)’:
+/workspace/src/Network.cpp:459:76: warning: unused parameter ‘message’ [-Wunused-parameter]
+  459 | void Network::handleHandshakeMessage(NetworkPeer& peer, const std::string& message) {
+      |                                                         ~~~~~~~~~~~~~~~~~~~^~~~~~~
+gmake[2]: *** [CMakeFiles/Makefile2:107: CMakeFiles/gxc_core.dir/all] Error 2
+gmake[1]: *** [CMakeFiles/Makefile2:274: CMakeFiles/gxc-gxhash-miner.dir/rule] Error 2
+gmake: *** [Makefile:277: gxc-gxhash-miner] Error 2
+⚠️  gxc-gxhash-miner build failed
+[  2%] Building CXX object CMakeFiles/gxc_core.dir/src/main.cpp.o
+[  5%] Building CXX object CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o
+[  7%] Building CXX object CMakeFiles/gxc_core.dir/src/Database.cpp.o
+[ 10%] Building CXX object CMakeFiles/gxc_core.dir/src/RPCAPI.cpp.o
+In file included from /workspace/src/Database.cpp:1:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+/workspace/src/HashUtils.cpp:4:10: fatal error: openssl/sha.h: No such file or directory
+    4 | #include <openssl/sha.h>
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:216: CMakeFiles/gxc_core.dir/src/Database.cpp.o] Error 1
+gmake[3]: *** Waiting for unfinished jobs....
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:202: CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o] Error 1
+In file included from /workspace/src/RPCAPI.cpp:1:
+/workspace/src/../include/RPCAPI.h:12:10: fatal error: nlohmann/json.hpp: No such file or directory
+   12 | #include <nlohmann/json.hpp>
+      |          ^~~~~~~~~~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:286: CMakeFiles/gxc_core.dir/src/RPCAPI.cpp.o] Error 1
+In file included from /workspace/src/main.cpp:4:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:76: CMakeFiles/gxc_core.dir/src/main.cpp.o] Error 1
+gmake[2]: *** [CMakeFiles/Makefile2:107: CMakeFiles/gxc_core.dir/all] Error 2
+gmake[1]: *** [CMakeFiles/Makefile2:247: CMakeFiles/gxc-ethash-miner.dir/rule] Error 2
+gmake: *** [Makefile:264: gxc-ethash-miner] Error 2
+⚠️  gxc-ethash-miner build failed
+[  2%] Building CXX object CMakeFiles/gxc_core.dir/src/main.cpp.o
+[  5%] Building CXX object CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o
+[  7%] Building CXX object CMakeFiles/gxc_core.dir/src/Database.cpp.o
+[ 10%] Building CXX object CMakeFiles/gxc_core.dir/src/RPCAPI.cpp.o
+In file included from /workspace/src/Database.cpp:1:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+/workspace/src/HashUtils.cpp:4:10: fatal error: openssl/sha.h: No such file or directory
+    4 | #include <openssl/sha.h>
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:202: CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o] Error 1
+gmake[3]: *** Waiting for unfinished jobs....
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:216: CMakeFiles/gxc_core.dir/src/Database.cpp.o] Error 1
+In file included from /workspace/src/RPCAPI.cpp:1:
+/workspace/src/../include/RPCAPI.h:12:10: fatal error: nlohmann/json.hpp: No such file or directory
+   12 | #include <nlohmann/json.hpp>
+      |          ^~~~~~~~~~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:286: CMakeFiles/gxc_core.dir/src/RPCAPI.cpp.o] Error 1
+In file included from /workspace/src/main.cpp:4:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:76: CMakeFiles/gxc_core.dir/src/main.cpp.o] Error 1
+gmake[2]: *** [CMakeFiles/Makefile2:107: CMakeFiles/gxc_core.dir/all] Error 2
+gmake[1]: *** [CMakeFiles/Makefile2:220: CMakeFiles/gxc-sha256-miner.dir/rule] Error 2
+gmake: *** [Makefile:251: gxc-sha256-miner] Error 2
+⚠️  gxc-sha256-miner build failed
+[  2%] Building CXX object CMakeFiles/gxc_core.dir/src/main.cpp.o
+[  5%] Building CXX object CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o
+[  7%] Building CXX object CMakeFiles/gxc_core.dir/src/Database.cpp.o
+[ 10%] Building CXX object CMakeFiles/gxc_core.dir/src/RPCAPI.cpp.o
+/workspace/src/HashUtils.cpp:4:10: fatal error: openssl/sha.h: No such file or directory
+    4 | #include <openssl/sha.h>
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:202: CMakeFiles/gxc_core.dir/src/HashUtils.cpp.o] Error 1
+gmake[3]: *** Waiting for unfinished jobs....
+In file included from /workspace/src/Database.cpp:1:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:216: CMakeFiles/gxc_core.dir/src/Database.cpp.o] Error 1
+In file included from /workspace/src/RPCAPI.cpp:1:
+/workspace/src/../include/RPCAPI.h:12:10: fatal error: nlohmann/json.hpp: No such file or directory
+   12 | #include <nlohmann/json.hpp>
+      |          ^~~~~~~~~~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:286: CMakeFiles/gxc_core.dir/src/RPCAPI.cpp.o] Error 1
+In file included from /workspace/src/main.cpp:4:
+/workspace/src/../include/Database.h:7:10: fatal error: sqlite3.h: No such file or directory
+    7 | #include <sqlite3.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+gmake[3]: *** [CMakeFiles/gxc_core.dir/build.make:76: CMakeFiles/gxc_core.dir/src/main.cpp.o] Error 1
+gmake[2]: *** [CMakeFiles/Makefile2:107: CMakeFiles/gxc_core.dir/all] Error 2
+gmake[1]: *** [CMakeFiles/Makefile2:301: CMakeFiles/gxc-pool-proxy.dir/rule] Error 2
+gmake: *** [Makefile:290: gxc-pool-proxy] Error 2
+⚠️  gxc-pool-proxy build failed
+
+Building GUI miners (if Qt available)...
+gmake: *** No rule to make target 'gxc-mining-gui'.  Stop.
+⚠️  gxc-mining-gui build failed (Qt may not be available)
+gmake: *** No rule to make target 'gxc-wallet'.  Stop.
+⚠️  gxc-wallet build failed (Qt may not be available)
+gmake: *** No rule to make target 'gxc-node-gui'.  Stop.
+⚠️  gxc-node-gui build failed (Qt may not be available)
+gmake: *** No rule to make target 'gxc-miner-gui'.  Stop.
+⚠️  gxc-miner-gui build failed (Qt may not be available)
+gmake: *** No rule to make target 'gxc-gxhash-miner-gui'.  Stop.
+⚠️  gxc-gxhash-miner-gui build failed (Qt may not be available)
+gmake: *** No rule to make target 'gxc-sha256-miner-gui'.  Stop.
+⚠️  gxc-sha256-miner-gui build failed (Qt may not be available)
+gmake: *** No rule to make target 'gxc-ethash-miner-gui'.  Stop.
+⚠️  gxc-ethash-miner-gui build failed (Qt may not be available)
+gmake: *** No rule to make target 'gxc-pool-proxy-gui'.  Stop.
+⚠️  gxc-pool-proxy-gui build failed (Qt may not be available)
+
+Step 2: Creating Python Packages...
+====================================
+========================================
+  Creating Standalone Miner Packages
+========================================
+
+Creating Python package for windows...
+✅ Created: gxc-gxhash-miner-windows.zip
+Creating Python package for linux...
+✅ Created: gxc-gxhash-miner-linux.tar.gz
+Creating Python package for macos...
+✅ Created: gxc-gxhash-miner-macos.tar.gz
+
+========================================
+  Package Creation Complete!
+========================================
+
+Packages created in: /workspace/packages
+
+
+Step 3: Packaging C++ Miners...
+===============================
+========================================
+  Packaging C++ Miners
+========================================
+
+Platform: linux
+
+Packaging command-line miners...
+================================
+  ✅ Copied: gxc-node
+  ⚠️  Not found: gxc-miner
+  ⚠️  Not found: gxc-gxhash-miner
+  ⚠️  Not found: gxc-ethash-miner
+  ⚠️  Not found: gxc-sha256-miner
+  ⚠️  Not found: gxc-pool-proxy
+✅ Created: gxc-miners-cli-linux.tar.gz
+
+Packaging GUI miners...
+=======================
+  ⚠️  Not found: gxc-wallet (may not be built with Qt)
+  ⚠️  Not found: gxc-node-gui (may not be built with Qt)
+  ⚠️  Not found: gxc-mining-gui (may not be built with Qt)
+  ⚠️  Not found: gxc-miner-gui (may not be built with Qt)
+  ⚠️  Not found: gxc-gxhash-miner-gui (may not be built with Qt)
+  ⚠️  Not found: gxc-sha256-miner-gui (may not be built with Qt)
+  ⚠️  Not found: gxc-ethash-miner-gui (may not be built with Qt)
+  ⚠️  Not found: gxc-pool-proxy-gui (may not be built with Qt)
+⚠️  No GUI applications found!
+   Build with Qt: cmake .. -DBUILD_GUI=ON -DBUILD_MINING_CLIENT=ON
