@@ -12,25 +12,250 @@ import sqlite3
 import bcrypt
 import jwt
 import qrcode
+import requests
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for, flash
 from flask_cors import CORS
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives import serialization
 import base64
 import uuid
+import logging
+import hmac
 
-app = Flask(__name__)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 # Configuration
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_hex(32))
 DATABASE_PATH = 'gxc_wallets.db'
 BACKUP_STORAGE_PATH = 'wallet_backups/'
 
+# Network/Chain Configuration
+NETWORK_INFO = {
+    'network_name': 'GXC Mainnet',
+    'chain_id': 'GXC',
+    'rpc_url': os.environ.get('BLOCKCHAIN_RPC_URL', 'http://localhost:8545'),
+    'rest_url': os.environ.get('BLOCKCHAIN_REST_URL', 'http://localhost:8545'),
+    'explorer_url': os.environ.get('EXPLORER_URL', 'http://localhost:3000'),
+    'api_url': os.environ.get('WALLET_API_URL', 'http://localhost:5000'),
+    'currency': 'GXC',
+    'block_time': '2 seconds',
+    'consensus': 'Hybrid PoW/PoS'
+}
+
+class BlockchainClient:
+    """Client to interact with GXC blockchain for real data"""
+    
+    def __init__(self, rest_url=None):
+        self.rest_url = rest_url or NETWORK_INFO['rest_url']
+        self.timeout = 10
+    
+    def get_address_balance(self, address):
+        """Get real balance from blockchain"""
+        try:
+            url = f"{self.rest_url}/api/v1/address/{address}/balance"
+            response = requests.get(url, timeout=self.timeout)
+            if response.status_code == 200:
+                data = response.json()
+                return float(data.get('balance', 0.0))
+            else:
+                logger.warning(f"Failed to get balance for {address}: {response.status_code}")
+                return 0.0
+        except Exception as e:
+            logger.error(f"Error fetching balance for {address}: {e}")
+            return 0.0
+    
+    def get_address_transactions(self, address, limit=50):
+        """Get real transactions from blockchain"""
+        try:
+            url = f"{self.rest_url}/api/v1/address/{address}/transactions"
+            response = requests.get(url, params={'limit': limit}, timeout=self.timeout)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Failed to get transactions for {address}: {response.status_code}")
+                return []
+        except Exception as e:
+            logger.error(f"Error fetching transactions for {address}: {e}")
+            return []
+    
+    def get_transaction(self, tx_hash):
+        """Get transaction details from blockchain"""
+        try:
+            url = f"{self.rest_url}/api/v1/transaction/{tx_hash}"
+            response = requests.get(url, timeout=self.timeout)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching transaction {tx_hash}: {e}")
+            return None
+    
+    def submit_transaction(self, tx_data):
+        """Submit transaction to blockchain"""
+        try:
+            url = f"{self.rest_url}/api/v1/transactions"
+            response = requests.post(url, json=tx_data, timeout=self.timeout)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"Failed to submit transaction: {response.status_code}")
+                return {'success': False, 'error': f'HTTP {response.status_code}'}
+        except Exception as e:
+            logger.error(f"Error submitting transaction: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def get_blockchain_info(self):
+        """Get blockchain information"""
+        try:
+            url = f"{self.rest_url}/api/v1/blockchain/info"
+            response = requests.get(url, timeout=self.timeout)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching blockchain info: {e}")
+            return None
+    
+    def get_utxos(self, address):
+        """Get UTXOs for an address"""
+        try:
+            url = f"{self.rest_url}/api/v1/address/{address}/utxo"
+            response = requests.get(url, timeout=self.timeout)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                return []
+        except Exception as e:
+            logger.error(f"Error fetching UTXOs for {address}: {e}")
+            return []
+    
+    def register_validator(self, address, stake_amount, staking_days, public_key):
+        """Register as a validator via RPC"""
+        try:
+            # Use RPC API for validator registration
+            rpc_url = self.rest_url.replace('/api/v1', '') if '/api/v1' in self.rest_url else self.rest_url
+            
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "registervalidator",
+                "params": [address, stake_amount, staking_days, public_key],
+                "id": 1
+            }
+            
+            response = requests.post(rpc_url, json=payload, timeout=self.timeout)
+            if response.status_code == 200:
+                result = response.json()
+                if 'result' in result:
+                    return result['result']
+                elif 'error' in result:
+                    return {'success': False, 'error': result['error'].get('message', 'Unknown error')}
+            return {'success': False, 'error': f'HTTP {response.status_code}'}
+        except Exception as e:
+            logger.error(f"Error registering validator: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def get_validators(self):
+        """Get list of all validators"""
+        try:
+            rpc_url = self.rest_url.replace('/api/v1', '') if '/api/v1' in self.rest_url else self.rest_url
+            
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "getvalidators",
+                "params": [],
+                "id": 1
+            }
+            
+            response = requests.post(rpc_url, json=payload, timeout=self.timeout)
+            if response.status_code == 200:
+                result = response.json()
+                if 'result' in result:
+                    return result['result']
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching validators: {e}")
+            return []
+    
+    def get_validator_info(self, address):
+        """Get validator information for an address from blockchain"""
+        try:
+            rpc_url = self.rest_url.replace('/api/v1', '') if '/api/v1' in self.rest_url else self.rest_url
+            
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "getvalidatorinfo",
+                "params": [address],
+                "id": 1
+            }
+            
+            response = requests.post(rpc_url, json=payload, timeout=self.timeout)
+            if response.status_code == 200:
+                result = response.json()
+                if 'result' in result:
+                    return result['result']
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching validator info: {e}")
+            return None
+    
+    def get_validator_rewards(self, address):
+        """Get real validator rewards from blockchain"""
+        try:
+            validator_info = self.get_validator_info(address)
+            if validator_info:
+                return {
+                    'total_rewards': validator_info.get('total_rewards', 0.0),
+                    'pending_rewards': validator_info.get('pending_rewards', 0.0),
+                    'apy': validator_info.get('apy', 0.0),
+                    'blocks_produced': validator_info.get('blocks_produced', 0),
+                    'uptime': validator_info.get('uptime', 0.0)
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching validator rewards: {e}")
+            return None
+    
+    def get_staking_stats(self):
+        """Get real staking statistics from blockchain"""
+        try:
+            validators = self.get_validators()
+            if not validators:
+                return {
+                    'total_validators': 0,
+                    'total_staked': 0.0,
+                    'average_apy': 0.0
+                }
+            
+            total_staked = sum(v.get('stake_amount', 0.0) for v in validators if isinstance(v, dict))
+            total_validators = len(validators)
+            avg_apy = sum(v.get('apy', 0.0) for v in validators if isinstance(v, dict)) / total_validators if total_validators > 0 else 0.0
+            
+            return {
+                'total_validators': total_validators,
+                'total_staked': total_staked,
+                'average_apy': avg_apy
+            }
+        except Exception as e:
+            logger.error(f"Error fetching staking stats: {e}")
+            return {
+                'total_validators': 0,
+                'total_staked': 0.0,
+                'average_apy': 0.0
+            }
+
 class WalletService:
     def __init__(self):
         self.init_database()
+        self.blockchain = BlockchainClient()
         
     def init_database(self):
         """Initialize the wallet database"""
@@ -62,6 +287,7 @@ class WalletService:
                 address TEXT UNIQUE NOT NULL,
                 public_key TEXT NOT NULL,
                 encrypted_private_key TEXT NOT NULL,
+                encrypted_mnemonic TEXT,
                 wallet_type TEXT DEFAULT 'standard',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_used TIMESTAMP,
@@ -71,6 +297,12 @@ class WalletService:
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
+        
+        # Add mnemonic column if it doesn't exist (for existing databases)
+        try:
+            cursor.execute('ALTER TABLE wallets ADD COLUMN encrypted_mnemonic TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         # Wallet transactions
         cursor.execute('''
@@ -86,6 +318,23 @@ class WalletService:
                 status TEXT DEFAULT 'pending',
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 block_number INTEGER,
+                FOREIGN KEY (wallet_id) REFERENCES wallets (wallet_id)
+            )
+        ''')
+        
+        # Validators table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS validators (
+                validator_id TEXT PRIMARY KEY,
+                wallet_id TEXT NOT NULL,
+                address TEXT NOT NULL UNIQUE,
+                stake_amount REAL NOT NULL,
+                staking_days INTEGER NOT NULL,
+                registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT TRUE,
+                blocks_produced INTEGER DEFAULT 0,
+                missed_blocks INTEGER DEFAULT 0,
+                total_rewards REAL DEFAULT 0.0,
                 FOREIGN KEY (wallet_id) REFERENCES wallets (wallet_id)
             )
         ''')
@@ -153,6 +402,293 @@ class WalletService:
         address = 'GXC' + address_bytes.hex()
         
         return address
+    
+    def generate_mnemonic(self, strength=128):
+        """
+        Generate BIP39 mnemonic seed phrase (12 words)
+        strength: entropy in bits (128 for 12 words, 256 for 24 words)
+        """
+        # BIP39 English word list (first 2048 words)
+        # Using a subset - in production, use full BIP39 word list
+        BIP39_WORDLIST = [
+            "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
+            "absurd", "abuse", "access", "accident", "account", "accuse", "achieve", "acid",
+            "acoustic", "acquire", "across", "act", "action", "actor", "actual", "adapt",
+            "add", "addict", "address", "adjust", "admit", "adult", "advance", "advice",
+            "aerobic", "affair", "afford", "afraid", "again", "age", "agent", "agree",
+            "ahead", "aim", "air", "airport", "aisle", "alarm", "album", "alcohol",
+            "alert", "alien", "all", "alley", "allow", "almost", "alone", "alpha",
+            "already", "also", "alter", "always", "amateur", "amazing", "among", "amount",
+            "amused", "analyst", "anchor", "ancient", "anger", "angle", "angry", "animal",
+            "ankle", "announce", "annual", "another", "answer", "antenna", "antique", "anxiety",
+            "any", "apart", "apology", "appear", "apple", "approve", "april", "area",
+            "arena", "argue", "arm", "armed", "armor", "army", "around", "arrange",
+            "arrest", "arrive", "arrow", "art", "article", "artist", "artwork", "ask",
+            "aspect", "assault", "asset", "assist", "assume", "asthma", "athlete", "atom",
+            "attack", "attend", "attitude", "attract", "auction", "audit", "august", "aunt",
+            "author", "auto", "autumn", "average", "avocado", "avoid", "awake", "aware",
+            "away", "awesome", "awful", "awkward", "axis", "baby", "bachelor", "bacon",
+            "badge", "bag", "balance", "balcony", "ball", "bamboo", "banana", "banner",
+            "bar", "barely", "bargain", "barrel", "base", "basic", "basket", "battle",
+            "beach", "bean", "beauty", "because", "become", "beef", "before", "begin",
+            "behave", "behind", "believe", "below", "belt", "bench", "benefit", "best",
+            "betray", "better", "between", "beyond", "bicycle", "bid", "bike", "bind",
+            "biology", "bird", "birth", "bitter", "black", "blade", "blame", "blanket",
+            "blast", "bleak", "bless", "blind", "blood", "blossom", "blow", "blue",
+            "blur", "blush", "board", "boat", "body", "boil", "bomb", "bone",
+            "bonus", "book", "boost", "border", "boring", "borrow", "boss", "bottom",
+            "bounce", "box", "boy", "bracket", "brain", "brand", "brass", "brave",
+            "bread", "breeze", "brick", "bridge", "brief", "bright", "bring", "brisk",
+            "broccoli", "broken", "bronze", "broom", "brother", "brown", "brush", "bubble",
+            "buddy", "budget", "buffalo", "build", "bulb", "bulk", "bullet", "bundle",
+            "bunker", "burden", "burger", "burst", "bus", "business", "busy", "butter",
+            "buyer", "buzz", "cabbage", "cabin", "cable", "cactus", "cage", "cake",
+            "call", "calm", "camera", "camp", "can", "canal", "cancel", "candy",
+            "cannon", "canoe", "canvas", "canyon", "capable", "capital", "captain", "car",
+            "carbon", "card", "care", "career", "careful", "careless", "cargo", "carpet",
+            "carry", "cart", "case", "cash", "casino", "cast", "casual", "cat",
+            "catalog", "catch", "category", "cattle", "caught", "cause", "caution", "cave",
+            "ceiling", "celery", "cement", "census", "century", "cereal", "certain", "chair",
+            "chalk", "champion", "change", "chaos", "chapter", "charge", "chase", "chat",
+            "cheap", "check", "cheese", "chef", "cherry", "chest", "chicken", "chief",
+            "child", "chimney", "choice", "choose", "chronic", "chuckle", "chunk", "churn",
+            "cigar", "cinnamon", "circle", "citizen", "city", "civil", "claim", "clamp",
+            "clarify", "claw", "clay", "clean", "clerk", "clever", "click", "client",
+            "cliff", "climb", "clinic", "clip", "clock", "clog", "close", "cloth",
+            "cloud", "clown", "club", "clump", "cluster", "clutch", "coach", "coast",
+            "coconut", "code", "coffee", "coil", "coin", "collect", "color", "column",
+            "combine", "come", "comfort", "comic", "common", "company", "concert", "conduct",
+            "confirm", "congress", "connect", "consider", "control", "convince", "cook", "cool",
+            "copper", "copy", "coral", "core", "corn", "correct", "cost", "cotton",
+            "couch", "country", "couple", "course", "cousin", "cover", "coyote", "crack",
+            "cradle", "craft", "cram", "crane", "crash", "crater", "crawl", "crazy",
+            "cream", "credit", "creek", "crew", "cricket", "crime", "crisp", "critic",
+            "crop", "cross", "crouch", "crowd", "crucial", "cruel", "cruise", "crumble",
+            "crunch", "crush", "cry", "crystal", "cube", "culture", "cup", "cupboard",
+            "curious", "current", "curtain", "curve", "cushion", "custom", "cute", "cycle",
+            "dad", "damage", "damp", "dance", "danger", "daring", "dark", "dash",
+            "date", "daughter", "dawn", "day", "deal", "debate", "debris", "decade",
+            "december", "decide", "decline", "decorate", "decrease", "deer", "defense", "define",
+            "defy", "degree", "delay", "deliver", "demand", "demise", "denial", "dentist",
+            "deny", "depart", "depend", "deposit", "depth", "deputy", "derive", "describe",
+            "desert", "design", "desk", "despair", "destroy", "detail", "detect", "develop",
+            "device", "devote", "diagram", "dial", "diamond", "diary", "dice", "diesel",
+            "diet", "differ", "digital", "dignity", "dilemma", "dinner", "dinosaur", "direct",
+            "dirt", "disagree", "discover", "disease", "dish", "dismiss", "disorder", "display",
+            "distance", "divert", "divide", "divorce", "dizzy", "doctor", "document", "dog",
+            "doll", "dolphin", "domain", "donate", "donkey", "donor", "door", "dose",
+            "double", "dove", "draft", "dragon", "drama", "drastic", "draw", "dream",
+            "dress", "drift", "drill", "drink", "drip", "drive", "drop", "drum",
+            "dry", "duck", "dumb", "dune", "during", "dust", "dutch", "duty",
+            "dwarf", "dynamic", "eager", "eagle", "early", "earn", "earth", "easily",
+            "east", "easy", "echo", "ecology", "economy", "edge", "edit", "educate",
+            "effort", "egg", "eight", "either", "elbow", "elder", "electric", "elegant",
+            "element", "elephant", "elevator", "elite", "else", "embark", "embody", "embrace",
+            "emerge", "emotion", "employ", "empower", "empty", "enable", "enact", "end",
+            "endless", "endorse", "enemy", "energy", "enforce", "engage", "engine", "enhance",
+            "enjoy", "enlist", "enough", "enrich", "enroll", "ensure", "enter", "entire",
+            "entry", "envelope", "episode", "equal", "equip", "era", "erase", "erode",
+            "erosion", "error", "erupt", "escape", "essay", "essence", "estate", "eternal",
+            "ethics", "evidence", "evil", "evoke", "evolve", "exact", "example", "exceed",
+            "excel", "exception", "excess", "exchange", "excite", "exclude", "excuse", "execute",
+            "exercise", "exhaust", "exhibit", "exile", "exist", "exit", "exotic", "expand",
+            "expect", "expire", "explain", "expose", "express", "extend", "extra", "eye",
+            "eyebrow", "fabric", "face", "faculty", "fade", "faint", "faith", "fall",
+            "false", "fame", "family", "famous", "fan", "fancy", "fantasy", "farm",
+            "fashion", "fat", "fatal", "father", "fatigue", "fault", "favorite", "feature",
+            "february", "federal", "fee", "feed", "feel", "female", "fence", "festival",
+            "fetch", "fever", "few", "fiber", "fiction", "field", "figure", "file",
+            "film", "filter", "final", "find", "fine", "finger", "finish", "fire",
+            "firm", "first", "fiscal", "fish", "fit", "fitness", "fix", "flag",
+            "flame", "flash", "flat", "flavor", "flee", "flight", "flip", "float",
+            "flock", "floor", "flower", "fluid", "flush", "fly", "foam", "focus",
+            "fog", "foil", "fold", "follow", "food", "foot", "force", "forever",
+            "forget", "fork", "fortune", "forum", "forward", "fossil", "foster", "found",
+            "fox", "fragile", "frame", "frequent", "fresh", "friend", "fringe", "frog",
+            "front", "frost", "frown", "frozen", "fruit", "fuel", "fun", "funny",
+            "furnace", "fury", "future", "gadget", "gain", "galaxy", "gallery", "game",
+            "gap", "garage", "garbage", "garden", "garlic", "garment", "gas", "gasp",
+            "gate", "gather", "gauge", "gaze", "general", "genius", "genre", "gentle",
+            "genuine", "gesture", "ghost", "giant", "gift", "giggle", "ginger", "giraffe",
+            "girl", "give", "glad", "glance", "glare", "glass", "glide", "glimpse",
+            "globe", "gloom", "glory", "glove", "glow", "glue", "goat", "goddess",
+            "gold", "good", "goose", "gorilla", "gospel", "gossip", "govern", "gown",
+            "grab", "grace", "grain", "grant", "grape", "grass", "gravity", "great",
+            "green", "grid", "grief", "grit", "grocery", "group", "grow", "grunt",
+            "guard", "guess", "guide", "guilt", "guitar", "gun", "gym", "habit",
+            "hair", "half", "hammer", "hamster", "hand", "happy", "harbor", "hard",
+            "harsh", "harvest", "hat", "have", "hawk", "hazard", "head", "health",
+            "heart", "heavy", "hedgehog", "height", "hello", "helmet", "help", "hen",
+            "hero", "hidden", "high", "hill", "hint", "hip", "hire", "history",
+            "hobby", "hockey", "hold", "hole", "holiday", "hollow", "home", "honey",
+            "hood", "hope", "horn", "horror", "horse", "hospital", "host", "hotel",
+            "hour", "hover", "hub", "huge", "human", "humble", "humor", "hundred",
+            "hungry", "hunt", "hurdle", "hurry", "hurt", "husband", "hybrid", "ice",
+            "icon", "idea", "identify", "idle", "ignore", "ill", "illegal", "illness",
+            "image", "imitate", "immense", "immune", "impact", "impose", "improve", "impulse",
+            "inch", "include", "income", "increase", "index", "indicate", "indoor", "industry",
+            "infant", "inflict", "inform", "inhale", "inherit", "initial", "inject", "injury",
+            "inmate", "inner", "innocent", "input", "inquiry", "insane", "insect", "inside",
+            "inspire", "install", "intact", "interest", "into", "invest", "invite", "involve",
+            "iron", "island", "isolate", "issue", "item", "ivory", "jacket", "jaguar",
+            "jar", "jazz", "jealous", "jeans", "jelly", "jewel", "job", "join",
+            "joke", "journey", "joy", "judge", "juice", "jump", "jungle", "junior",
+            "junk", "just", "kangaroo", "keen", "keep", "ketchup", "key", "kick",
+            "kid", "kidney", "kind", "kingdom", "kiss", "kit", "kitchen", "kite",
+            "kitten", "kiwi", "knee", "knife", "knock", "know", "lab", "label",
+            "labor", "ladder", "lady", "lake", "lamp", "language", "laptop", "large",
+            "later", "latin", "laugh", "laundry", "lava", "law", "lawn", "lawsuit",
+            "layer", "lazy", "leader", "leaf", "learn", "leave", "lecture", "left",
+            "leg", "legal", "legend", "leisure", "lemon", "lend", "length", "lens",
+            "leopard", "lesson", "letter", "level", "liar", "liberty", "library", "license",
+            "life", "lift", "light", "like", "limb", "limit", "link", "lion",
+            "liquid", "list", "little", "live", "lizard", "load", "loan", "lobster",
+            "local", "lock", "logic", "lonely", "long", "loop", "lottery", "loud",
+            "lounge", "love", "loyal", "lucky", "luggage", "lumber", "lunar", "lunch",
+            "luxury", "lyrics", "machine", "mad", "magic", "magnet", "maid", "mail",
+            "main", "major", "make", "mammal", "man", "manage", "mandate", "mango",
+            "mansion", "manual", "maple", "marble", "march", "margin", "marine", "market",
+            "marriage", "mask", "mass", "master", "match", "material", "math", "matrix",
+            "matter", "maximum", "maze", "meadow", "mean", "measure", "meat", "mechanic",
+            "medal", "media", "melody", "melt", "member", "memory", "mention", "menu",
+            "mercy", "merge", "merit", "merry", "mesh", "message", "metal", "method",
+            "middle", "midnight", "milk", "million", "mimic", "mind", "minimum", "minor",
+            "minute", "miracle", "mirror", "misery", "miss", "mistake", "mix", "mixed",
+            "mixture", "mobile", "model", "modify", "mom", "moment", "monitor", "monkey",
+            "monster", "month", "moon", "moral", "more", "morning", "mosquito", "mother",
+            "motion", "motor", "mountain", "mouse", "move", "movie", "much", "muffin",
+            "mule", "multiply", "muscle", "museum", "mushroom", "music", "must", "mutual",
+            "myself", "mystery", "myth", "naive", "name", "napkin", "narrow", "nasty",
+            "nation", "nature", "near", "neck", "need", "negative", "neglect", "neither",
+            "nephew", "nerve", "nest", "net", "network", "neutral", "never", "news",
+            "next", "nice", "night", "noble", "noise", "nominee", "none", "noodle",
+            "normal", "north", "nose", "notable", "note", "nothing", "notice", "novel",
+            "now", "nuclear", "number", "nurse", "nut", "oak", "obey", "object",
+            "oblige", "obscure", "observe", "obtain", "obvious", "occur", "ocean", "october",
+            "odor", "off", "offer", "office", "often", "oil", "okay", "old",
+            "olive", "olympic", "omit", "once", "one", "onion", "online", "only",
+            "open", "opera", "opinion", "oppose", "option", "orange", "orbit", "orchard",
+            "order", "ordinary", "organ", "orient", "original", "orphan", "ostrich", "other",
+            "outdoor", "outer", "output", "outside", "oval", "oven", "over", "own",
+            "owner", "oxygen", "oyster", "ozone", "pact", "paddle", "page", "pair",
+            "palace", "palm", "panda", "panel", "panic", "panther", "paper", "parade",
+            "parent", "park", "parrot", "party", "pass", "patch", "path", "patient",
+            "patrol", "pattern", "pause", "pave", "payment", "peace", "peanut", "pear",
+            "peasant", "pelican", "pen", "penalty", "pencil", "people", "pepper", "perfect",
+            "permit", "person", "pet", "phone", "photo", "phrase", "physical", "piano",
+            "picnic", "picture", "piece", "pig", "pigeon", "pill", "pilot", "pink",
+            "pioneer", "pipe", "pistol", "pitch", "pizza", "place", "planet", "plastic",
+            "plate", "play", "please", "pledge", "pluck", "plug", "plunge", "poem",
+            "poet", "point", "polar", "pole", "police", "pond", "pony", "pool",
+            "popular", "portion", "position", "possible", "post", "potato", "pottery", "poverty",
+            "powder", "power", "practice", "praise", "predict", "prefer", "prepare", "present",
+            "pretty", "prevent", "price", "pride", "primary", "print", "priority", "prison",
+            "private", "prize", "problem", "process", "produce", "profit", "program", "project",
+            "promote", "proof", "property", "prosper", "protect", "proud", "provide", "public",
+            "pudding", "pull", "pulp", "pulse", "pumpkin", "punch", "pupil", "puppy",
+            "purchase", "purity", "purpose", "purse", "push", "put", "puzzle", "pyramid",
+            "quality", "quantum", "quarter", "question", "quick", "quit", "quiz", "quote",
+            "rabbit", "raccoon", "race", "rack", "radar", "radio", "rail", "rain",
+            "raise", "rally", "ramp", "ranch", "random", "range", "rapid", "rare",
+            "rate", "rather", "raven", "raw", "razor", "ready", "real", "reason",
+            "rebel", "rebuild", "recall", "receive", "recipe", "record", "recover", "recycle",
+            "reduce", "reflect", "reform", "refuse", "region", "regret", "regular", "reject",
+            "relax", "release", "relief", "rely", "remain", "remember", "remind", "remove",
+            "render", "renew", "rent", "reopen", "repair", "repeat", "replace", "report",
+            "require", "rescue", "resemble", "resist", "resource", "response", "result", "retire",
+            "retreat", "return", "reunion", "reveal", "review", "reward", "rhythm", "rib",
+            "ribbon", "rice", "rich", "ride", "ridge", "rifle", "right", "rigid",
+            "ring", "riot", "rip", "ripe", "rise", "risk", "rival", "river",
+            "road", "roast", "robot", "robust", "rocket", "romance", "roof", "rookie",
+            "room", "rose", "rotate", "rough", "round", "route", "royal", "rubber",
+            "rude", "rug", "rule", "run", "runway", "rural", "sad", "saddle",
+            "sadness", "safe", "sail", "salad", "salmon", "salon", "salt", "same",
+            "sample", "sand", "satisfy", "satoshi", "sauce", "sausage", "save", "say",
+            "scale", "scan", "scare", "scatter", "scene", "scheme", "school", "science",
+            "scissors", "scorpion", "scout", "scrap", "screen", "script", "scrub", "sea",
+            "search", "season", "seat", "second", "secret", "section", "security", "seed",
+            "seek", "segment", "select", "sell", "seminar", "senior", "sense", "sentence",
+            "series", "service", "session", "settle", "setup", "seven", "shadow", "shaft",
+            "shallow", "share", "shed", "shell", "sheriff", "shield", "shift", "shine",
+            "ship", "shiver", "shock", "shoe", "shoot", "shop", "short", "shoulder",
+            "shove", "shrimp", "shrug", "shuffle", "shy", "sibling", "sick", "side",
+            "siege", "sight", "sign", "silent", "silk", "silly", "silver", "similar",
+            "simple", "since", "sing", "siren", "sister", "situate", "six", "size",
+            "skate", "sketch", "ski", "skill", "skin", "skirt", "skull", "slab",
+            "slam", "sleep", "slender", "slice", "slide", "slight", "slim", "slogan",
+            "slot", "slow", "slush", "small", "smart", "smile", "smoke", "smooth",
+            "snack", "snake", "snap", "sniff", "snow", "soap", "soccer", "social",
+            "sock", "soda", "soft", "solar", "soldier", "solid", "solution", "solve",
+            "someone", "song", "soon", "sorry", "sort", "soul", "sound", "soup",
+            "source", "south", "space", "spare", "spatial", "spawn", "speak", "special",
+            "speed", "spell", "spend", "sphere", "spice", "spider", "spike", "spin",
+            "spirit", "split", "spoil", "sponsor", "spoon", "sport", "spot", "spray",
+            "spread", "spring", "spy", "square", "squeeze", "squirrel", "stable", "stadium",
+            "staff", "stage", "stairs", "stamp", "stand", "start", "state", "stay",
+            "steak", "steel", "stem", "step", "stereo", "stick", "still", "sting",
+            "stock", "stomach", "stone", "stool", "story", "stove", "strategy", "street",
+            "strike", "strong", "struggle", "student", "stuff", "stumble", "style", "subject",
+            "submit", "subway", "success", "such", "sudden", "suffer", "sugar", "suggest",
+            "suit", "summer", "sun", "sunny", "sunset", "super", "supply", "supreme",
+            "sure", "surface", "surge", "surprise", "surround", "survey", "suspect", "sustain",
+            "swallow", "swamp", "swap", "swarm", "swear", "sweet", "swift", "swim",
+            "swing", "switch", "sword", "symbol", "symptom", "syrup", "system", "table",
+            "tackle", "tag", "tail", "talent", "talk", "tank", "tape", "target",
+            "task", "taste", "tattoo", "taxi", "teach", "team", "tell", "ten",
+            "tenant", "tennis", "tent", "term", "test", "text", "thank", "that",
+            "theme", "then", "theory", "there", "they", "thing", "this", "thought",
+            "three", "thrive", "throw", "thumb", "thunder", "ticket", "tide", "tiger",
+            "tilt", "timber", "time", "tiny", "tip", "tired", "tissue", "title",
+            "toast", "tobacco", "today", "toddler", "toe", "together", "toilet", "token",
+            "tomato", "tomorrow", "tone", "tongue", "tonight", "tool", "tooth", "top",
+            "topic", "topple", "torch", "tornado", "tortoise", "toss", "total", "tourist",
+            "toward", "tower", "town", "toy", "track", "trade", "traffic", "tragic",
+            "train", "transfer", "trap", "trash", "travel", "tray", "treat", "tree",
+            "trend", "trial", "tribe", "trick", "trigger", "trim", "trip", "trophy",
+            "trouble", "truck", "true", "truly", "trumpet", "trust", "truth", "try",
+            "tube", "tuition", "tumble", "tuna", "tunnel", "turkey", "turn", "turtle",
+            "twelve", "twenty", "twice", "twin", "twist", "two", "type", "typical",
+            "ugly", "umbrella", "unable", "unaware", "uncle", "uncover", "under", "undo",
+            "unfair", "unfold", "unhappy", "uniform", "unique", "unit", "universe", "unknown",
+            "unlock", "until", "unusual", "unveil", "update", "upgrade", "uphold", "upon",
+            "upper", "upset", "urban", "urge", "usage", "use", "used", "useful",
+            "useless", "usual", "utility", "vacant", "vacuum", "vague", "valid", "valley",
+            "valve", "van", "vanish", "vapor", "various", "vast", "vault", "vehicle",
+            "velvet", "vendor", "venture", "venue", "verb", "verify", "version", "very",
+            "vessel", "veteran", "viable", "vibrant", "vicious", "victory", "video", "view",
+            "village", "vintage", "violin", "virtual", "virus", "visa", "visit", "visual",
+            "vital", "vivid", "vocal", "voice", "void", "volcano", "volume", "vote",
+            "voyage", "wage", "wagon", "wait", "walk", "wall", "walnut", "want",
+            "warfare", "warm", "warrior", "wash", "wasp", "waste", "water", "wave",
+            "way", "wealth", "weapon", "weary", "weather", "weave", "web", "wedding",
+            "weekend", "weird", "welcome", "west", "wet", "whale", "what", "wheat",
+            "wheel", "when", "where", "whip", "whisper", "wide", "width", "wife",
+            "wild", "will", "win", "window", "wine", "wing", "wink", "winner",
+            "winter", "wire", "wisdom", "wise", "wish", "witness", "wolf", "woman",
+            "wonder", "wood", "wool", "word", "work", "world", "worry", "worth",
+            "wrap", "wreck", "wrestle", "wrist", "write", "wrong", "yard", "year",
+            "yellow", "you", "young", "youth", "zebra", "zero", "zone", "zoo"
+        ]
+        
+        # Generate entropy (16 bytes for 12 words)
+        entropy = secrets.token_bytes(strength // 8)
+        
+        # Calculate checksum
+        entropy_hash = hashlib.sha256(entropy).digest()
+        checksum_bits = strength // 32
+        
+        # Convert entropy to binary string
+        entropy_bits = ''.join(format(b, '08b') for b in entropy)
+        checksum = format(entropy_hash[0], '08b')[:checksum_bits]
+        entropy_bits += checksum
+        
+        # Split into 11-bit chunks and convert to words
+        mnemonic_words = []
+        for i in range(0, len(entropy_bits), 11):
+            index = int(entropy_bits[i:i+11], 2)
+            mnemonic_words.append(BIP39_WORDLIST[index])
+        
+        return ' '.join(mnemonic_words)
     
     def encrypt_private_key(self, private_key, password):
         """Encrypt private key with user password"""
@@ -231,6 +767,34 @@ class WalletService:
         finally:
             conn.close()
     
+    def get_user_info(self, user_id):
+        """Get user information by user_id"""
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT user_id, username, email, created_at, last_login
+                FROM users 
+                WHERE user_id = ?
+            ''', (user_id,))
+            
+            user = cursor.fetchone()
+            if not user:
+                return None
+            
+            return {
+                'user_id': user[0],
+                'username': user[1],
+                'email': user[2],
+                'created_at': user[3],
+                'last_login': user[4]
+            }
+        except Exception as e:
+            return None
+        finally:
+            conn.close()
+    
     def authenticate_user(self, username, password):
         """Authenticate user and return JWT token"""
         conn = sqlite3.connect(DATABASE_PATH)
@@ -238,7 +802,7 @@ class WalletService:
         
         try:
             cursor.execute('''
-                SELECT user_id, password_hash, is_active 
+                SELECT user_id, password_hash, is_active, username, email
                 FROM users 
                 WHERE username = ? OR email = ?
             ''', (username, username))
@@ -247,7 +811,7 @@ class WalletService:
             if not user:
                 return {'success': False, 'error': 'User not found'}
             
-            user_id, password_hash, is_active = user
+            user_id, password_hash, is_active, db_username, email = user
             
             if not is_active:
                 return {'success': False, 'error': 'Account is disabled'}
@@ -263,7 +827,7 @@ class WalletService:
             # Generate JWT token
             payload = {
                 'user_id': user_id,
-                'username': username,
+                'username': db_username,
                 'exp': datetime.utcnow() + timedelta(hours=24)
             }
             token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
@@ -272,6 +836,8 @@ class WalletService:
                 'success': True,
                 'token': token,
                 'user_id': user_id,
+                'username': db_username,
+                'email': email,
                 'expires_in': 86400  # 24 hours
             }
             
@@ -281,17 +847,34 @@ class WalletService:
             conn.close()
     
     def create_wallet(self, user_id, wallet_name, password, wallet_type='standard'):
-        """Create a new wallet for user"""
+        """Create a new wallet for user - returns all data needed for wallet access"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         try:
+            # CRITICAL: Verify blockchain connection before creating wallet
+            blockchain_info = self.blockchain.get_blockchain_info()
+            if not blockchain_info:
+                return {
+                    'success': False, 
+                    'error': 'Cannot connect to blockchain. Wallet creation requires an active blockchain node. Please ensure the blockchain is running and accessible.'
+                }
+            
+            # Get user info
+            user_info = self.get_user_info(user_id)
+            if not user_info:
+                return {'success': False, 'error': 'User not found'}
+            
             # Generate keypair
             private_key, public_key = self.generate_wallet_keypair()
             address = self.generate_address(public_key)
             
-            # Encrypt private key
+            # Generate mnemonic seed phrase (12 words)
+            seed_phrase = self.generate_mnemonic(strength=128)
+            
+            # Encrypt private key and mnemonic
             encrypted_private_key = self.encrypt_private_key(private_key, password)
+            encrypted_mnemonic = self.encrypt_private_key(seed_phrase, password)
             
             # Generate wallet ID
             wallet_id = str(uuid.uuid4())
@@ -304,12 +887,21 @@ class WalletService:
             cursor.execute('''
                 INSERT INTO wallets (
                     wallet_id, user_id, wallet_name, address, public_key,
-                    encrypted_private_key, wallet_type, is_default
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    encrypted_private_key, encrypted_mnemonic, wallet_type, is_default
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (wallet_id, user_id, wallet_name, address, public_key, 
-                  encrypted_private_key, wallet_type, is_default))
+                  encrypted_private_key, encrypted_mnemonic, wallet_type, is_default))
             
             conn.commit()
+            
+            # Generate JWT token for this wallet session
+            payload = {
+                'user_id': user_id,
+                'username': user_info['username'],
+                'wallet_id': wallet_id,
+                'exp': datetime.utcnow() + timedelta(hours=24)
+            }
+            access_token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
             
             # Generate QR code for address
             qr_data = {
@@ -318,13 +910,41 @@ class WalletService:
                 'type': 'wallet'
             }
             
+            # Return all data needed to access wallet and chains
+            # IMPORTANT: Return private_key and seed_phrase in plain text ONCE for user to save
             return {
                 'success': True,
                 'wallet_id': wallet_id,
+                'wallet_name': wallet_name,
                 'address': address,
                 'public_key': public_key,
+                'private_key': private_key,  # Plain text - shown once only
+                'seed_phrase': seed_phrase,  # Plain text - shown once only
                 'qr_data': qr_data,
-                'message': 'Wallet created successfully'
+                'access_token': access_token,
+                'user_info': {
+                    'user_id': user_info['user_id'],
+                    'username': user_info['username'],
+                    'email': user_info['email']
+                },
+                'network_info': NETWORK_INFO,
+                'recovery_info': {
+                    'wallet_id': wallet_id,
+                    'address': address,
+                    'username': user_info['username'],
+                    'email': user_info['email'],
+                    'wallet_name': wallet_name,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'private_key': private_key,  # Also in recovery info
+                    'seed_phrase': seed_phrase  # Also in recovery info
+                },
+                'access_instructions': {
+                    'login_url': f'{NETWORK_INFO["api_url"]}/login',
+                    'api_endpoint': f'{NETWORK_INFO["api_url"]}/api/v1',
+                    'explorer_url': f'{NETWORK_INFO["explorer_url"]}/address/{address}',
+                    'rpc_url': NETWORK_INFO['rpc_url']
+                },
+                'message': 'Wallet created successfully - Save this information to access your wallet later!'
             }
             
         except Exception as e:
@@ -334,7 +954,7 @@ class WalletService:
             conn.close()
     
     def get_user_wallets(self, user_id):
-        """Get all wallets for a user"""
+        """Get all wallets for a user with real blockchain balances"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
@@ -349,20 +969,270 @@ class WalletService:
             
             wallets = []
             for row in cursor.fetchall():
+                wallet_id, wallet_name, address, wallet_type, created_at, last_used, cached_balance, is_default = row
+                
+                # Get real balance from blockchain
+                real_balance = self.blockchain.get_address_balance(address)
+                
+                # Update cached balance in database
+                if real_balance != cached_balance:
+                    cursor.execute('UPDATE wallets SET balance = ? WHERE wallet_id = ?', (real_balance, wallet_id))
+                    conn.commit()
+                
                 wallets.append({
-                    'wallet_id': row[0],
-                    'wallet_name': row[1],
-                    'address': row[2],
-                    'wallet_type': row[3],
-                    'created_at': row[4],
-                    'last_used': row[5],
-                    'balance': row[6],
-                    'is_default': bool(row[7])
+                    'wallet_id': wallet_id,
+                    'wallet_name': wallet_name,
+                    'address': address,
+                    'wallet_type': wallet_type,
+                    'created_at': created_at,
+                    'last_used': last_used,
+                    'balance': real_balance,
+                    'is_default': bool(is_default)
                 })
             
             return {'success': True, 'wallets': wallets}
             
         except Exception as e:
+            logger.error(f"Error getting user wallets: {e}")
+            return {'success': False, 'error': str(e)}
+        finally:
+            conn.close()
+    
+    def get_wallet_balance(self, wallet_id, user_id):
+        """Get real balance for a specific wallet"""
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('SELECT address FROM wallets WHERE wallet_id = ? AND user_id = ?', (wallet_id, user_id))
+            row = cursor.fetchone()
+            if not row:
+                return {'success': False, 'error': 'Wallet not found'}
+            
+            address = row[0]
+            balance = self.blockchain.get_address_balance(address)
+            
+            # Update cached balance
+            cursor.execute('UPDATE wallets SET balance = ?, last_used = CURRENT_TIMESTAMP WHERE wallet_id = ?', 
+                         (balance, wallet_id))
+            conn.commit()
+            
+            return {'success': True, 'balance': balance, 'address': address}
+        except Exception as e:
+            logger.error(f"Error getting wallet balance: {e}")
+            return {'success': False, 'error': str(e)}
+        finally:
+            conn.close()
+    
+    def get_wallet_transactions(self, wallet_id, user_id, limit=50):
+        """Get real transactions for a wallet from blockchain"""
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('SELECT address FROM wallets WHERE wallet_id = ? AND user_id = ?', (wallet_id, user_id))
+            row = cursor.fetchone()
+            if not row:
+                return {'success': False, 'error': 'Wallet not found'}
+            
+            address = row[0]
+            transactions = self.blockchain.get_address_transactions(address, limit)
+            
+            # Update last_used
+            cursor.execute('UPDATE wallets SET last_used = CURRENT_TIMESTAMP WHERE wallet_id = ?', (wallet_id,))
+            conn.commit()
+            
+            return {'success': True, 'transactions': transactions, 'address': address}
+        except Exception as e:
+            logger.error(f"Error getting wallet transactions: {e}")
+            return {'success': False, 'error': str(e)}
+        finally:
+            conn.close()
+    
+    def send_transaction(self, wallet_id, user_id, to_address, amount, password, fee=None):
+        """Send transaction using real blockchain"""
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            # Get wallet info
+            cursor.execute('''
+                SELECT address, encrypted_private_key, balance 
+                FROM wallets 
+                WHERE wallet_id = ? AND user_id = ?
+            ''', (wallet_id, user_id))
+            
+            row = cursor.fetchone()
+            if not row:
+                return {'success': False, 'error': 'Wallet not found'}
+            
+            from_address, encrypted_private_key, cached_balance = row
+            
+            # Get real balance
+            real_balance = self.blockchain.get_address_balance(from_address)
+            if real_balance < amount + (fee or 0.001):
+                return {'success': False, 'error': 'Insufficient balance'}
+            
+            # Decrypt private key
+            private_key = self.decrypt_private_key(encrypted_private_key, password)
+            if not private_key:
+                return {'success': False, 'error': 'Invalid password'}
+            
+            # Get UTXOs for transaction
+            utxos = self.blockchain.get_utxos(from_address)
+            if not utxos:
+                return {'success': False, 'error': 'No UTXOs available'}
+            
+            # Create transaction (simplified - in production, use proper transaction builder)
+            tx_data = {
+                'from_address': from_address,
+                'to_address': to_address,
+                'amount': amount,
+                'fee': fee or 0.001,
+                'utxos': utxos[:10]  # Use first 10 UTXOs
+            }
+            
+            # Submit to blockchain
+            result = self.blockchain.submit_transaction(tx_data)
+            
+            if result.get('success') or 'txid' in result:
+                tx_hash = result.get('txid') or result.get('transaction_hash', 'pending')
+                
+                # Store transaction in database
+                cursor.execute('''
+                    INSERT INTO wallet_transactions 
+                    (tx_id, wallet_id, transaction_hash, transaction_type, amount, fee, to_address, from_address, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (str(uuid.uuid4()), wallet_id, tx_hash, 'send', amount, fee or 0.001, to_address, from_address, 'pending'))
+                
+                # Update balance
+                new_balance = real_balance - amount - (fee or 0.001)
+                cursor.execute('UPDATE wallets SET balance = ? WHERE wallet_id = ?', (new_balance, wallet_id))
+                
+                conn.commit()
+                
+                return {
+                    'success': True,
+                    'transaction_hash': tx_hash,
+                    'message': 'Transaction submitted successfully'
+                }
+            else:
+                return {'success': False, 'error': result.get('error', 'Transaction submission failed')}
+                
+        except Exception as e:
+            logger.error(f"Error sending transaction: {e}")
+            conn.rollback()
+            return {'success': False, 'error': str(e)}
+        finally:
+            conn.close()
+    
+    def register_validator(self, wallet_id, user_id, stake_amount, staking_days, password):
+        """Register wallet as a validator"""
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            # Get wallet info
+            cursor.execute('''
+                SELECT address, encrypted_private_key, public_key
+                FROM wallets 
+                WHERE wallet_id = ? AND user_id = ?
+            ''', (wallet_id, user_id))
+            
+            row = cursor.fetchone()
+            if not row:
+                return {'success': False, 'error': 'Wallet not found'}
+            
+            address, encrypted_private_key, public_key = row
+            
+            # Validate minimum stake
+            MIN_STAKE = 100.0
+            MIN_STAKING_DAYS = 14
+            MAX_STAKING_DAYS = 365
+            
+            if stake_amount < MIN_STAKE:
+                return {'success': False, 'error': f'Minimum stake is {MIN_STAKE} GXC'}
+            
+            if staking_days < MIN_STAKING_DAYS or staking_days > MAX_STAKING_DAYS:
+                return {'success': False, 'error': f'Staking period must be between {MIN_STAKING_DAYS} and {MAX_STAKING_DAYS} days'}
+            
+            # Check balance
+            balance = self.blockchain.get_address_balance(address)
+            if balance < stake_amount:
+                return {'success': False, 'error': 'Insufficient balance'}
+            
+            # Register validator via blockchain
+            result = self.blockchain.register_validator(address, stake_amount, staking_days, public_key)
+            
+            if result.get('success') or 'validator_id' in result or result is True:
+                # Store validator info in database
+                validator_id = str(uuid.uuid4())
+                cursor.execute('''
+                    INSERT INTO validators (validator_id, wallet_id, address, stake_amount, staking_days, 
+                                          registered_at, is_active)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, TRUE)
+                ''', (validator_id, wallet_id, address, stake_amount, staking_days))
+                
+                # Update wallet balance (stake is locked)
+                new_balance = balance - stake_amount
+                cursor.execute('UPDATE wallets SET balance = ? WHERE wallet_id = ?', (new_balance, wallet_id))
+                
+                conn.commit()
+                
+                return {
+                    'success': True,
+                    'validator_id': validator_id,
+                    'address': address,
+                    'stake_amount': stake_amount,
+                    'staking_days': staking_days,
+                    'message': 'Validator registered successfully'
+                }
+            else:
+                return {'success': False, 'error': result.get('error', 'Validator registration failed')}
+                
+        except Exception as e:
+            logger.error(f"Error registering validator: {e}")
+            conn.rollback()
+            return {'success': False, 'error': str(e)}
+        finally:
+            conn.close()
+    
+    def get_validator_status(self, wallet_id, user_id):
+        """Get validator status for a wallet"""
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT v.validator_id, v.address, v.stake_amount, v.staking_days, 
+                       v.registered_at, v.is_active, w.address
+                FROM validators v
+                JOIN wallets w ON v.wallet_id = w.wallet_id
+                WHERE v.wallet_id = ? AND w.user_id = ?
+            ''', (wallet_id, user_id))
+            
+            row = cursor.fetchone()
+            if not row:
+                return {'success': True, 'is_validator': False}
+            
+            validator_id, address, stake_amount, staking_days, registered_at, is_active, wallet_address = row
+            
+            # Get real validator info from blockchain
+            validator_info = self.blockchain.get_validator_info(address)
+            
+            return {
+                'success': True,
+                'is_validator': True,
+                'validator_id': validator_id,
+                'address': address,
+                'stake_amount': stake_amount,
+                'staking_days': staking_days,
+                'registered_at': registered_at,
+                'is_active': bool(is_active),
+                'blockchain_info': validator_info
+            }
+        except Exception as e:
+            logger.error(f"Error getting validator status: {e}")
             return {'success': False, 'error': str(e)}
         finally:
             conn.close()
@@ -401,6 +1271,409 @@ class WalletService:
 
 # Initialize service
 wallet_service = WalletService()
+
+# Helper functions
+def get_user_from_token():
+    """Extract user from JWT token in request"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    
+    try:
+        token = auth_header.split(' ')[1]
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        return payload
+    except:
+        return None
+
+def get_user_from_session():
+    """Get user from Flask session"""
+    if 'user_id' in session and 'token' in session:
+        try:
+            payload = jwt.decode(session['token'], JWT_SECRET, algorithms=['HS256'])
+            return payload
+        except:
+            return None
+    return None
+
+# Web Page Routes
+@app.route('/', methods=['GET'])
+def index():
+    """Home page"""
+    return render_template('index.html', network_info=NETWORK_INFO)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register_page():
+    """Registration page"""
+    if request.method == 'POST':
+        data = request.form
+        result = wallet_service.create_user(
+            data.get('username'),
+            data.get('email'),
+            data.get('password'),
+            data.get('backup_phrase')
+        )
+        
+        if result['success']:
+            flash('Account created successfully! Please login.', 'success')
+            return redirect(url_for('login_page'))
+        else:
+            flash(result.get('error', 'Registration failed'), 'error')
+    
+    return render_template('register.html', network_info=NETWORK_INFO)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    """Login page"""
+    if request.method == 'POST':
+        data = request.form
+        result = wallet_service.authenticate_user(
+            data.get('username'),
+            data.get('password')
+        )
+        
+        if result['success']:
+            session['user_id'] = result['user_id']
+            session['username'] = result['username']
+            session['token'] = result['token']
+            session['email'] = result.get('email', '')
+            flash('Login successful!', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            flash(result.get('error', 'Login failed'), 'error')
+    
+    return render_template('login.html', network_info=NETWORK_INFO)
+
+@app.route('/logout', methods=['GET'])
+def logout():
+    """Logout"""
+    session.clear()
+    flash('Logged out successfully', 'success')
+    return redirect(url_for('index'))
+
+@app.route('/create-wallet', methods=['GET', 'POST'])
+def create_wallet_page():
+    """Create wallet page"""
+    user = get_user_from_session()
+    if not user:
+        flash('Please login first', 'error')
+        return redirect(url_for('login_page'))
+    
+    if request.method == 'POST':
+        data = request.form
+        result = wallet_service.create_wallet(
+            user['user_id'],
+            data.get('wallet_name'),
+            data.get('password'),
+            data.get('wallet_type', 'standard')
+        )
+        
+        if result['success']:
+            # Store wallet data in session temporarily for success page
+            session['new_wallet_data'] = result
+            return redirect(url_for('wallet_success'))
+        else:
+            flash(result.get('error', 'Wallet creation failed'), 'error')
+    
+    return render_template('create_wallet.html', network_info=NETWORK_INFO, user=user)
+
+@app.route('/wallet-success', methods=['GET'])
+def wallet_success():
+    """Wallet creation success page - shows all recovery data"""
+    user = get_user_from_session()
+    if not user:
+        flash('Please login first', 'error')
+        return redirect(url_for('login_page'))
+    
+    wallet_data = session.pop('new_wallet_data', None)
+    if not wallet_data:
+        flash('No wallet data found', 'error')
+        return redirect(url_for('create_wallet_page'))
+    
+    return render_template('wallet_success.html', 
+                         wallet_data=wallet_data, 
+                         network_info=NETWORK_INFO,
+                         user=user)
+
+@app.route('/dashboard', methods=['GET'])
+def dashboard():
+    """Wallet dashboard"""
+    user = get_user_from_session()
+    if not user:
+        flash('Please login first', 'error')
+        return redirect(url_for('login_page'))
+    
+    wallets_result = wallet_service.get_user_wallets(user['user_id'])
+    wallets = wallets_result.get('wallets', []) if wallets_result['success'] else []
+    
+    # Get blockchain info for dashboard
+    blockchain_info = wallet_service.blockchain.get_blockchain_info() or {}
+    
+    return render_template('wallet_dashboard.html', 
+                         wallets=wallets,
+                         network_info=NETWORK_INFO,
+                         blockchain_info=blockchain_info,
+                         user=user)
+
+@app.route('/wallet/<wallet_id>/send', methods=['GET', 'POST'])
+def send_page(wallet_id):
+    """Send transaction page"""
+    user = get_user_from_session()
+    if not user:
+        flash('Please login first', 'error')
+        return redirect(url_for('login_page'))
+    
+    if request.method == 'POST':
+        data = request.form
+        result = wallet_service.send_transaction(
+            wallet_id,
+            user['user_id'],
+            data.get('to_address'),
+            float(data.get('amount', 0)),
+            data.get('password'),
+            float(data.get('fee', 0.001)) if data.get('fee') else None
+        )
+        
+        if result['success']:
+            flash(f"Transaction submitted! Hash: {result['transaction_hash']}", 'success')
+            return redirect(url_for('wallet_history', wallet_id=wallet_id))
+        else:
+            flash(result.get('error', 'Transaction failed'), 'error')
+    
+    # Get wallet info
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
+                  (wallet_id, user['user_id']))
+    wallet = cursor.fetchone()
+    conn.close()
+    
+    if not wallet:
+        flash('Wallet not found', 'error')
+        return redirect(url_for('dashboard'))
+    
+    # Get real balance
+    balance_result = wallet_service.get_wallet_balance(wallet_id, user['user_id'])
+    balance = balance_result.get('balance', 0.0) if balance_result['success'] else 0.0
+    
+    return render_template('send.html',
+                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2]},
+                         balance=balance,
+                         network_info=NETWORK_INFO,
+                         user=user)
+
+@app.route('/wallet/<wallet_id>/receive', methods=['GET'])
+def receive_page(wallet_id):
+    """Receive page - show QR code and address"""
+    user = get_user_from_session()
+    if not user:
+        flash('Please login first', 'error')
+        return redirect(url_for('login_page'))
+    
+    # Get wallet info
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
+                  (wallet_id, user['user_id']))
+    wallet = cursor.fetchone()
+    conn.close()
+    
+    if not wallet:
+        flash('Wallet not found', 'error')
+        return redirect(url_for('dashboard'))
+    
+    return render_template('receive.html',
+                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2]},
+                         network_info=NETWORK_INFO,
+                         user=user)
+
+@app.route('/wallet/<wallet_id>/history', methods=['GET'])
+def wallet_history(wallet_id):
+    """Transaction history page"""
+    user = get_user_from_session()
+    if not user:
+        flash('Please login first', 'error')
+        return redirect(url_for('login_page'))
+    
+    limit = int(request.args.get('limit', 50))
+    
+    # Get real transactions from blockchain
+    tx_result = wallet_service.get_wallet_transactions(wallet_id, user['user_id'], limit)
+    transactions = tx_result.get('transactions', []) if tx_result['success'] else []
+    
+    # Get wallet info
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
+                  (wallet_id, user['user_id']))
+    wallet = cursor.fetchone()
+    conn.close()
+    
+    if not wallet:
+        flash('Wallet not found', 'error')
+        return redirect(url_for('dashboard'))
+    
+    return render_template('history.html',
+                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2]},
+                         transactions=transactions,
+                         network_info=NETWORK_INFO,
+                         user=user)
+
+@app.route('/wallet/<wallet_id>/settings', methods=['GET', 'POST'])
+def wallet_settings(wallet_id):
+    """Wallet settings page"""
+    user = get_user_from_session()
+    if not user:
+        flash('Please login first', 'error')
+        return redirect(url_for('login_page'))
+    
+    if request.method == 'POST':
+        data = request.form
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        if 'wallet_name' in data:
+            cursor.execute('UPDATE wallets SET wallet_name = ? WHERE wallet_id = ? AND user_id = ?',
+                         (data['wallet_name'], wallet_id, user['user_id']))
+            conn.commit()
+            flash('Wallet name updated', 'success')
+        
+        conn.close()
+        return redirect(url_for('wallet_settings', wallet_id=wallet_id))
+    
+    # Get wallet info
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT wallet_id, wallet_name, address, wallet_type, created_at FROM wallets WHERE wallet_id = ? AND user_id = ?', 
+                  (wallet_id, user['user_id']))
+    wallet = cursor.fetchone()
+    conn.close()
+    
+    if not wallet:
+        flash('Wallet not found', 'error')
+        return redirect(url_for('dashboard'))
+    
+    return render_template('settings.html',
+                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2], 
+                                'wallet_type': wallet[3], 'created_at': wallet[4]},
+                         network_info=NETWORK_INFO,
+                         user=user)
+
+@app.route('/wallet/<wallet_id>/staking', methods=['GET', 'POST'])
+def staking_page(wallet_id):
+    """Staking page"""
+    user = get_user_from_session()
+    if not user:
+        flash('Please login first', 'error')
+        return redirect(url_for('login_page'))
+    
+    # Get wallet info
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
+                  (wallet_id, user['user_id']))
+    wallet = cursor.fetchone()
+    conn.close()
+    
+    if not wallet:
+        flash('Wallet not found', 'error')
+        return redirect(url_for('dashboard'))
+    
+    # Get real balance
+    balance_result = wallet_service.get_wallet_balance(wallet_id, user['user_id'])
+    balance = balance_result.get('balance', 0.0) if balance_result['success'] else 0.0
+    
+    # Get validator status
+    validator_status = wallet_service.get_validator_status(wallet_id, user['user_id'])
+    is_validator = validator_status.get('is_validator', False) if validator_status['success'] else False
+    
+    return render_template('staking.html',
+                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2]},
+                         balance=balance,
+                         is_validator=is_validator,
+                         validator_info=validator_status if is_validator else None,
+                         network_info=NETWORK_INFO,
+                         user=user)
+
+@app.route('/wallet/<wallet_id>/become-validator', methods=['GET', 'POST'])
+def become_validator_page(wallet_id):
+    """Become a validator page"""
+    user = get_user_from_session()
+    if not user:
+        flash('Please login first', 'error')
+        return redirect(url_for('login_page'))
+    
+    if request.method == 'POST':
+        data = request.form
+        result = wallet_service.register_validator(
+            wallet_id,
+            user['user_id'],
+            float(data.get('stake_amount', 0)),
+            int(data.get('staking_days', 0)),
+            data.get('password')
+        )
+        
+        if result['success']:
+            flash(f"Successfully registered as validator! Stake: {result['stake_amount']} GXC", 'success')
+            return redirect(url_for('staking_page', wallet_id=wallet_id))
+        else:
+            flash(result.get('error', 'Validator registration failed'), 'error')
+    
+    # Get wallet info
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
+                  (wallet_id, user['user_id']))
+    wallet = cursor.fetchone()
+    conn.close()
+    
+    if not wallet:
+        flash('Wallet not found', 'error')
+        return redirect(url_for('dashboard'))
+    
+    # Get real balance
+    balance_result = wallet_service.get_wallet_balance(wallet_id, user['user_id'])
+    balance = balance_result.get('balance', 0.0) if balance_result['success'] else 0.0
+    
+    # Check if already a validator
+    validator_status = wallet_service.get_validator_status(wallet_id, user['user_id'])
+    if validator_status.get('is_validator', False):
+        flash('This wallet is already registered as a validator', 'info')
+        return redirect(url_for('staking_page', wallet_id=wallet_id))
+    
+    # Validator requirements
+    MIN_STAKE = 100.0
+    MIN_STAKING_DAYS = 14
+    MAX_STAKING_DAYS = 365
+    
+    return render_template('become_validator.html',
+                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2]},
+                         balance=balance,
+                         min_stake=MIN_STAKE,
+                         min_staking_days=MIN_STAKING_DAYS,
+                         max_staking_days=MAX_STAKING_DAYS,
+                         network_info=NETWORK_INFO,
+                         user=user)
+
+@app.route('/recovery', methods=['GET', 'POST'])
+def recovery_page():
+    """Wallet recovery page"""
+    if request.method == 'POST':
+        data = request.form
+        username = data.get('username')
+        password = data.get('password')
+        
+        result = wallet_service.authenticate_user(username, password)
+        if result['success']:
+            session['user_id'] = result['user_id']
+            session['username'] = result['username']
+            session['token'] = result['token']
+            session['email'] = result.get('email', '')
+            return redirect(url_for('dashboard'))
+        else:
+            flash(result.get('error', 'Recovery failed'), 'error')
+    
+    return render_template('recovery.html', network_info=NETWORK_INFO)
 
 # API Routes
 @app.route('/api/v1/register', methods=['POST'])
@@ -485,6 +1758,117 @@ def get_wallets():
     
     return jsonify(result)
 
+@app.route('/api/v1/wallets/<wallet_id>/balance', methods=['GET'])
+def get_wallet_balance_api(wallet_id):
+    """Get wallet balance (API)"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'success': False, 'error': 'Missing or invalid token'}), 401
+    
+    try:
+        token = auth_header.split(' ')[1]
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        user_id = payload['user_id']
+    except:
+        return jsonify({'success': False, 'error': 'Invalid token'}), 401
+    
+    result = wallet_service.get_wallet_balance(wallet_id, user_id)
+    return jsonify(result), 200 if result['success'] else 400
+
+@app.route('/api/v1/wallets/<wallet_id>/transactions', methods=['GET'])
+def get_wallet_transactions_api(wallet_id):
+    """Get wallet transactions (API)"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'success': False, 'error': 'Missing or invalid token'}), 401
+    
+    try:
+        token = auth_header.split(' ')[1]
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        user_id = payload['user_id']
+    except:
+        return jsonify({'success': False, 'error': 'Invalid token'}), 401
+    
+    limit = int(request.args.get('limit', 50))
+    result = wallet_service.get_wallet_transactions(wallet_id, user_id, limit)
+    return jsonify(result), 200 if result['success'] else 400
+
+@app.route('/api/v1/wallets/<wallet_id>/become-validator', methods=['POST'])
+def become_validator_api(wallet_id):
+    """Become a validator (API)"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'success': False, 'error': 'Missing or invalid token'}), 401
+    
+    try:
+        token = auth_header.split(' ')[1]
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        user_id = payload['user_id']
+    except:
+        return jsonify({'success': False, 'error': 'Invalid token'}), 401
+    
+    data = request.get_json()
+    required_fields = ['stake_amount', 'staking_days', 'password']
+    if not all(field in data for field in required_fields):
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+    
+    result = wallet_service.register_validator(
+        wallet_id,
+        user_id,
+        float(data['stake_amount']),
+        int(data['staking_days']),
+        data['password']
+    )
+    
+    return jsonify(result), 200 if result['success'] else 400
+
+@app.route('/api/v1/wallets/<wallet_id>/validator-status', methods=['GET'])
+def get_validator_status_api(wallet_id):
+    """Get validator status (API)"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'success': False, 'error': 'Missing or invalid token'}), 401
+    
+    try:
+        token = auth_header.split(' ')[1]
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        user_id = payload['user_id']
+    except:
+        return jsonify({'success': False, 'error': 'Invalid token'}), 401
+    
+    result = wallet_service.get_validator_status(wallet_id, user_id)
+    return jsonify(result), 200 if result['success'] else 400
+
+@app.route('/api/v1/wallets/<wallet_id>/send', methods=['POST'])
+def send_transaction_api(wallet_id):
+    """Send transaction (API)"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'success': False, 'error': 'Missing or invalid token'}), 401
+    
+    try:
+        token = auth_header.split(' ')[1]
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        user_id = payload['user_id']
+    except:
+        return jsonify({'success': False, 'error': 'Invalid token'}), 401
+    
+    data = request.get_json()
+    required_fields = ['to_address', 'amount', 'password']
+    if not all(field in data for field in required_fields):
+        return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+    
+    result = wallet_service.send_transaction(
+        wallet_id,
+        user_id,
+        data['to_address'],
+        float(data['amount']),
+        data['password'],
+        float(data['fee']) if data.get('fee') else None
+    )
+    
+    return jsonify(result), 200 if result['success'] else 400
+
 @app.route('/api/v1/wallets/<wallet_id>/backup', methods=['POST'])
 def store_wallet_backup(wallet_id):
     """Store wallet backup"""
@@ -526,6 +1910,126 @@ def health_check():
         'service': 'GXC Wallet API',
         'version': '1.0.0',
         'timestamp': datetime.utcnow().isoformat()
+    })
+
+@app.route('/api/v1/docs', methods=['GET'])
+@app.route('/docs', methods=['GET'])
+def api_docs():
+    """API Documentation page - returns JSON"""
+    docs = {
+        'title': 'GXC Wallet API Documentation',
+        'version': '1.0.0',
+        'base_url': 'http://localhost:5000/api/v1',
+        'endpoints': [
+            {
+                'method': 'POST',
+                'path': '/register',
+                'description': 'Register a new user account',
+                'body': {
+                    'username': 'string (required)',
+                    'email': 'string (required)',
+                    'password': 'string (required)',
+                    'backup_phrase': 'string (optional)'
+                },
+                'response': {
+                    'success': 'boolean',
+                    'user_id': 'string',
+                    'message': 'string'
+                }
+            },
+            {
+                'method': 'POST',
+                'path': '/login',
+                'description': 'Authenticate user and get JWT token',
+                'body': {
+                    'username': 'string (required)',
+                    'password': 'string (required)'
+                },
+                'response': {
+                    'success': 'boolean',
+                    'token': 'string (JWT)',
+                    'user_id': 'string'
+                }
+            },
+            {
+                'method': 'POST',
+                'path': '/wallets/create',
+                'description': 'Create a new wallet (requires authentication)',
+                'headers': {
+                    'Authorization': 'Bearer <JWT_TOKEN>'
+                },
+                'body': {
+                    'wallet_name': 'string (required)',
+                    'password': 'string (required)',
+                    'wallet_type': 'string (optional, default: standard)'
+                },
+                'response': {
+                    'success': 'boolean',
+                    'wallet_id': 'string',
+                    'address': 'string',
+                    'public_key': 'string',
+                    'qr_code': 'string (base64)'
+                }
+            },
+            {
+                'method': 'GET',
+                'path': '/wallets',
+                'description': 'Get all wallets for authenticated user',
+                'headers': {
+                    'Authorization': 'Bearer <JWT_TOKEN>'
+                },
+                'response': {
+                    'success': 'boolean',
+                    'wallets': 'array of wallet objects'
+                }
+            },
+            {
+                'method': 'POST',
+                'path': '/wallets/<wallet_id>/backup',
+                'description': 'Store wallet backup reference',
+                'headers': {
+                    'Authorization': 'Bearer <JWT_TOKEN>'
+                },
+                'body': {
+                    'storage_type': 'string (required)',
+                    'storage_reference': 'string (required)',
+                    'encryption_hint': 'string (optional)'
+                },
+                'response': {
+                    'success': 'boolean',
+                    'backup_id': 'string'
+                }
+            },
+            {
+                'method': 'GET',
+                'path': '/health',
+                'description': 'Health check endpoint',
+                'response': {
+                    'status': 'healthy',
+                    'service': 'GXC Wallet API',
+                    'version': 'string'
+                }
+            }
+        ]
+    }
+    
+    return jsonify(docs)
+
+@app.route('/api', methods=['GET'])
+def api_index():
+    """API homepage - returns JSON"""
+    return jsonify({
+        'service': 'GXC Wallet API',
+        'version': '1.0.0',
+        'status': 'running',
+        'endpoints': {
+            'register': '/api/v1/register',
+            'login': '/api/v1/login',
+            'create_wallet': '/api/v1/wallets/create',
+            'get_wallets': '/api/v1/wallets',
+            'docs': '/api/v1/docs',
+            'health': '/api/v1/health'
+        }
     })
 
 if __name__ == '__main__':

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mining Calculator - {{ pool_name|title }} Pool</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .bg-gxc { background: var(--primary-gradient); }
+        .calc-card { border-left: 4px solid #667eea; }
+    </style>
+</head>
+<body>
+    {% include '_nav.html' %}
+
+    <div class="container mt-4">
+        <h2 class="mb-4"><i class="fas fa-calculator me-2"></i>Mining Profitability Calculator</h2>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card calc-card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Input Parameters</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="hashRate" class="form-label">Your Hash Rate (H/s)</label>
+                            <input type="number" class="form-control" id="hashRate" value="1000000" step="1000">
+                        </div>
+                        <div class="mb-3">
+                            <label for="powerConsumption" class="form-label">Power Consumption (W)</label>
+                            <input type="number" class="form-control" id="powerConsumption" value="1000" step="10">
+                        </div>
+                        <div class="mb-3">
+                            <label for="electricityCost" class="form-label">Electricity Cost ($/kWh)</label>
+                            <input type="number" class="form-control" id="electricityCost" value="0.10" step="0.01">
+                        </div>
+                        <div class="mb-3">
+                            <label for="poolFee" class="form-label">Pool Fee (%)</label>
+                            <input type="number" class="form-control" id="poolFee" value="1.0" step="0.1">
+                        </div>
+                        <button class="btn btn-primary w-100" onclick="calculate()">
+                            <i class="fas fa-calculator me-2"></i>Calculate
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card calc-card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Estimated Results</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <h6>Daily Earnings</h6>
+                            <h3 id="dailyEarnings" class="text-success">0.0000 GXC</h3>
+                        </div>
+                        <div class="mb-3">
+                            <h6>Monthly Earnings</h6>
+                            <h3 id="monthlyEarnings" class="text-success">0.0000 GXC</h3>
+                        </div>
+                        <div class="mb-3">
+                            <h6>Daily Electricity Cost</h6>
+                            <h3 id="dailyCost" class="text-danger">$0.00</h3>
+                        </div>
+                        <div class="mb-3">
+                            <h6>Daily Profit</h6>
+                            <h3 id="dailyProfit" class="text-primary">$0.00</h3>
+                        </div>
+                        <div class="mb-3">
+                            <h6>ROI (30 days)</h6>
+                            <h3 id="roi" class="text-info">0.00%</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Simplified calculation - in production, use real blockchain data
+        function calculate() {
+            const hashRate = parseFloat(document.getElementById('hashRate').value);
+            const powerConsumption = parseFloat(document.getElementById('powerConsumption').value);
+            const electricityCost = parseFloat(document.getElementById('electricityCost').value);
+            const poolFee = parseFloat(document.getElementById('poolFee').value) / 100;
+            
+            // Estimated block reward (adjust based on your blockchain)
+            const blockReward = 50.0; // GXC per block
+            const blockTime = 60; // seconds
+            const networkHashRate = 1000000000; // Estimated network hash rate
+            
+            // Calculate share of network
+            const networkShare = hashRate / networkHashRate;
+            
+            // Daily blocks
+            const dailyBlocks = (24 * 60 * 60) / blockTime;
+            
+            // Daily earnings before fee
+            const dailyEarningsRaw = networkShare * dailyBlocks * blockReward;
+            const dailyEarnings = dailyEarningsRaw * (1 - poolFee);
+            
+            // Daily electricity cost
+            const dailyCost = (powerConsumption / 1000) * 24 * electricityCost;
+            
+            // Daily profit (assuming GXC price of $1 for calculation)
+            const gxcPrice = 1.0; // Adjust based on market price
+            const dailyProfit = (dailyEarnings * gxcPrice) - dailyCost;
+            
+            // Update UI
+            document.getElementById('dailyEarnings').textContent = dailyEarnings.toFixed(4) + ' GXC';
+            document.getElementById('monthlyEarnings').textContent = (dailyEarnings * 30).toFixed(4) + ' GXC';
+            document.getElementById('dailyCost').textContent = '$' + dailyCost.toFixed(2);
+            document.getElementById('dailyProfit').textContent = '$' + dailyProfit.toFixed(2);
+            
+            // ROI calculation (simplified)
+            const equipmentCost = 1000; // Example equipment cost
+            const monthlyProfit = dailyProfit * 30;
+            const roi = (monthlyProfit / equipmentCost) * 100;
+            document.getElementById('roi').textContent = roi.toFixed(2) + '%';
+        }
+        
+        // Calculate on page load
+        calculate();
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,118 @@
+{% extends "forum/base.html" %}
+
+{% block title %}Settings - GXC Forum{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+<style>
+    .editor-toolbar {
+        border: 1px solid var(--border-color);
+        border-radius: 8px 8px 0 0;
+    }
+    .CodeMirror {
+        border: 1px solid var(--border-color);
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        min-height: 200px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h4 class="mb-0"><i class="fas fa-cog me-2"></i>Account Settings</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="/forum/settings" enctype="multipart/form-data">
+                    <div class="mb-4">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control" value="{{ user.username }}" disabled>
+                        <small class="text-muted">Username cannot be changed</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" id="email" 
+                               value="{{ user.email }}" required>
+                        <small class="text-muted">Your email address</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <a href="/forum/change-password" class="btn btn-outline-warning">
+                            <i class="fas fa-key me-2"></i>Change Password
+                        </a>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="signature" class="form-label">Signature</label>
+                        <textarea class="form-control" name="signature" id="signature" rows="3" maxlength="200">{{ user.signature or '' }}</textarea>
+                        <small class="text-muted">This will appear at the bottom of your posts (max 200 characters)</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="gxc_address" class="form-label">GXC Address (Optional)</label>
+                        <input type="text" class="form-control" name="gxc_address" id="gxc_address" 
+                               value="{{ user.gxc_address or '' }}" placeholder="GXC...">
+                        <small class="text-muted">Your GXC blockchain address for donations/tips</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="avatar" class="form-label">Avatar</label>
+                        {% if user.avatar_url %}
+                        <div class="mb-2">
+                            <img src="{{ user.avatar_url }}" class="img-thumbnail" style="max-width: 150px;">
+                        </div>
+                        {% endif %}
+                        <input type="file" class="form-control" id="avatar" name="avatar" accept="image/*" onchange="uploadAvatar(this)">
+                        <small class="text-muted">Upload a profile picture (PNG, JPG, GIF, max 2MB)</small>
+                        <div id="avatarPreview" class="mt-2"></div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>Save Settings
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function uploadAvatar(input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        if (file.size > 2 * 1024 * 1024) {
+            alert('File size must be less than 2MB');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        fetch('/forum/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.url) {
+                document.getElementById('avatarPreview').innerHTML = 
+                    `<img src="${data.url}" class="img-thumbnail" style="max-width: 150px;">`;
+            } else {
+                alert('Upload failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Upload failed');
+        });
+    }
+}
+</script>
+{% endblock %}
+

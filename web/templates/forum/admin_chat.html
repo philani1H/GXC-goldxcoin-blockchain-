@@ -1,0 +1,148 @@
+{% extends "forum/base.html" %}
+
+{% block title %}Admin Chat Management - GXC Forum{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chat-item {
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background: var(--bg-primary);
+    }
+    .chat-item.pending {
+        border-left: 4px solid #f59e0b;
+    }
+    .chat-item.resolved {
+        border-left: 4px solid #10b981;
+        opacity: 0.7;
+    }
+    .response-form {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid var(--border-color);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-headset me-2"></i>Admin Chat Management
+                </h4>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#pending">
+                            Pending Chats <span class="badge bg-warning">{{ pending_chats|length }}</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#all">
+                            All Chats <span class="badge bg-secondary">{{ all_chats|length }}</span>
+                        </a>
+                    </li>
+                </ul>
+                
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="pending">
+                        {% if pending_chats %}
+                        {% for chat in pending_chats %}
+                        <div class="chat-item pending">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <strong>{{ chat.username }}</strong> ({{ chat.email }})
+                                    <small class="text-muted ms-2">{{ chat.created_at[:16] }}</small>
+                                </div>
+                                <span class="badge bg-warning">Pending</span>
+                            </div>
+                            <div class="mb-2">
+                                <strong>Message:</strong>
+                                <p class="mb-0">{{ chat.message }}</p>
+                            </div>
+                            {% if chat.response %}
+                            <div class="mb-2">
+                                <strong>Previous Response ({{ chat.response_type }}):</strong>
+                                <p class="mb-0">{{ chat.response }}</p>
+                            </div>
+                            {% endif %}
+                            <form method="POST" class="response-form">
+                                <input type="hidden" name="chat_id" value="{{ chat.chat_id }}">
+                                <div class="mb-2">
+                                    <textarea class="form-control" name="response" rows="3" 
+                                              placeholder="Type your response here..." required></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-reply me-1"></i>Send Response
+                                </button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="text-center py-5 text-muted">
+                            <i class="fas fa-check-circle fa-3x mb-3"></i>
+                            <p>No pending chats</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="tab-pane fade" id="all">
+                        {% if all_chats %}
+                        {% for chat in all_chats %}
+                        <div class="chat-item {% if chat.is_resolved %}resolved{% else %}pending{% endif %}">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <strong>{{ chat.username }}</strong> ({{ chat.email }})
+                                    <small class="text-muted ms-2">{{ chat.created_at[:16] }}</small>
+                                </div>
+                                {% if chat.is_resolved %}
+                                <span class="badge bg-success">Resolved</span>
+                                {% else %}
+                                <span class="badge bg-warning">Pending</span>
+                                {% endif %}
+                            </div>
+                            <div class="mb-2">
+                                <strong>Message:</strong>
+                                <p class="mb-0">{{ chat.message }}</p>
+                            </div>
+                            {% if chat.response %}
+                            <div class="mb-2">
+                                <strong>Response ({{ chat.response_type }}):</strong>
+                                <p class="mb-0">{{ chat.response }}</p>
+                                {% if chat.responder_username %}
+                                <small class="text-muted">by {{ chat.responder_username }} at {{ chat.responded_at[:16] }}</small>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <form method="POST" class="response-form">
+                                <input type="hidden" name="chat_id" value="{{ chat.chat_id }}">
+                                <div class="mb-2">
+                                    <textarea class="form-control" name="response" rows="3" 
+                                              placeholder="Type your response here..." required></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-reply me-1"></i>Send Response
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="text-center py-5 text-muted">
+                            <i class="fas fa-inbox fa-3x mb-3"></i>
+                            <p>No chats yet</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

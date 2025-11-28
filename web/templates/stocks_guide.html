@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Contracts Guide | GXC Blockchain Explorer</title>
+    <meta name="description" content="Complete guide to GXC Stock Contracts - tokenized stocks with real-time price feeds">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --info-color: #3b82f6;
+            --dark-color: #1f2937;
+            --light-bg: #f8fafc;
+            --border-color: #e5e7eb;
+            --text-primary: #1f2937;
+            --text-secondary: #64748b;
+            --card-bg: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --dark-color: #f8fafc;
+            --light-bg: #0f172a;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #1e293b;
+            --card-bg: #1e293b;
+        }
+
+        [data-theme="dark"] body {
+            background: var(--light-bg);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .card {
+            background: var(--card-bg);
+            border-color: var(--border-color);
+        }
+
+        [data-theme="dark"] .code-block {
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--light-bg);
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        h1, .h1 { font-size: 1.75rem; font-weight: 600; }
+        h2, .h2 { font-size: 1.5rem; font-weight: 600; }
+        h3, .h3 { font-size: 1.25rem; font-weight: 600; }
+        h4, .h4 { font-size: 1.1rem; font-weight: 600; }
+
+        .bg-gxc {
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .page-header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 2rem 0;
+            border-radius: 0 0 20px 20px;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            background: var(--card-bg);
+            margin-bottom: 1.5rem;
+        }
+
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: var(--primary-color);
+        }
+
+        .stock-card {
+            transition: transform 0.2s;
+        }
+
+        .stock-card:hover {
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gxc">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-cube me-2"></i>GXC Explorer
+            </a>
+            <div class="navbar-nav ms-auto d-flex flex-row align-items-center gap-3">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/stocks" class="nav-link">Stock Contracts</a>
+                <a href="/stocks/guide" class="nav-link active">Guide</a>
+                <button class="btn btn-sm btn-outline-light" id="themeToggle" title="Toggle Dark Mode">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="container">
+            <h1 class="display-5 fw-bold mb-2">
+                <i class="fas fa-chart-line me-3"></i>Stock Contracts Guide
+            </h1>
+            <p class="lead mb-0 opacity-90">
+                Complete guide to tokenized stock contracts on GXC blockchain
+            </p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container mb-5">
+        <!-- Overview -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-info-circle me-2 text-info"></i>What are Stock Contracts?</h3>
+            </div>
+            <div class="card-body">
+                <p class="lead">
+                    Stock Contracts on GXC blockchain are <strong>tokenized representations of real-world stocks</strong> 
+                    that enable trading, ownership tracking, and corporate actions on-chain.
+                </p>
+                
+                <div class="row g-4 mt-3">
+                    <div class="col-md-6">
+                        <div class="d-flex">
+                            <div class="feature-icon me-3">
+                                <i class="fas fa-link"></i>
+                            </div>
+                            <div>
+                                <h5>Real-World Assets</h5>
+                                <p class="text-muted mb-0">
+                                    Each contract represents shares of a real company (AAPL, MSFT, GOOGL, etc.) 
+                                    with 1:1 backing and real-time price feeds.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex">
+                            <div class="feature-icon me-3">
+                                <i class="fas fa-sync-alt"></i>
+                            </div>
+                            <div>
+                                <h5>Real-Time Prices</h5>
+                                <p class="text-muted mb-0">
+                                    Prices updated via Proof-of-Price (PoP) oracle network with data from 
+                                    Yahoo Finance and other trusted sources.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex">
+                            <div class="feature-icon me-3">
+                                <i class="fas fa-shield-alt"></i>
+                            </div>
+                            <div>
+                                <h5>Full Traceability</h5>
+                                <p class="text-muted mb-0">
+                                    Every share transfer is chained and traceable, ensuring complete 
+                                    auditability and compliance.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex">
+                            <div class="feature-icon me-3">
+                                <i class="fas fa-building"></i>
+                            </div>
+                            <div>
+                                <h5>Corporate Actions</h5>
+                                <p class="text-muted mb-0">
+                                    Support for dividends, stock splits, mergers, and other corporate 
+                                    actions with on-chain execution.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Supported Stocks -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-list me-2 text-success"></i>Supported Stock Contracts</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    The following stocks are currently supported with automated market making:
+                </p>
+                <div class="row g-3">
+                    <div class="col-md-4 col-sm-6">
+                        <div class="card stock-card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="text-primary">AAPL</h5>
+                                <p class="text-muted small mb-0">Apple Inc.</p>
+                                <p class="text-muted small">NASDAQ • Technology</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <div class="card stock-card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="text-primary">MSFT</h5>
+                                <p class="text-muted small mb-0">Microsoft Corporation</p>
+                                <p class="text-muted small">NASDAQ • Technology</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <div class="card stock-card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="text-primary">GOOGL</h5>
+                                <p class="text-muted small mb-0">Alphabet Inc.</p>
+                                <p class="text-muted small">NASDAQ • Technology</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <div class="card stock-card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="text-primary">AMZN</h5>
+                                <p class="text-muted small mb-0">Amazon.com Inc.</p>
+                                <p class="text-muted small">NASDAQ • Consumer</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <div class="card stock-card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="text-primary">TSLA</h5>
+                                <p class="text-muted small mb-0">Tesla Inc.</p>
+                                <p class="text-muted small">NASDAQ • Automotive</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <div class="card stock-card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="text-primary">NVDA</h5>
+                                <p class="text-muted small mb-0">NVIDIA Corporation</p>
+                                <p class="text-muted small">NASDAQ • Technology</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <div class="card stock-card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="text-primary">META</h5>
+                                <p class="text-muted small mb-0">Meta Platforms Inc.</p>
+                                <p class="text-muted small">NASDAQ • Technology</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <div class="card stock-card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="text-primary">BRK-B</h5>
+                                <p class="text-muted small mb-0">Berkshire Hathaway</p>
+                                <p class="text-muted small">NYSE • Financial</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-sm-6">
+                        <div class="card stock-card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="text-primary">JPM</h5>
+                                <p class="text-muted small mb-0">JPMorgan Chase & Co.</p>
+                                <p class="text-muted small">NYSE • Financial</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- How It Works -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-cogs me-2 text-warning"></i>How Stock Contracts Work</h3>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-1">
+                        <div class="step-number">1</div>
+                    </div>
+                    <div class="col-md-11">
+                        <h5>Contract Deployment</h5>
+                        <p class="text-muted">
+                            Stock contracts are deployed on the GXC blockchain with:
+                        </p>
+                        <ul>
+                            <li><strong>Ticker Symbol:</strong> Stock ticker (e.g., AAPL, MSFT)</li>
+                            <li><strong>Company Name:</strong> Full company name</li>
+                            <li><strong>Exchange:</strong> Stock exchange (NYSE, NASDAQ, etc.)</li>
+                            <li><strong>Price Oracle:</strong> Authorized price feed source</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-1">
+                        <div class="step-number">2</div>
+                    </div>
+                    <div class="col-md-11">
+                        <h5>Price Updates</h5>
+                        <p class="text-muted">
+                            Real-time price updates via Proof-of-Price (PoP) oracle network:
+                        </p>
+                        <div class="code-block">
+// Price update with PoP hash
+stockContract.updatePrice(
+    newPrice: 175.50,
+    timestamp: current_time,
+    popHash: "0xabc123...",
+    source: "yahoo_finance"
+)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-1">
+                        <div class="step-number">3</div>
+                    </div>
+                    <div class="col-md-11">
+                        <h5>Share Issuance & Trading</h5>
+                        <p class="text-muted">
+                            Shares can be issued, transferred, and traded on-chain:
+                        </p>
+                        <div class="code-block">
+// Issue shares to an address
+stockContract.issueShares(to: "GXC1...", shares: 100)
+
+// Transfer shares between addresses
+stockContract.transferShares(
+    from: "GXC1...",
+    to: "GXC2...",
+    shares: 50
+)
+
+// Check balance
+balance = stockContract.balanceOf("GXC1...")
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-1">
+                        <div class="step-number">4</div>
+                    </div>
+                    <div class="col-md-11">
+                        <h5>Corporate Actions</h5>
+                        <p class="text-muted">
+                            Support for dividends, splits, mergers, and other corporate actions:
+                        </p>
+                        <ul>
+                            <li><strong>Dividends:</strong> Automatic distribution to shareholders</li>
+                            <li><strong>Stock Splits:</strong> Automatic share adjustment</li>
+                            <li><strong>Mergers:</strong> Exchange ratio-based conversions</li>
+                            <li><strong>Voting:</strong> Shareholder voting on proposals</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-star me-2 text-warning"></i>Key Features</h3>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-dollar-sign me-2 text-success"></i>Real-Time Price Feeds</h5>
+                        <p class="text-muted">
+                            Prices updated every minute from Yahoo Finance and other trusted sources. 
+                            All price updates include Proof-of-Price (PoP) hashes for verification.
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-link me-2 text-primary"></i>Transaction Chaining</h5>
+                        <p class="text-muted">
+                            Every share transfer references the previous transaction, creating an 
+                            unbreakable chain of ownership history for complete traceability.
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-gift me-2 text-info"></i>Dividend Distribution</h5>
+                        <p class="text-muted">
+                            Automatic dividend payments to shareholders based on their holdings. 
+                            Dividends are distributed in GXC tokens.
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-chart-pie me-2 text-warning"></i>Stock Splits & Mergers</h5>
+                        <p class="text-muted">
+                            Automatic handling of stock splits (e.g., 2:1 split doubles all holdings) 
+                            and mergers with exchange ratio calculations.
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-shield-alt me-2 text-danger"></i>KYC & Compliance</h5>
+                        <p class="text-muted">
+                            Optional KYC verification and transfer restrictions for regulatory 
+                            compliance. Trading can be halted if needed.
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-users me-2 text-success"></i>Shareholder Management</h5>
+                        <p class="text-muted">
+                            Track all shareholders, their balances, and voting power. 
+                            Complete transfer history for each address.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Market Maker -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-exchange-alt me-2 text-primary"></i>Market Maker Software</h3>
+            </div>
+            <div class="card-body">
+                <p class="lead">
+                    The GXC Stock Market Maker provides <strong>automated liquidity</strong> for stock contracts 
+                    with real-time bid/ask quotes.
+                </p>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-robot me-2"></i>Automated Market Making</h5>
+                        <ul class="text-muted">
+                            <li>Automatic bid/ask quote generation</li>
+                            <li>Real-time price updates from Yahoo Finance</li>
+                            <li>Dynamic spread adjustment based on volatility</li>
+                            <li>Position-based risk management</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-chart-bar me-2"></i>Portfolio Management</h5>
+                        <ul class="text-muted">
+                            <li>Real-time P&L tracking</li>
+                            <li>Position limits and risk controls</li>
+                            <li>Order history and execution tracking</li>
+                            <li>Performance analytics</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-4">
+                    <h6><i class="fas fa-info-circle me-2"></i>Access Market Maker</h6>
+                    <p class="mb-2">
+                        The Market Maker runs on <strong>port 4000</strong> and provides:
+                    </p>
+                    <ul class="mb-0">
+                        <li><strong>Dashboard:</strong> <a href="{{ market_maker_url }}" target="_blank">{{ market_maker_url }}</a></li>
+                        <li><strong>API Endpoints:</strong> Real-time quotes, order placement, portfolio data</li>
+                        <li><strong>Supported Stocks:</strong> 10+ major stocks (AAPL, MSFT, GOOGL, etc.)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Examples -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-code me-2 text-secondary"></i>API Examples</h3>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-pills mb-3" id="apiTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="contract-tab" data-bs-toggle="pill" data-bs-target="#contract-api" type="button">
+                            Contract Operations
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="trading-tab" data-bs-toggle="pill" data-bs-target="#trading-api" type="button">
+                            Trading
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="market-tab" data-bs-toggle="pill" data-bs-target="#market-api" type="button">
+                            Market Data
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="apiTabsContent">
+                    <!-- Contract Operations -->
+                    <div class="tab-pane fade show active" id="contract-api" role="tabpanel">
+                        <h5>Contract Operations</h5>
+                        <div class="code-block">
+// Get stock contract information
+GET /api/v1/stocks/AAPL
+
+Response:
+{
+    "ticker": "AAPL",
+    "companyName": "Apple Inc.",
+    "exchange": "NASDAQ",
+    "currentPrice": 175.50,
+    "totalShares": 1000000,
+    "marketCap": 175500000,
+    "dividendYield": 0.005
+}
+
+// Get share balance
+GET /api/v1/stocks/AAPL/balance/GXC1ADDRESS
+
+Response:
+{
+    "address": "GXC1ADDRESS",
+    "balance": 100,
+    "value": 17550.00
+}
+
+// Transfer shares
+POST /api/v1/stocks/AAPL/transfer
+{
+    "from": "GXC1ADDRESS",
+    "to": "GXC2ADDRESS",
+    "shares": 50
+}
+                        </div>
+                    </div>
+
+                    <!-- Trading -->
+                    <div class="tab-pane fade" id="trading-api" role="tabpanel">
+                        <h5>Trading Operations</h5>
+                        <div class="code-block">
+// Get current quotes
+GET /api/v1/market-maker/quotes/AAPL
+
+Response:
+{
+    "symbol": "AAPL",
+    "bid": 175.45,
+    "ask": 175.55,
+    "spread": 0.10,
+    "timestamp": "2024-01-15T10:30:00Z"
+}
+
+// Place buy order
+POST /api/v1/market-maker/orders
+{
+    "symbol": "AAPL",
+    "side": "buy",
+    "quantity": 10,
+    "price": 175.50
+}
+
+// Place sell order
+POST /api/v1/market-maker/orders
+{
+    "symbol": "AAPL",
+    "side": "sell",
+    "quantity": 5,
+    "price": 175.60
+}
+
+// Get order status
+GET /api/v1/market-maker/orders/ORDER_ID
+                        </div>
+                    </div>
+
+                    <!-- Market Data -->
+                    <div class="tab-pane fade" id="market-api" role="tabpanel">
+                        <h5>Market Data</h5>
+                        <div class="code-block">
+// Get price history
+GET /api/v1/stocks/AAPL/price-history?days=30
+
+Response:
+{
+    "symbol": "AAPL",
+    "history": [
+        {"timestamp": "2024-01-15", "price": 175.50, "volume": 50000},
+        {"timestamp": "2024-01-14", "price": 174.20, "volume": 45000}
+    ]
+}
+
+// Get market statistics
+GET /api/v1/stocks/AAPL/stats
+
+Response:
+{
+    "symbol": "AAPL",
+    "volume24h": 1000000,
+    "priceChange24h": 0.75,
+    "high24h": 176.00,
+    "low24h": 174.50,
+    "volatility": 0.02
+}
+
+// Get top shareholders
+GET /api/v1/stocks/AAPL/shareholders?limit=10
+
+Response:
+{
+    "shareholders": [
+        {"address": "GXC1...", "balance": 10000, "percentage": 1.0},
+        {"address": "GXC2...", "balance": 5000, "percentage": 0.5}
+    ]
+}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Corporate Actions -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-building me-2 text-info"></i>Corporate Actions</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-4">
+                    Stock contracts support various corporate actions that are executed on-chain:
+                </p>
+
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5><i class="fas fa-money-bill-wave me-2 text-success"></i>Dividends</h5>
+                                <p class="text-muted">
+                                    Automatic dividend distribution to all shareholders based on their holdings. 
+                                    Dividends are paid in GXC tokens.
+                                </p>
+                                <div class="code-block">
+// Distribute dividend
+stockContract.distributeDividend(
+    dividendPerShare: 0.25,
+    proofHash: "0x..."
+)
+
+// Claim dividend
+stockContract.claimDividend("GXC1ADDRESS")
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5><i class="fas fa-chart-line me-2 text-primary"></i>Stock Splits</h5>
+                                <p class="text-muted">
+                                    Automatic share adjustment when a stock split occurs. 
+                                    For example, a 2:1 split doubles all shareholder balances.
+                                </p>
+                                <div class="code-block">
+// Execute 2:1 stock split
+stockContract.executeSplit(ratio: 2.0)
+
+// All balances automatically doubled
+// 100 shares → 200 shares
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5><i class="fas fa-handshake me-2 text-warning"></i>Mergers</h5>
+                                <p class="text-muted">
+                                    Handle mergers with exchange ratio calculations. 
+                                    Shares are converted based on the merger terms.
+                                </p>
+                                <div class="code-block">
+// Execute merger
+stockContract.executeMerger(
+    exchangeRatio: 0.5,
+    targetContract: "TARGET_TICKER"
+)
+
+// 100 shares → 50 shares of target
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5><i class="fas fa-vote-yea me-2 text-info"></i>Voting</h5>
+                                <p class="text-muted">
+                                    Shareholders can vote on corporate action proposals. 
+                                    Voting power is proportional to share holdings.
+                                </p>
+                                <div class="code-block">
+// Propose corporate action
+actionId = stockContract.proposeCorporateAction(
+    actionType: DIVIDEND,
+    value: 0.25,
+    description: "Q1 2024 Dividend"
+)
+
+// Vote on proposal
+stockContract.voteCorporateAction(
+    actionId: actionId,
+    voter: "GXC1ADDRESS",
+    approve: true
+)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Links -->
+        <div class="card">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-link me-2 text-primary"></i>Quick Links</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-chart-bar me-2"></i>Explorer</h5>
+                        <ul class="list-unstyled">
+                            <li><a href="/stocks"><i class="fas fa-external-link-alt me-2"></i>Stock Contracts Explorer</a></li>
+                            <li><a href="/price"><i class="fas fa-external-link-alt me-2"></i>Price & Market Data</a></li>
+                            <li><a href="/analytics"><i class="fas fa-external-link-alt me-2"></i>Analytics Dashboard</a></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-exchange-alt me-2"></i>Market Maker</h5>
+                        <ul class="list-unstyled">
+                            <li><a href="{{ market_maker_url }}" target="_blank"><i class="fas fa-external-link-alt me-2"></i>Market Maker Dashboard</a></li>
+                            <li><a href="{{ market_maker_url }}/api/docs" target="_blank"><i class="fas fa-external-link-alt me-2"></i>Market Maker API Docs</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Dark Mode Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const html = document.documentElement;
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        html.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+
+        function updateThemeIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.className = 'fas fa-sun';
+            } else {
+                themeIcon.className = 'fas fa-moon';
+            }
+        }
+    </script>
+    <style>
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-gradient);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            margin-right: 1rem;
+            flex-shrink: 0;
+        }
+    </style>
+</body>
+
+</html>
+

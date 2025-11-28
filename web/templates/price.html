@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price & Market Data | GXC Explorer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --light-bg: #f8fafc;
+            --border-color: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--light-bg);
+            font-size: 14px;
+        }
+
+        [data-theme="dark"] {
+            --light-bg: #0f172a;
+            --border-color: #1e293b;
+        }
+
+        .bg-gxc {
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            background: white;
+        }
+
+        [data-theme="dark"] .card {
+            background: #1e293b;
+        }
+
+        .page-header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 2rem 0;
+            border-radius: 0 0 20px 20px;
+            margin-bottom: 2rem;
+        }
+
+        .price-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 16px;
+        }
+
+        .price-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gxc">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/" style="font-size: 1.25rem;">
+                <i class="fas fa-cube me-2"></i>GXC Explorer
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/price" class="nav-link active">Price</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-header">
+        <div class="container">
+            <h1 style="font-size: 1.75rem; font-weight: 600; margin-bottom: 0.5rem;">
+                <i class="fas fa-chart-line me-3"></i>Price & Market Data
+            </h1>
+            <p style="font-size: 1rem; opacity: 0.9; margin: 0;">
+                GXC price tracking and market statistics
+            </p>
+        </div>
+    </div>
+
+    <div class="container mb-5">
+        <!-- Current Price -->
+        <div class="price-card mb-4">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <div class="mb-2 opacity-75">Current Price</div>
+                    <div class="price-value">${{ "{:.4f}".format(price_data.current_price) }}</div>
+                    <div class="mt-2">
+                        <span class="me-3">BTC: {{ "{:.8f}".format(price_data.price_btc) }}</span>
+                        <span>Market Cap: ${{ "{:,.0f}".format(price_data.market_cap) }}</span>
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="mb-2 opacity-75">24h Volume</div>
+                    <div style="font-size: 1.5rem; font-weight: 600;">
+                        ${{ "{:,.0f}".format(price_data.volume_24h) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Market Stats -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-4">
+                <div class="card text-center p-3">
+                    <div style="font-size: 1.25rem; font-weight: 600; color: #667eea;">
+                        ${{ "{:,.0f}".format(price_data.market_cap) }}
+                    </div>
+                    <small class="text-muted">Market Cap</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center p-3">
+                    <div style="font-size: 1.25rem; font-weight: 600; color: #667eea;">
+                        {{ "{:,.0f}".format(price_data.supply_circulating) }}
+                    </div>
+                    <small class="text-muted">Circulating Supply</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center p-3">
+                    <div style="font-size: 1.25rem; font-weight: 600; color: #667eea;">
+                        ${{ "{:,.0f}".format(price_data.volume_24h) }}
+                    </div>
+                    <small class="text-muted">24h Volume</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Price Charts -->
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header bg-white">
+                        <h5 style="font-size: 1rem; font-weight: 600; margin: 0;">
+                            <i class="fas fa-chart-area me-2"></i>24 Hour Price
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="price24hChart" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header bg-white">
+                        <h5 style="font-size: 1rem; font-weight: 600; margin: 0;">
+                            <i class="fas fa-chart-line me-2"></i>7 Day Price
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="price7dChart" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function loadPriceCharts() {
+            try {
+                const response = await fetch('/api/price');
+                const data = await response.json();
+                
+                // 24h chart
+                if (data.history_24h && data.history_24h.length > 0) {
+                    const labels24h = data.history_24h.map(item => {
+                        const date = new Date(item[0]);
+                        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                    });
+                    const values24h = data.history_24h.map(item => parseFloat(item[1]) || 0);
+                    
+                    new Chart(document.getElementById('price24hChart'), {
+                        type: 'line',
+                        data: {
+                            labels: labels24h,
+                            datasets: [{
+                                label: 'Price (USD)',
+                                data: values24h,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: { y: { beginAtZero: false } }
+                        }
+                    });
+                }
+                
+                // 7d chart
+                if (data.history_7d && data.history_7d.length > 0) {
+                    const labels7d = data.history_7d.map(item => {
+                        const date = new Date(item[0]);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    });
+                    const values7d = data.history_7d.map(item => parseFloat(item[1]) || 0);
+                    
+                    new Chart(document.getElementById('price7dChart'), {
+                        type: 'line',
+                        data: {
+                            labels: labels7d,
+                            datasets: [{
+                                label: 'Price (USD)',
+                                data: values7d,
+                                borderColor: '#667eea',
+                                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: { y: { beginAtZero: false } }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading price charts:', error);
+            }
+        }
+        
+        loadPriceCharts();
+    </script>
+</body>
+</html>
+

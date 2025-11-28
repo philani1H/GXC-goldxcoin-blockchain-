@@ -1,0 +1,11 @@
+============================================================
+GXC ASIC Mining Pool (SHA-256)
+============================================================
+Stratum: stratum+tcp://asic-pool.gxc.network:3333
+Dashboard: http://localhost:5001
+Algorithm: SHA-256 (ASIC)
+============================================================
+[asic-pool] Starting web server on 0.0.0.0:5001
+ * Serving Flask app 'pool_base'
+[asic-pool] Stratum server listening on port 3333
+ * Debug mode: off

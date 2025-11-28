@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Dashboard | GXC Explorer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --light-bg: #f8fafc;
+            --border-color: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--light-bg);
+            font-size: 14px;
+        }
+
+        [data-theme="dark"] {
+            --light-bg: #0f172a;
+            --border-color: #1e293b;
+        }
+
+        .bg-gxc {
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            background: white;
+        }
+
+        [data-theme="dark"] .card {
+            background: #1e293b;
+        }
+
+        .page-header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 2rem 0;
+            border-radius: 0 0 20px 20px;
+            margin-bottom: 2rem;
+        }
+
+        .address-link {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(102, 126, 234, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gxc">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/" style="font-size: 1.25rem;">
+                <i class="fas fa-cube me-2"></i>GXC Explorer
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/analytics" class="nav-link active">Analytics</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-header">
+        <div class="container">
+            <h1 style="font-size: 1.75rem; font-weight: 600; margin-bottom: 0.5rem;">
+                <i class="fas fa-chart-pie me-3"></i>Analytics Dashboard
+            </h1>
+            <p style="font-size: 1rem; opacity: 0.9; margin: 0;">
+                Advanced network analytics and insights
+            </p>
+        </div>
+    </div>
+
+    <div class="container mb-5">
+        <!-- Whale Transactions -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h5 style="font-size: 1rem; font-weight: 600; margin: 0;">
+                    <i class="fas fa-whale me-2"></i>Whale Transactions (≥1000 GXC)
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Hash</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Value</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if analytics.whale_transactions %}
+                                {% for tx in analytics.whale_transactions[:10] %}
+                                <tr>
+                                    <td>
+                                        <a href="/tx/{{ tx.hash }}" class="text-decoration-none">
+                                            <span class="address-link">{{ tx.hash[:16] }}...</span>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <a href="/address/{{ tx.from }}" class="text-decoration-none">
+                                            <span class="address-link">{{ tx.from[:10] }}...</span>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <a href="/address/{{ tx.to }}" class="text-decoration-none">
+                                            <span class="address-link">{{ tx.to[:10] }}...</span>
+                                        </a>
+                                    </td>
+                                    <td><strong>{{ "{:,.2f}".format(tx.value) }} GXC</strong></td>
+                                    <td class="text-muted small">{{ tx.timestamp[:16] }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">No whale transactions found</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Active Addresses -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h5 style="font-size: 1rem; font-weight: 600; margin: 0;">
+                    <i class="fas fa-fire me-2"></i>Most Active Addresses
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Address</th>
+                                <th>Transactions</th>
+                                <th>Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if analytics.top_active_addresses %}
+                                {% for addr in analytics.top_active_addresses[:10] %}
+                                <tr>
+                                    <td>
+                                        <a href="/address/{{ addr.address }}" class="text-decoration-none">
+                                            <span class="address-link">{{ addr.address[:10] }}...{{ addr.address[-8:] }}</span>
+                                        </a>
+                                    </td>
+                                    <td><span class="badge bg-primary">{{ "{:,}".format(addr.tx_count) }}</span></td>
+                                    <td><strong>{{ "{:.2f}".format(addr.balance) }} GXC</strong></td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted py-4">No data available</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Volume Chart -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h5 style="font-size: 1rem; font-weight: 600; margin: 0;">
+                    <i class="fas fa-chart-bar me-2"></i>Daily Transaction Volume (30 Days)
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="volumeChart" height="100"></canvas>
+            </div>
+        </div>
+
+        <!-- Activity Distribution -->
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 style="font-size: 1rem; font-weight: 600; margin: 0;">
+                    <i class="fas fa-chart-pie me-2"></i>Address Activity Distribution
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="activityChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function loadCharts() {
+            try {
+                const response = await fetch('/api/analytics');
+                const data = await response.json();
+                
+                // Volume chart
+                if (data.daily_volume && data.daily_volume.length > 0) {
+                    const labels = data.daily_volume.map(item => {
+                        const date = new Date(item[0]);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    });
+                    const txCounts = data.daily_volume.map(item => item[1] || 0);
+                    const values = data.daily_volume.map(item => item[2] || 0);
+                    
+                    new Chart(document.getElementById('volumeChart'), {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Transaction Count',
+                                data: txCounts,
+                                backgroundColor: '#667eea',
+                                borderRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: { y: { beginAtZero: true } }
+                        }
+                    });
+                }
+                
+                // Activity distribution chart
+                if (data.activity_distribution && data.activity_distribution.length > 0) {
+                    const labels = data.activity_distribution.map(item => item[0]);
+                    const counts = data.activity_distribution.map(item => item[1]);
+                    
+                    new Chart(document.getElementById('activityChart'), {
+                        type: 'doughnut',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                data: counts,
+                                backgroundColor: [
+                                    '#667eea',
+                                    '#10b981',
+                                    '#f59e0b',
+                                    '#ef4444',
+                                    '#8b5cf6'
+                                ]
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading charts:', error);
+            }
+        }
+        
+        loadCharts();
+    </script>
+</body>
+</html>
+

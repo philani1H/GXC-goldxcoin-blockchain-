@@ -1,15 +1,345 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <title>Charts | GXC Explorer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Charts & Analytics | GXC Blockchain Explorer</title>
+    <meta name="description" content="Blockchain analytics and historical data charts">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --light-bg: #f8fafc;
+            --border-color: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--light-bg);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Professional Typography */
+        h1, .h1, .display-1, .display-2, .display-3, .display-4, .display-5, .display-6 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            line-height: 1.3;
+            letter-spacing: -0.02em;
+        }
+
+        h2, .h2 { font-size: 1.5rem; font-weight: 600; }
+        h3, .h3 { font-size: 1.25rem; font-weight: 600; }
+        h4, .h4 { font-size: 1.1rem; font-weight: 600; }
+        h5, .h5 { font-size: 1rem; font-weight: 600; }
+        h6, .h6 { font-size: 0.9rem; font-weight: 600; }
+        .lead { font-size: 1rem; font-weight: 400; }
+        .fw-bold { font-weight: 600 !important; }
+
+        .bg-gxc {
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            background: white;
+            transition: all 0.3s ease;
+            height: 100%;
+        }
+
+        .page-header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 2rem 0;
+            border-radius: 0 0 20px 20px;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+    </style>
 </head>
+
 <body>
-    <div class="container mt-4">
-        <h2>Charts</h2>
-        <div class="alert alert-info">Charts and analytics coming soon.</div>
-        <a href="/" class="btn btn-secondary mt-3">Back to Explorer</a>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gxc">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-cube me-2"></i>GXC Explorer
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/blocks" class="nav-link">Blocks</a>
+                <a href="/charts" class="nav-link active">Charts</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="container">
+            <h1 class="display-5 fw-bold mb-2">
+                <i class="fas fa-chart-pie me-3"></i>Analytics
+            </h1>
+            <p class="lead mb-0 opacity-90">
+                Network performance and historical data visualization
+            </p>
+        </div>
     </div>
+
+    <!-- Main Content -->
+    <div class="container mb-5">
+        <div class="row g-4">
+            <!-- Transaction History -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header bg-white border-bottom-0 pt-4 px-4">
+                        <h5 class="mb-0">Daily Transactions</h5>
+                        <small class="text-muted">Last 14 Days</small>
+                    </div>
+                    <div class="card-body px-4 pb-4">
+                        <div class="chart-container">
+                            <canvas id="txChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Address Growth -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header bg-white border-bottom-0 pt-4 px-4">
+                        <h5 class="mb-0">Address Growth</h5>
+                        <small class="text-muted">Total Unique Addresses</small>
+                    </div>
+                    <div class="card-body px-4 pb-4">
+                        <div class="chart-container">
+                            <canvas id="addressChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Block Time -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header bg-white border-bottom-0 pt-4 px-4">
+                        <h5 class="mb-0">Average Block Time</h5>
+                        <small class="text-muted">Seconds per Block</small>
+                    </div>
+                    <div class="card-body px-4 pb-4">
+                        <div class="chart-container">
+                            <canvas id="blockTimeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Difficulty -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header bg-white border-bottom-0 pt-4 px-4">
+                        <h5 class="mb-0">Network Difficulty</h5>
+                        <small class="text-muted">Mining Difficulty Evolution</small>
+                    </div>
+                    <div class="card-body px-4 pb-4">
+                        <div class="chart-container">
+                            <canvas id="difficultyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chart Configuration
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.color = '#64748b';
+
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(31, 41, 55, 0.9)',
+                    padding: 12,
+                    cornerRadius: 8,
+                    displayColors: false
+                }
+            },
+            scales: {
+                y: {
+                    grid: { borderDash: [2, 2], color: '#f1f5f9' },
+                    beginAtZero: true
+                },
+                x: {
+                    grid: { display: false }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            }
+        };
+
+        // Fetch real data from API
+        async function loadChartData() {
+            try {
+                const response = await fetch('/api/charts?days=14');
+                const data = await response.json();
+                
+                // Process transaction data
+                const txLabels = data.transactions.map(item => {
+                    const date = new Date(item[0]);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                });
+                const txValues = data.transactions.map(item => item[1] || 0);
+                
+                // Process address growth data
+                const addrLabels = data.addresses.map(item => {
+                    const date = new Date(item[0]);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                });
+                const addrValues = data.addresses.map(item => item[1] || 0);
+                
+                // Process block time data
+                const blockTimeLabels = data.block_times.map(item => {
+                    const date = new Date(item[0]);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                });
+                const blockTimeValues = data.block_times.map(item => item[1] || 0);
+                
+                // Process difficulty data
+                const difficultyLabels = data.difficulty.map(item => {
+                    const date = new Date(item[0]);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                });
+                const difficultyValues = data.difficulty.map(item => item[1] || 0);
+                
+                // Create charts with real data
+                createCharts(txLabels, txValues, addrLabels, addrValues, 
+                            blockTimeLabels, blockTimeValues, difficultyLabels, difficultyValues);
+            } catch (error) {
+                console.error('Error loading chart data:', error);
+                // Fallback to empty data
+                createCharts([], [], [], [], [], [], [], []);
+            }
+        }
+        
+        function createCharts(txLabels, txValues, addrLabels, addrValues, 
+                            blockTimeLabels, blockTimeValues, difficultyLabels, difficultyValues) {
+            // Helper function to show empty state
+            function showEmptyState(canvasId, message) {
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.font = '16px Inter';
+                ctx.fillStyle = '#64748b';
+                ctx.textAlign = 'center';
+                ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+            }
+            
+            // 1. Transactions Chart
+            if (txLabels.length > 0 && txValues.length > 0) {
+                new Chart(document.getElementById('txChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: txLabels,
+                        datasets: [{
+                            label: 'Transactions',
+                            data: txValues,
+                            backgroundColor: '#667eea',
+                            borderRadius: 4
+                        }]
+                    },
+                    options: commonOptions
+                });
+            } else {
+                showEmptyState('txChart', 'No transaction data available yet');
+            }
+
+            // 2. Address Growth Chart
+            if (addrLabels.length > 0 && addrValues.length > 0) {
+                new Chart(document.getElementById('addressChart'), {
+                    type: 'line',
+                    data: {
+                        labels: addrLabels,
+                        datasets: [{
+                            label: 'New Addresses',
+                            data: addrValues,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: commonOptions
+                });
+            } else {
+                showEmptyState('addressChart', 'No address data available yet');
+            }
+
+            // 3. Block Time Chart
+            if (blockTimeLabels.length > 0 && blockTimeValues.length > 0) {
+                new Chart(document.getElementById('blockTimeChart'), {
+                    type: 'line',
+                    data: {
+                        labels: blockTimeLabels,
+                        datasets: [{
+                            label: 'Seconds',
+                            data: blockTimeValues,
+                            borderColor: '#f59e0b',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.4
+                        }]
+                    },
+                    options: commonOptions
+                });
+            } else {
+                showEmptyState('blockTimeChart', 'No block time data available yet');
+            }
+
+            // 4. Difficulty Chart
+            if (difficultyLabels.length > 0 && difficultyValues.length > 0) {
+                new Chart(document.getElementById('difficultyChart'), {
+                    type: 'line',
+                    data: {
+                        labels: difficultyLabels,
+                        datasets: [{
+                            label: 'Difficulty',
+                            data: difficultyValues,
+                            borderColor: '#8b5cf6',
+                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: commonOptions
+                });
+            } else {
+                showEmptyState('difficultyChart', 'No difficulty data available yet');
+            }
+        }
+        
+        // Load data when page loads
+        loadChartData();
+    </script>
 </body>
+
 </html>

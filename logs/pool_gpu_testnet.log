@@ -1,0 +1,11 @@
+============================================================
+GXC GPU Mining Pool (Ethash)
+============================================================
+Stratum: stratum+tcp://gpu-pool.gxc.network:4444
+Dashboard: http://localhost:5002
+Algorithm: Ethash (GPU)
+============================================================
+[gpu-pool] Starting web server on 0.0.0.0:5002
+[gpu-pool] Stratum server listening on port 4444
+ * Serving Flask app 'pool_base'
+ * Debug mode: off

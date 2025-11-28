@@ -123,6 +123,32 @@ start_market_maker() {
     print_status "Market maker started (PID: $MARKET_MAKER_PID)"
 }
 
+# Start the forum
+start_forum() {
+    print_header "STARTING FORUM"
+    
+    print_status "Starting forum on port 3001..."
+    cd /workspace
+    python3 web/forum.py > logs/forum.log 2>&1 &
+    FORUM_PID=$!
+    echo $FORUM_PID > pids/forum.pid
+    
+    print_status "Forum started (PID: $FORUM_PID)"
+}
+
+# Start the forum real-time server
+start_forum_realtime() {
+    print_header "STARTING FORUM REAL-TIME SERVER"
+    
+    print_status "Starting forum real-time server on port 3002..."
+    cd /workspace
+    python3 web/forum_realtime_server.py > logs/forum_realtime.log 2>&1 &
+    FORUM_REALTIME_PID=$!
+    echo $FORUM_REALTIME_PID > pids/forum_realtime.pid
+    
+    print_status "Forum real-time server started (PID: $FORUM_REALTIME_PID)"
+}
+
 # Create necessary directories
 setup_directories() {
     print_status "Creating necessary directories..."
@@ -144,6 +170,8 @@ health_check() {
         "wallet_api:5000"
         "explorer:3000"
         "market_maker:4000"
+        "forum:3001"
+        "forum_realtime:3002"
     )
     
     for service in "${services[@]}"; do
@@ -173,6 +201,8 @@ show_service_info() {
     echo -e "${GREEN}💼 Wallet API:${NC}           http://localhost:5000"
     echo -e "${GREEN}🔍 Blockchain Explorer:${NC}  http://localhost:3000"
     echo -e "${GREEN}📈 Market Maker:${NC}         http://localhost:4000"
+    echo -e "${GREEN}💬 Forum:${NC}               http://localhost:3001"
+    echo -e "${GREEN}⚡ Forum Real-Time:${NC}      http://localhost:3002"
     echo ""
     
     echo -e "${BLUE}📁 Log Files:${NC}"
@@ -180,6 +210,8 @@ show_service_info() {
     echo "  • Wallet API:    logs/wallet_api.log"
     echo "  • Explorer:      logs/explorer.log"
     echo "  • Market Maker:  logs/market_maker.log"
+    echo "  • Forum:         logs/forum.log"
+    echo "  • Forum Real-Time: logs/forum_realtime.log"
     echo ""
     
     echo -e "${BLUE}🆔 Process IDs:${NC}"
@@ -194,6 +226,12 @@ show_service_info() {
     fi
     if [ -f pids/market_maker.pid ]; then
         echo "  • Market Maker:  $(cat pids/market_maker.pid)"
+    fi
+    if [ -f pids/forum.pid ]; then
+        echo "  • Forum:         $(cat pids/forum.pid)"
+    fi
+    if [ -f pids/forum_realtime.pid ]; then
+        echo "  • Forum Real-Time: $(cat pids/forum_realtime.pid)"
     fi
     echo ""
     
@@ -280,6 +318,8 @@ main() {
     start_wallet_api
     start_explorer
     start_market_maker
+    start_forum
+    start_forum_realtime
     
     # Wait a bit for services to start
     print_status "Waiting for services to initialize..."

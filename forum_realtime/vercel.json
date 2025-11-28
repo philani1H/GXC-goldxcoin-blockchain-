@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api.py"
+    }
+  ],
+  "env": {
+    "VERCEL": "1",
+    "FORUM_DATABASE_PATH": "/tmp/gxc_forum.db"
+  }
+}
+

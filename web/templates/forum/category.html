@@ -1,0 +1,134 @@
+{% extends "forum/base.html" %}
+
+{% block title %}{{ category.name }} - GXC Forum{% endblock %}
+
+{% block content %}
+<!-- Category Header -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="d-flex align-items-center">
+            <div class="category-icon me-3" style="background: {{ category.color }}">
+                <i class="{{ category.icon }}"></i>
+            </div>
+            <div class="flex-grow-1">
+                <h2 class="mb-1">{{ category.name }}</h2>
+                <p class="text-muted mb-0">{{ category.description }}</p>
+            </div>
+            {% if session and session.user_id %}
+            <a href="/forum/new-topic?category={{ category.category_id }}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>New Topic
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Topics List -->
+<div class="card">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-list me-2"></i>Topics</h5>
+        <span class="badge bg-primary">{{ topics|length }} topics</span>
+    </div>
+    <div class="card-body p-0">
+        {% if topics %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 50%">Topic</th>
+                        <th>Author</th>
+                        <th>Replies</th>
+                        <th>Views</th>
+                        <th>Last Reply</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for topic in topics %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                {% if topic.is_pinned %}
+                                <i class="fas fa-thumbtack text-warning me-2"></i>
+                                {% endif %}
+                                {% if topic.is_locked %}
+                                <i class="fas fa-lock text-danger me-2"></i>
+                                {% endif %}
+                                <div>
+                                    <a href="/forum/topic/{{ topic.topic_id }}/{{ topic.slug }}" class="text-decoration-none fw-bold">
+                                        {{ topic.title }}
+                                    </a>
+                                    <br>
+                                    <small class="text-muted">{{ topic.created_at[:10] }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="avatar me-2">
+                                    {{ topic.username[0].upper() }}
+                                </div>
+                                <span>{{ topic.username }}</span>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-secondary">{{ topic.reply_count }}</span></td>
+                        <td><span class="text-muted">{{ topic.view_count }}</span></td>
+                        <td>
+                            {% if topic.last_reply_author %}
+                            <small class="text-muted">
+                                {{ topic.last_reply_author }}<br>
+                                {{ topic.last_reply_time[:10] if topic.last_reply_time else '' }}
+                            </small>
+                            {% else %}
+                            <small class="text-muted">No replies</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+            <p class="text-muted">No topics yet. Be the first to start a discussion!</p>
+            {% if session and session.user_id %}
+            <a href="/forum/new-topic?category={{ category.category_id }}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Create First Topic
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% if total_pages > 1 %}
+    <div class="card-footer bg-white">
+        <nav>
+            <ul class="pagination mb-0 justify-content-center">
+                {% for p in range(1, total_pages + 1) %}
+                <li class="page-item {% if p == page %}active{% endif %}">
+                    <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function deleteTopic(topicId) {
+    if (!confirm('Are you sure you want to delete this entire topic? This will delete all posts in this topic. This action cannot be undone.')) {
+        return;
+    }
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/forum/topic/${topicId}/delete`;
+    
+    document.body.appendChild(form);
+    form.submit();
+}
+</script>
+{% endblock %}
+

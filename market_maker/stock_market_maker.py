@@ -59,7 +59,9 @@ class StockMarketMaker:
     
     def init_database(self):
         """Initialize market maker database"""
-        conn = sqlite3.connect('market_maker.db')
+        # Use /tmp for Vercel (writable), otherwise use local path
+        db_path = os.environ.get('DATABASE_PATH', '/tmp/market_maker.db' if os.path.exists('/tmp') else 'market_maker.db')
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         # Tracked stocks
@@ -160,7 +162,9 @@ class StockMarketMaker:
     
     def get_tracked_stocks(self) -> List[str]:
         """Get list of actively tracked stock symbols"""
-        conn = sqlite3.connect('market_maker.db')
+        # Use /tmp for Vercel (writable), otherwise use local path
+        db_path = os.environ.get('DATABASE_PATH', '/tmp/market_maker.db' if os.path.exists('/tmp') else 'market_maker.db')
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         cursor.execute('SELECT symbol FROM tracked_stocks WHERE is_active = TRUE')
@@ -209,7 +213,9 @@ class StockMarketMaker:
     
     def store_price_data(self, symbol: str, price: float, volume: int):
         """Store price data in database"""
-        conn = sqlite3.connect('market_maker.db')
+        # Use /tmp for Vercel (writable), otherwise use local path
+        db_path = os.environ.get('DATABASE_PATH', '/tmp/market_maker.db' if os.path.exists('/tmp') else 'market_maker.db')
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         try:
@@ -244,7 +250,9 @@ class StockMarketMaker:
             return None
         
         # Get stock-specific parameters
-        conn = sqlite3.connect('market_maker.db')
+        # Use /tmp for Vercel (writable), otherwise use local path
+        db_path = os.environ.get('DATABASE_PATH', '/tmp/market_maker.db' if os.path.exists('/tmp') else 'market_maker.db')
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -332,7 +340,9 @@ class StockMarketMaker:
     
     def store_order(self, order: MarketOrder):
         """Store order in database"""
-        conn = sqlite3.connect('market_maker.db')
+        # Use /tmp for Vercel (writable), otherwise use local path
+        db_path = os.environ.get('DATABASE_PATH', '/tmp/market_maker.db' if os.path.exists('/tmp') else 'market_maker.db')
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         try:
@@ -369,7 +379,9 @@ class StockMarketMaker:
             order.status = 'cancelled'
             
             # Update in database
-            conn = sqlite3.connect('market_maker.db')
+            # Use /tmp for Vercel (writable), otherwise use local path
+            db_path = os.environ.get('DATABASE_PATH', '/tmp/market_maker.db' if os.path.exists('/tmp') else 'market_maker.db')
+            conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -438,7 +450,9 @@ class StockMarketMaker:
     
     def store_position(self, position: StockPosition):
         """Store position in database"""
-        conn = sqlite3.connect('market_maker.db')
+        # Use /tmp for Vercel (writable), otherwise use local path
+        db_path = os.environ.get('DATABASE_PATH', '/tmp/market_maker.db' if os.path.exists('/tmp') else 'market_maker.db')
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         try:
@@ -617,7 +631,9 @@ def api_add_stock():
     if not all(field in data for field in required_fields):
         return jsonify({'success': False, 'error': 'Missing required fields'}), 400
     
-    conn = sqlite3.connect('market_maker.db')
+    # Use /tmp for Vercel (writable), otherwise use local path
+    db_path = os.environ.get('DATABASE_PATH', '/tmp/market_maker.db' if os.path.exists('/tmp') else 'market_maker.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
     try:

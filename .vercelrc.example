@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "name": "gxc-blockchain",
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "installCommand": "pip install -r requirements.txt",
+  "framework": null
+}
+

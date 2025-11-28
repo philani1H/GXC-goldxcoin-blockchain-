@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Become a Validator - {{ wallet.wallet_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .card { border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .validator-card { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+        .requirement-box { background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #667eea; }
+        .requirement-box i { color: #667eea; margin-right: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card">
+                    <div class="card-header validator-card">
+                        <h4 class="mb-0"><i class="fas fa-shield-alt"></i> Become a Validator</h4>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="mb-4">
+                            <h5>{{ wallet.wallet_name }}</h5>
+                            <small class="text-muted">{{ wallet.address }}</small>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> 
+                            <strong>Available Balance:</strong> {{ "%.8f"|format(balance) }} GXC
+                        </div>
+                        
+                        <!-- Requirements -->
+                        <div class="mb-4">
+                            <h5 class="mb-3"><i class="fas fa-list-check"></i> Validator Requirements</h5>
+                            <div class="requirement-box">
+                                <i class="fas fa-coins"></i>
+                                <strong>Minimum Stake:</strong> {{ min_stake }} GXC
+                            </div>
+                            <div class="requirement-box">
+                                <i class="fas fa-calendar-alt"></i>
+                                <strong>Staking Period:</strong> {{ min_staking_days }} - {{ max_staking_days }} days
+                            </div>
+                            <div class="requirement-box">
+                                <i class="fas fa-server"></i>
+                                <strong>Node Requirements:</strong> Must run a validator node (24/7 uptime recommended)
+                            </div>
+                            <div class="requirement-box">
+                                <i class="fas fa-shield-alt"></i>
+                                <strong>Responsibilities:</strong> Validate blocks, maintain network security, earn rewards
+                            </div>
+                        </div>
+                        
+                        <!-- Benefits -->
+                        <div class="mb-4">
+                            <h5 class="mb-3"><i class="fas fa-gift"></i> Validator Benefits</h5>
+                            <ul class="list-group">
+                                <li class="list-group-item">
+                                    <i class="fas fa-check-circle text-success me-2"></i>
+                                    Earn staking rewards (5-15% APY estimated)
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="fas fa-check-circle text-success me-2"></i>
+                                    Participate in block production
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="fas fa-check-circle text-success me-2"></i>
+                                    Help secure the GXC network
+                                </li>
+                                <li class="list-group-item">
+                                    <i class="fas fa-check-circle text-success me-2"></i>
+                                    Vote on governance proposals
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <hr>
+                        
+                        <!-- Registration Form -->
+                        <h5 class="mb-3">Register as Validator</h5>
+                        <form method="POST" id="validatorForm">
+                            <div class="mb-3">
+                                <label class="form-label">Stake Amount (GXC)</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="stake_amount" required 
+                                           step="0.00000001" min="{{ min_stake }}" max="{{ balance }}" 
+                                           id="stake-amount" value="{{ min_stake }}">
+                                    <span class="input-group-text">GXC</span>
+                                </div>
+                                <small class="text-muted">
+                                    Minimum: {{ min_stake }} GXC. Your stake will be locked for the staking period.
+                                </small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Staking Period (Days)</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="staking_days" required 
+                                           min="{{ min_staking_days }}" max="{{ max_staking_days }}" 
+                                           id="staking-days" value="{{ min_staking_days }}">
+                                    <span class="input-group-text">Days</span>
+                                </div>
+                                <small class="text-muted">
+                                    Between {{ min_staking_days }} and {{ max_staking_days }} days. 
+                                    Longer periods may earn higher rewards.
+                                </small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Estimated Annual Rewards</label>
+                                <div class="alert alert-secondary" id="estimated-rewards">
+                                    Calculating...
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Wallet Password</label>
+                                <input type="password" class="form-control" name="password" required 
+                                       placeholder="Enter your wallet password">
+                                <small class="text-muted">Required to sign the validator registration transaction</small>
+                            </div>
+                            
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <strong>Important:</strong>
+                                <ul class="mb-0 mt-2">
+                                    <li>Your stake will be locked for the entire staking period</li>
+                                    <li>You must run a validator node to participate</li>
+                                    <li>Missing blocks may result in slashing penalties</li>
+                                    <li>Ensure your node has 24/7 uptime for best rewards</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="fas fa-shield-alt"></i> Register as Validator
+                                </button>
+                                <a href="{{ url_for('staking_page', wallet_id=wallet.wallet_id) }}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> Back to Staking
+                                </a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const balance = {{ balance }};
+        const minStake = {{ min_stake }};
+        const minDays = {{ min_staking_days }};
+        const maxDays = {{ max_staking_days }};
+        const estimatedAPY = 8.0; // Estimated 8% APY
+        
+        const stakeAmountInput = document.getElementById('stake-amount');
+        const stakingDaysInput = document.getElementById('staking-days');
+        const rewardsDisplay = document.getElementById('estimated-rewards');
+        
+        function calculateRewards() {
+            const stake = parseFloat(stakeAmountInput.value) || 0;
+            const days = parseInt(stakingDaysInput.value) || 0;
+            
+            if (stake >= minStake && days >= minDays && days <= maxDays) {
+                const annualReward = stake * (estimatedAPY / 100);
+                const periodReward = annualReward * (days / 365);
+                rewardsDisplay.className = 'alert alert-success';
+                rewardsDisplay.innerHTML = `
+                    <strong>Estimated Rewards:</strong><br>
+                    Annual: ${annualReward.toFixed(8)} GXC (${estimatedAPY}% APY)<br>
+                    For ${days} days: ${periodReward.toFixed(8)} GXC
+                `;
+            } else {
+                rewardsDisplay.className = 'alert alert-secondary';
+                rewardsDisplay.textContent = 'Enter valid stake amount and staking period';
+            }
+        }
+        
+        stakeAmountInput.addEventListener('input', calculateRewards);
+        stakingDaysInput.addEventListener('input', calculateRewards);
+        calculateRewards();
+        
+        document.getElementById('validatorForm').addEventListener('submit', function(e) {
+            const stake = parseFloat(stakeAmountInput.value);
+            const days = parseInt(stakingDaysInput.value);
+            
+            if (stake < minStake) {
+                e.preventDefault();
+                alert(`Minimum stake is ${minStake} GXC`);
+                return false;
+            }
+            
+            if (stake > balance) {
+                e.preventDefault();
+                alert('Insufficient balance');
+                return false;
+            }
+            
+            if (days < minDays || days > maxDays) {
+                e.preventDefault();
+                alert(`Staking period must be between ${minDays} and ${maxDays} days`);
+                return false;
+            }
+            
+            if (!confirm(`Register as validator with ${stake.toFixed(8)} GXC staked for ${days} days?\n\nYour stake will be locked for the entire period.`)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+    </script>
+</body>
+</html>
+

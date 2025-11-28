@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mining Guide | GXC Blockchain Explorer</title>
+    <meta name="description" content="Complete mining guide with instructions, downloads, and setup for GXC blockchain">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --dark-color: #1f2937;
+            --light-bg: #f8fafc;
+            --border-color: #e5e7eb;
+            --text-primary: #1f2937;
+            --text-secondary: #64748b;
+            --card-bg: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --dark-color: #f8fafc;
+            --light-bg: #0f172a;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #1e293b;
+            --card-bg: #1e293b;
+        }
+
+        [data-theme="dark"] body {
+            background: var(--light-bg);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .card {
+            background: var(--card-bg);
+            border-color: var(--border-color);
+        }
+
+        [data-theme="dark"] .code-block {
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--light-bg);
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        h1, .h1 { font-size: 1.75rem; font-weight: 600; }
+        h2, .h2 { font-size: 1.5rem; font-weight: 600; }
+        h3, .h3 { font-size: 1.25rem; font-weight: 600; }
+        h4, .h4 { font-size: 1.1rem; font-weight: 600; }
+
+        .bg-gxc {
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .page-header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 2rem 0;
+            border-radius: 0 0 20px 20px;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            background: var(--card-bg);
+            margin-bottom: 1.5rem;
+        }
+
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .download-btn {
+            margin: 0.25rem;
+        }
+
+        .algorithm-card {
+            transition: transform 0.2s;
+        }
+
+        .algorithm-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-gradient);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            margin-right: 1rem;
+        }
+
+        .nav-pills .nav-link {
+            color: var(--text-primary);
+            border-radius: 8px;
+        }
+
+        .nav-pills .nav-link.active {
+            background: var(--primary-gradient);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gxc">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-cube me-2"></i>GXC Explorer
+            </a>
+            <div class="navbar-nav ms-auto d-flex flex-row align-items-center gap-3">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/mining" class="nav-link">Mining Stats</a>
+                <a href="/mining/guide" class="nav-link active">Mining Guide</a>
+                <button class="btn btn-sm btn-outline-light" id="themeToggle" title="Toggle Dark Mode">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="container">
+            <h1 class="display-5 fw-bold mb-2">
+                <i class="fas fa-book me-3"></i>Mining Guide
+            </h1>
+            <p class="lead mb-0 opacity-90">
+                Complete instructions, downloads, and setup guide for GXC blockchain mining
+            </p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container mb-5">
+        <!-- Quick Start Section -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-rocket me-2 text-success"></i>Quick Start (5 Minutes)</h3>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-1">
+                        <div class="step-number">1</div>
+                    </div>
+                    <div class="col-md-11">
+                        <h5>Download Mining Software</h5>
+                        <p class="text-muted">Choose your platform and download the appropriate miner:</p>
+                        <div class="d-flex flex-wrap">
+                            <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-gxhash-miner-linux-x64.tar.gz" 
+                               class="btn btn-primary download-btn" target="_blank">
+                                <i class="fab fa-linux me-2"></i>Linux x64
+                            </a>
+                            <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-gxhash-miner-windows-x64.zip" 
+                               class="btn btn-primary download-btn" target="_blank">
+                                <i class="fab fa-windows me-2"></i>Windows x64
+                            </a>
+                            <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-gxhash-miner-macos-x64.tar.gz" 
+                               class="btn btn-primary download-btn" target="_blank">
+                                <i class="fab fa-apple me-2"></i>macOS x64
+                            </a>
+                            <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest" 
+                               class="btn btn-outline-primary download-btn" target="_blank">
+                                <i class="fas fa-download me-2"></i>All Downloads
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-1">
+                        <div class="step-number">2</div>
+                    </div>
+                    <div class="col-md-11">
+                        <h5>Create Configuration File</h5>
+                        <p class="text-muted">Create a mining configuration file:</p>
+                        <div class="code-block">
+# Create config directory
+mkdir -p ~/.gxc
+
+# Create mining config
+cat > ~/.gxc/mining.conf << EOF
+algorithm=gxhash
+threads=0
+address=GXC1YOUR_MINER_ADDRESS_HERE
+pool=stratum+tcp://pool.gxc.network:3333
+username=your_worker_name
+password=x
+EOF
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-1">
+                        <div class="step-number">3</div>
+                    </div>
+                    <div class="col-md-11">
+                        <h5>Start Mining</h5>
+                        <p class="text-muted">Run the miner with your configuration:</p>
+                        <div class="code-block">
+# Linux/macOS
+./gxc-gxhash-miner -c ~/.gxc/mining.conf
+
+# Windows
+gxc-gxhash-miner.exe -c %APPDATA%\GXC\mining.conf
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-1">
+                        <div class="step-number">4</div>
+                    </div>
+                    <div class="col-md-11">
+                        <h5>Monitor Your Mining</h5>
+                        <p class="text-muted">Check your mining stats:</p>
+                        <ul>
+                            <li><strong>Pool Dashboard:</strong> <span class="text-muted">Coming Soon - Pool dashboard will be available at <code>http://localhost:3001</code></span></li>
+                            <li><strong>Command Line:</strong> <code>gxc-gxhash-miner --stats</code></li>
+                            <li><strong>Explorer:</strong> <a href="/mining">View Network Mining Stats</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mining Algorithms -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-microchip me-2 text-primary"></i>Mining Algorithms</h3>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="card algorithm-card h-100">
+                            <div class="card-body">
+                                <h4 class="text-primary"><i class="fas fa-server me-2"></i>SHA-256 (ASIC)</h4>
+                                <p class="text-muted">Bitcoin-compatible ASIC mining</p>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-check text-success me-2"></i>Target: ASIC Miners</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Block Type: PoW (75%)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Reward: 12.5 GXC/block</li>
+                                </ul>
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-sha256-miner-linux-x64.tar.gz" 
+                                   class="btn btn-sm btn-outline-primary" target="_blank">
+                                    <i class="fas fa-download me-2"></i>Download
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card algorithm-card h-100">
+                            <div class="card-body">
+                                <h4 class="text-success"><i class="fas fa-desktop me-2"></i>Ethash (GPU)</h4>
+                                <p class="text-muted">Ethereum-compatible GPU mining</p>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-check text-success me-2"></i>Target: NVIDIA/AMD GPUs</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Block Type: PoW (75%)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Reward: 12.5 GXC/block</li>
+                                </ul>
+                                <div class="d-flex gap-2">
+                                    <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-ethash-miner-linux-nvidia.tar.gz" 
+                                       class="btn btn-sm btn-outline-success" target="_blank">
+                                        <i class="fas fa-download me-2"></i>NVIDIA
+                                    </a>
+                                    <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-ethash-miner-linux-amd.tar.gz" 
+                                       class="btn btn-sm btn-outline-success" target="_blank">
+                                        <i class="fas fa-download me-2"></i>AMD
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card algorithm-card h-100">
+                            <div class="card-body">
+                                <h4 class="text-warning"><i class="fas fa-microchip me-2"></i>GXHash (CPU)</h4>
+                                <p class="text-muted">Custom CPU-optimized algorithm</p>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-check text-success me-2"></i>Target: Multi-core CPUs</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Block Type: PoW (75%)</li>
+                                    <li><i class="fas fa-check text-success me-2"></i>Reward: 12.5 GXC/block</li>
+                                </ul>
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-gxhash-miner-linux-x64.tar.gz" 
+                                   class="btn btn-sm btn-outline-warning" target="_blank">
+                                    <i class="fas fa-download me-2"></i>Download
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Download Links -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-download me-2 text-info"></i>Download Links</h3>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-pills mb-3" id="downloadTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="universal-tab" data-bs-toggle="pill" data-bs-target="#universal" type="button">
+                            <i class="fas fa-layer-group me-2"></i>Universal Miner
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="cpu-tab" data-bs-toggle="pill" data-bs-target="#cpu" type="button">
+                            <i class="fas fa-microchip me-2"></i>CPU Miner
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="gpu-tab" data-bs-toggle="pill" data-bs-target="#gpu" type="button">
+                            <i class="fas fa-desktop me-2"></i>GPU Miner
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="asic-tab" data-bs-toggle="pill" data-bs-target="#asic" type="button">
+                            <i class="fas fa-server me-2"></i>ASIC Miner
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="downloadTabsContent">
+                    <!-- Universal Miner -->
+                    <div class="tab-pane fade show active" id="universal" role="tabpanel">
+                        <h5>Universal Miner (All Algorithms)</h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-miner-linux-x64.tar.gz" 
+                                   class="btn btn-outline-primary w-100" target="_blank">
+                                    <i class="fab fa-linux me-2"></i>Linux x64
+                                </a>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-miner-windows-x64.zip" 
+                                   class="btn btn-outline-primary w-100" target="_blank">
+                                    <i class="fab fa-windows me-2"></i>Windows x64
+                                </a>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-miner-macos-x64.tar.gz" 
+                                   class="btn btn-outline-primary w-100" target="_blank">
+                                    <i class="fab fa-apple me-2"></i>macOS x64
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CPU Miner -->
+                    <div class="tab-pane fade" id="cpu" role="tabpanel">
+                        <h5>CPU Miner (GXHash)</h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-gxhash-miner-linux-x64.tar.gz" 
+                                   class="btn btn-outline-warning w-100" target="_blank">
+                                    <i class="fab fa-linux me-2"></i>Linux x64
+                                </a>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-gxhash-miner-windows-x64.zip" 
+                                   class="btn btn-outline-warning w-100" target="_blank">
+                                    <i class="fab fa-windows me-2"></i>Windows x64
+                                </a>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-gxhash-miner-macos-x64.tar.gz" 
+                                   class="btn btn-outline-warning w-100" target="_blank">
+                                    <i class="fab fa-apple me-2"></i>macOS x64
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GPU Miner -->
+                    <div class="tab-pane fade" id="gpu" role="tabpanel">
+                        <h5>GPU Miner (Ethash)</h5>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-12">
+                                <h6>NVIDIA GPUs</h6>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-ethash-miner-linux-nvidia.tar.gz" 
+                                   class="btn btn-outline-success w-100" target="_blank">
+                                    <i class="fab fa-linux me-2"></i>Linux (NVIDIA)
+                                </a>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-ethash-miner-windows-nvidia.zip" 
+                                   class="btn btn-outline-success w-100" target="_blank">
+                                    <i class="fab fa-windows me-2"></i>Windows (NVIDIA)
+                                </a>
+                            </div>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-12">
+                                <h6>AMD GPUs</h6>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-ethash-miner-linux-amd.tar.gz" 
+                                   class="btn btn-outline-success w-100" target="_blank">
+                                    <i class="fab fa-linux me-2"></i>Linux (AMD)
+                                </a>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-ethash-miner-windows-amd.zip" 
+                                   class="btn btn-outline-success w-100" target="_blank">
+                                    <i class="fab fa-windows me-2"></i>Windows (AMD)
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ASIC Miner -->
+                    <div class="tab-pane fade" id="asic" role="tabpanel">
+                        <h5>ASIC Miner (SHA-256)</h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-sha256-miner-linux-x64.tar.gz" 
+                                   class="btn btn-outline-primary w-100" target="_blank">
+                                    <i class="fab fa-linux me-2"></i>Linux x64
+                                </a>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="alert alert-info mb-0">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <strong>ASIC Configuration:</strong> Most ASIC miners can be configured via their web interface. 
+                                    Use pool URL: <code>stratum+tcp://asic-pool.gxc.network:3333</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4">
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-link me-2"></i>Additional Resources</h6>
+                        <ul class="list-unstyled">
+                            <li><a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest" target="_blank">
+                                <i class="fab fa-github me-2"></i>All Releases on GitHub</a></li>
+                            <li><a href="https://docs.gxc.network/mining" target="_blank">
+                                <i class="fas fa-book me-2"></i>Full Documentation</a></li>
+                            <li><a href="https://pool.gxc.network" target="_blank">
+                                <i class="fas fa-swimming-pool me-2"></i>Mining Pool Dashboard</a></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-shield-alt me-2"></i>Verification</h6>
+                        <ul class="list-unstyled">
+                            <li><a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/checksums.txt" target="_blank">
+                                <i class="fas fa-file-alt me-2"></i>SHA256 Checksums</a></li>
+                            <li><a href="https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-miner-linux-x64.tar.gz.asc" target="_blank">
+                                <i class="fas fa-key me-2"></i>GPG Signatures</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration Examples -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-cog me-2 text-secondary"></i>Configuration Examples</h3>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-pills mb-3" id="configTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="cpu-config-tab" data-bs-toggle="pill" data-bs-target="#cpu-config" type="button">
+                            CPU Mining
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="gpu-config-tab" data-bs-toggle="pill" data-bs-target="#gpu-config" type="button">
+                            GPU Mining
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="asic-config-tab" data-bs-toggle="pill" data-bs-target="#asic-config" type="button">
+                            ASIC Mining
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="configTabsContent">
+                    <div class="tab-pane fade show active" id="cpu-config" role="tabpanel">
+                        <h5>CPU Mining (GXHash) Configuration</h5>
+                        <div class="code-block">
+# GXHash CPU Mining Configuration
+algorithm=gxhash
+threads=0  # 0 = auto-detect optimal thread count
+address=GXC1YOUR_MINER_ADDRESS_HERE
+
+# Pool Mining (Recommended)
+pool=stratum+tcp://pool.gxc.network:3333
+username=your_worker_name
+password=x
+
+# Advanced Options
+thread_affinity=0,1,2,3,4,5,6,7
+huge_pages=true
+intensity=75
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="gpu-config" role="tabpanel">
+                        <h5>GPU Mining (Ethash) Configuration</h5>
+                        <div class="code-block">
+# Ethash GPU Mining Configuration
+algorithm=ethash
+devices=0,1,2,3  # GPU device IDs
+intensity=85
+address=GXC1YOUR_ADDRESS
+
+# Pool configuration
+pool=stratum+tcp://gpu-pool.gxc.network:4444
+username=your_worker_name.gpu
+password=x
+
+# Performance tuning (NVIDIA)
+core_clock=+100  # MHz offset
+memory_clock=+500  # MHz offset
+power_limit=250  # Watts
+fan_speed=80  # Percentage
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="asic-config" role="tabpanel">
+                        <h5>ASIC Mining (SHA-256) Configuration</h5>
+                        <div class="code-block">
+# ASIC Configuration for GXC SHA-256 mining
+algorithm=sha256
+pool=stratum+tcp://asic-pool.gxc.network:3333
+username=your_worker_name.asic
+password=x
+address=GXC1YOUR_ADDRESS
+
+# ASIC-specific settings
+frequency=650  # MHz
+voltage=0.9    # Volts
+fan_speed=80   # Percentage
+                        </div>
+                        <div class="alert alert-info mt-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Note:</strong> Most ASIC miners can be configured via their web interface. 
+                            Access your miner at <code>http://MINER_IP_ADDRESS</code> and configure the pool settings.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pool Information -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-swimming-pool me-2 text-info"></i>Mining Pools</h3>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5><i class="fas fa-server me-2 text-primary"></i>CPU Pool</h5>
+                                <p class="text-muted">For GXHash CPU mining</p>
+                                <p><strong>URL:</strong> <code>stratum+tcp://pool.gxc.network:3333</code></p>
+                                <a href="https://pool.gxc.network" class="btn btn-sm btn-primary" target="_blank">
+                                    <i class="fas fa-external-link-alt me-2"></i>View Dashboard
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5><i class="fas fa-desktop me-2 text-success"></i>GPU Pool</h5>
+                                <p class="text-muted">For Ethash GPU mining</p>
+                                <p><strong>URL:</strong> <code>stratum+tcp://gpu-pool.gxc.network:4444</code></p>
+                                <a href="https://gpu-pool.gxc.network" class="btn btn-sm btn-success" target="_blank">
+                                    <i class="fas fa-external-link-alt me-2"></i>View Dashboard
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5><i class="fas fa-server me-2 text-warning"></i>ASIC Pool</h5>
+                                <p class="text-muted">For SHA-256 ASIC mining</p>
+                                <p><strong>URL:</strong> <code>stratum+tcp://asic-pool.gxc.network:3333</code></p>
+                                <a href="https://asic-pool.gxc.network" class="btn btn-sm btn-warning" target="_blank">
+                                    <i class="fas fa-external-link-alt me-2"></i>View Dashboard
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help & Support -->
+        <div class="card">
+            <div class="card-header bg-white">
+                <h3 class="mb-0"><i class="fas fa-life-ring me-2 text-danger"></i>Help & Support</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-book me-2"></i>Documentation</h5>
+                        <ul class="list-unstyled">
+                            <li><a href="https://docs.gxc.network/mining" target="_blank">
+                                <i class="fas fa-file-alt me-2"></i>Complete Mining Guide</a></li>
+                            <li><a href="https://docs.gxc.network" target="_blank">
+                                <i class="fas fa-book me-2"></i>Full Documentation</a></li>
+                            <li><a href="/mining">
+                                <i class="fas fa-chart-line me-2"></i>Network Mining Statistics</a></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5><i class="fas fa-comments me-2"></i>Community</h5>
+                        <ul class="list-unstyled">
+                            <li><a href="https://discord.gg/gxc-blockchain" target="_blank">
+                                <i class="fab fa-discord me-2"></i>Discord Community</a></li>
+                            <li><a href="https://forum.gxc.network" target="_blank">
+                                <i class="fas fa-comments me-2"></i>Community Forum</a></li>
+                            <li><a href="https://github.com/gxc-blockchain/gxc-blockchain/issues" target="_blank">
+                                <i class="fab fa-github me-2"></i>GitHub Issues</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Dark Mode Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const html = document.documentElement;
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        html.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+
+        function updateThemeIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.className = 'fas fa-sun';
+            } else {
+                themeIcon.className = 'fas fa-moon';
+            }
+        }
+    </script>
+</body>
+
+</html>
+

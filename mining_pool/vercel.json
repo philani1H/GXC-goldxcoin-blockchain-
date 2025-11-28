@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api.py"
+    }
+  ],
+  "env": {
+    "VERCEL": "1",
+    "POOL_TYPE": "general",
+    "DATABASE_PATH": "/tmp/pool.db"
+  }
+}
+

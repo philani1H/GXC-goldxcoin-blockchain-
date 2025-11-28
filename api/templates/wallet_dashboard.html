@@ -354,15 +354,21 @@
                     <span class="status-indicator status-online"></span>
                     Connected
                 </span>
+                {% if user %}
+                <span class="nav-link me-2">
+                    <i class="fas fa-user me-1"></i>{{ user.username }}
+                </span>
+                {% endif %}
                 <div class="dropdown ms-3">
                     <button class="btn btn-outline-custom dropdown-toggle" data-bs-toggle="dropdown">
                         <i class="fas fa-user-circle me-1"></i>Account
                     </button>
                     <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/create-wallet"><i class="fas fa-plus me-2"></i>Create Wallet</a></li>
                         <li><a class="dropdown-item" href="#"><i class="fas fa-cog me-2"></i>Settings</a></li>
                         <li><a class="dropdown-item" href="#"><i class="fas fa-shield-alt me-2"></i>Security</a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="#"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                        <li><a class="dropdown-item" href="/logout"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
                     </ul>
                 </div>
             </div>
@@ -383,24 +389,27 @@
                         <a class="nav-link active" href="#dashboard">
                             <i class="fas fa-tachometer-alt"></i>Dashboard
                         </a>
-                        <a class="nav-link" href="#send">
-                            <i class="fas fa-paper-plane"></i>Send
-                        </a>
-                        <a class="nav-link" href="#receive">
-                            <i class="fas fa-qrcode"></i>Receive
-                        </a>
-                        <a class="nav-link" href="#history">
-                            <i class="fas fa-history"></i>History
-                        </a>
-                        <a class="nav-link" href="#staking">
-                            <i class="fas fa-coins"></i>Staking
-                        </a>
-                        <a class="nav-link" href="#bridge">
-                            <i class="fas fa-bridge"></i>Cross-Chain
-                        </a>
-                        <a class="nav-link" href="#settings">
-                            <i class="fas fa-cog"></i>Settings
-                        </a>
+                        {% if wallets %}
+                            {% set default_wallet = wallets[0] %}
+                            <a class="nav-link" href="{{ url_for('send_page', wallet_id=default_wallet.wallet_id) }}">
+                                <i class="fas fa-paper-plane"></i>Send
+                            </a>
+                            <a class="nav-link" href="{{ url_for('receive_page', wallet_id=default_wallet.wallet_id) }}">
+                                <i class="fas fa-qrcode"></i>Receive
+                            </a>
+                            <a class="nav-link" href="{{ url_for('wallet_history', wallet_id=default_wallet.wallet_id) }}">
+                                <i class="fas fa-history"></i>History
+                            </a>
+                            <a class="nav-link" href="{{ url_for('staking_page', wallet_id=default_wallet.wallet_id) }}">
+                                <i class="fas fa-coins"></i>Staking
+                            </a>
+                            <a class="nav-link" href="{{ url_for('become_validator_page', wallet_id=default_wallet.wallet_id) }}">
+                                <i class="fas fa-shield-alt"></i>Become Validator
+                            </a>
+                            <a class="nav-link" href="{{ url_for('wallet_settings', wallet_id=default_wallet.wallet_id) }}">
+                                <i class="fas fa-cog"></i>Settings
+                            </a>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -414,27 +423,30 @@
                                     <div class="d-flex justify-content-between align-items-start mb-3">
                                         <div>
                                             <div class="balance-label">Total Balance</div>
-                                            <div class="balance-display" id="total-balance">1,234.56 GXC</div>
-                                            <small class="opacity-75">≈ $2,469.12 USD</small>
+                                            <div class="balance-display" id="total-balance">
+                                                {% set total_balance = wallets|sum(attribute='balance') if wallets else 0 %}
+                                                {{ "%.8f"|format(total_balance) }} GXC
+                                            </div>
+                                            <small class="opacity-75">GXC Mainnet</small>
                                         </div>
                                         <div class="text-end">
-                                            <div class="balance-label">Gold Tokens</div>
-                                            <div class="fs-4 fw-bold">45.2 GXC-G</div>
-                                            <small class="opacity-75">≈ $2,850.40 USD</small>
+                                            <div class="balance-label">Wallets</div>
+                                            <div class="fs-4 fw-bold">{{ wallets|length if wallets else 0 }}</div>
+                                            <small class="opacity-75">Active</small>
                                         </div>
                                     </div>
                                     <div class="row mt-4">
                                         <div class="col-4 text-center">
-                                            <div class="fs-6 fw-bold">24h Change</div>
-                                            <div class="text-success">+5.4%</div>
+                                            <div class="fs-6 fw-bold">Network</div>
+                                            <div>{{ network_info.network_name }}</div>
                                         </div>
                                         <div class="col-4 text-center">
-                                            <div class="fs-6 fw-bold">Staked</div>
-                                            <div>850 GXC</div>
+                                            <div class="fs-6 fw-bold">Block Time</div>
+                                            <div>{{ network_info.block_time }}</div>
                                         </div>
                                         <div class="col-4 text-center">
-                                            <div class="fs-6 fw-bold">Rewards</div>
-                                            <div class="text-warning">+12.3 GXC</div>
+                                            <div class="fs-6 fw-bold">Consensus</div>
+                                            <div>{{ network_info.consensus }}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -442,56 +454,86 @@
                         </div>
                         <div class="col-md-4">
                             <div class="stats-grid">
-                                <div class="stat-card">
-                                    <div class="stat-value">1,234</div>
-                                    <div class="stat-label">Available</div>
-                                </div>
-                                <div class="stat-card">
-                                    <div class="stat-value">850</div>
-                                    <div class="stat-label">Staked</div>
-                                </div>
+                                {% if wallets %}
+                                    {% set default_wallet = wallets[0] %}
+                                    <div class="stat-card">
+                                        <div class="stat-value">{{ "%.2f"|format(default_wallet.balance) }}</div>
+                                        <div class="stat-label">Available</div>
+                                    </div>
+                                    <div class="stat-card">
+                                        <div class="stat-value">{{ wallets|length }}</div>
+                                        <div class="stat-label">Wallets</div>
+                                    </div>
+                                {% else %}
+                                    <div class="stat-card">
+                                        <div class="stat-value">0</div>
+                                        <div class="stat-label">No Wallets</div>
+                                    </div>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
 
                     <!-- Quick Actions -->
                     <div class="row mb-4 g-3">
-                        <div class="col-md-3">
-                            <div class="action-card p-4 h-100" data-bs-toggle="modal" data-bs-target="#sendModal">
-                                <div class="icon send-icon text-white">
-                                    <i class="fas fa-paper-plane"></i>
-                                </div>
-                                <h6 class="fw-bold">Send GXC</h6>
-                                <p class="text-muted small mb-0">Transfer to another wallet</p>
+                        {% if wallets %}
+                            {% set default_wallet = wallets[0] %}
+                            <div class="col-md-3">
+                                <a href="{{ url_for('send_page', wallet_id=default_wallet.wallet_id) }}" class="text-decoration-none">
+                                    <div class="action-card p-4 h-100">
+                                        <div class="icon send-icon text-white">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </div>
+                                        <h6 class="fw-bold">Send GXC</h6>
+                                        <p class="text-muted small mb-0">Transfer to another wallet</p>
+                                    </div>
+                                </a>
                             </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="action-card p-4 h-100" data-bs-toggle="modal" data-bs-target="#receiveModal">
-                                <div class="icon receive-icon text-white">
-                                    <i class="fas fa-qrcode"></i>
-                                </div>
-                                <h6 class="fw-bold">Receive</h6>
-                                <p class="text-muted small mb-0">Get QR code & address</p>
+                            <div class="col-md-3">
+                                <a href="{{ url_for('receive_page', wallet_id=default_wallet.wallet_id) }}" class="text-decoration-none">
+                                    <div class="action-card p-4 h-100">
+                                        <div class="icon receive-icon text-white">
+                                            <i class="fas fa-qrcode"></i>
+                                        </div>
+                                        <h6 class="fw-bold">Receive</h6>
+                                        <p class="text-muted small mb-0">Get QR code & address</p>
+                                    </div>
+                                </a>
                             </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="action-card p-4 h-100" onclick="showHistory()">
-                                <div class="icon history-icon text-white">
-                                    <i class="fas fa-history"></i>
-                                </div>
-                                <h6 class="fw-bold">History</h6>
-                                <p class="text-muted small mb-0">View transactions</p>
+                            <div class="col-md-3">
+                                <a href="{{ url_for('wallet_history', wallet_id=default_wallet.wallet_id) }}" class="text-decoration-none">
+                                    <div class="action-card p-4 h-100">
+                                        <div class="icon history-icon text-white">
+                                            <i class="fas fa-history"></i>
+                                        </div>
+                                        <h6 class="fw-bold">History</h6>
+                                        <p class="text-muted small mb-0">View transactions</p>
+                                    </div>
+                                </a>
                             </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="action-card p-4 h-100" data-bs-toggle="modal" data-bs-target="#stakeModal">
-                                <div class="icon stake-icon text-white">
-                                    <i class="fas fa-coins"></i>
-                                </div>
-                                <h6 class="fw-bold">Stake</h6>
-                                <p class="text-muted small mb-0">Earn rewards</p>
+                            <div class="col-md-3">
+                                <a href="{{ url_for('staking_page', wallet_id=default_wallet.wallet_id) }}" class="text-decoration-none">
+                                    <div class="action-card p-4 h-100">
+                                        <div class="icon stake-icon text-white">
+                                            <i class="fas fa-coins"></i>
+                                        </div>
+                                        <h6 class="fw-bold">Stake</h6>
+                                        <p class="text-muted small mb-0">Earn rewards</p>
+                                    </div>
+                                </a>
                             </div>
-                        </div>
+                        {% else %}
+                            <div class="col-12">
+                                <div class="alert alert-info text-center">
+                                    <i class="fas fa-wallet fa-2x mb-3"></i>
+                                    <h5>No Wallets Found</h5>
+                                    <p>Create your first wallet to get started</p>
+                                    <a href="{{ url_for('create_wallet_page') }}" class="btn btn-primary">
+                                        <i class="fas fa-plus"></i> Create Wallet
+                                    </a>
+                                </div>
+                            </div>
+                        {% endif %}
                     </div>
 
                     <!-- Recent Transactions -->
@@ -501,69 +543,73 @@
                                 <h5 class="fw-bold mb-0">
                                     <i class="fas fa-history text-primary me-2"></i>Recent Transactions
                                 </h5>
-                                <button class="btn btn-outline-custom btn-sm">
-                                    <i class="fas fa-download me-1"></i>Export
-                                </button>
+                                {% if wallets %}
+                                    {% set default_wallet = wallets[0] %}
+                                    <a href="{{ url_for('wallet_history', wallet_id=default_wallet.wallet_id) }}" class="btn btn-outline-custom btn-sm">
+                                        <i class="fas fa-external-link-alt me-1"></i>View All
+                                    </a>
+                                {% endif %}
                             </div>
                             
                             <div id="transactions-list">
-                                <!-- Transaction items will be populated here -->
-                                <div class="transaction-item">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div class="d-flex align-items-center">
-                                            <div class="icon-small bg-success bg-opacity-10 text-success rounded-circle p-2 me-3">
-                                                <i class="fas fa-arrow-down"></i>
-                                            </div>
-                                            <div>
-                                                <div class="fw-bold">Received GXC</div>
-                                                <div class="tx-hash">0x1a2b3c...7d8e9f</div>
-                                            </div>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="amount-positive">+150.00 GXC</div>
-                                            <small class="text-muted">2 hours ago</small>
-                                        </div>
+                                {% if wallets %}
+                                    {% set default_wallet = wallets[0] %}
+                                    <div class="alert alert-info text-center">
+                                        <i class="fas fa-info-circle"></i>
+                                        <a href="{{ url_for('wallet_history', wallet_id=default_wallet.wallet_id) }}" class="text-decoration-none">
+                                            View full transaction history for {{ default_wallet.wallet_name }}
+                                        </a>
                                     </div>
-                                </div>
-
-                                <div class="transaction-item">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div class="d-flex align-items-center">
-                                            <div class="icon-small bg-danger bg-opacity-10 text-danger rounded-circle p-2 me-3">
-                                                <i class="fas fa-arrow-up"></i>
-                                            </div>
-                                            <div>
-                                                <div class="fw-bold">Sent GXC</div>
-                                                <div class="tx-hash">0x9f8e7d...3c2b1a</div>
-                                            </div>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="amount-negative">-75.50 GXC</div>
-                                            <small class="text-muted">5 hours ago</small>
-                                        </div>
+                                {% else %}
+                                    <div class="alert alert-info text-center">
+                                        <i class="fas fa-inbox fa-2x mb-2"></i>
+                                        <p>No transactions yet. Create a wallet to get started.</p>
                                     </div>
-                                </div>
-
-                                <div class="transaction-item">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div class="d-flex align-items-center">
-                                            <div class="icon-small bg-warning bg-opacity-10 text-warning rounded-circle p-2 me-3">
-                                                <i class="fas fa-coins"></i>
-                                            </div>
-                                            <div>
-                                                <div class="fw-bold">Staking Reward</div>
-                                                <div class="tx-hash">0x5f4e3d...8a9b0c</div>
-                                            </div>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="amount-positive">+12.34 GXC</div>
-                                            <small class="text-muted">1 day ago</small>
-                                        </div>
-                                    </div>
-                                </div>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- Wallets List -->
+                    {% if wallets %}
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <h5 class="fw-bold mb-3">
+                                <i class="fas fa-wallet text-primary me-2"></i>Your Wallets
+                            </h5>
+                            <div class="row g-3">
+                                {% for wallet in wallets %}
+                                <div class="col-md-6">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="d-flex justify-content-between align-items-start">
+                                                <div>
+                                                    <h6 class="fw-bold">{{ wallet.wallet_name }}</h6>
+                                                    <small class="text-muted">{{ wallet.address }}</small>
+                                                    <div class="mt-2">
+                                                        <span class="badge bg-primary">{{ "%.8f"|format(wallet.balance) }} GXC</span>
+                                                    </div>
+                                                </div>
+                                                <div class="dropdown">
+                                                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown">
+                                                        <i class="fas fa-ellipsis-v"></i>
+                                                    </button>
+                                                    <ul class="dropdown-menu">
+                                                        <li><a class="dropdown-item" href="{{ url_for('send_page', wallet_id=wallet.wallet_id) }}"><i class="fas fa-paper-plane me-2"></i>Send</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('receive_page', wallet_id=wallet.wallet_id) }}"><i class="fas fa-qrcode me-2"></i>Receive</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('wallet_history', wallet_id=wallet.wallet_id) }}"><i class="fas fa-history me-2"></i>History</a></li>
+                                                        <li><a class="dropdown-item" href="{{ url_for('wallet_settings', wallet_id=wallet.wallet_id) }}"><i class="fas fa-cog me-2"></i>Settings</a></li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -753,22 +799,23 @@
         // Initialize QR code when modal opens
         document.getElementById('receiveModal').addEventListener('shown.bs.modal', generateQRCode);
 
-        // Auto-refresh balance every 30 seconds
+        // Auto-refresh balance every 30 seconds from blockchain
         setInterval(() => {
-            // In a real app, this would fetch from the API
-            console.log('Refreshing balance...');
+            // Fetch real balance from blockchain API
+            fetch('/api/v1/wallets/' + walletId + '/balance', {
+                headers: {
+                    'Authorization': 'Bearer ' + accessToken
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const balanceElement = document.getElementById('total-balance');
+                    balanceElement.textContent = parseFloat(data.balance).toFixed(2) + ' GXC';
+                }
+            })
+            .catch(error => console.error('Error refreshing balance:', error));
         }, 30000);
-
-        // Simulate real-time balance updates
-        function updateBalance() {
-            const balanceElement = document.getElementById('total-balance');
-            const currentBalance = parseFloat(balanceElement.textContent.replace(/[^\d.]/g, ''));
-            const newBalance = currentBalance + (Math.random() - 0.5) * 0.1;
-            balanceElement.textContent = newBalance.toFixed(2) + ' GXC';
-        }
-
-        // Update balance every 10 seconds (simulation)
-        setInterval(updateBalance, 10000);
     </script>
 </body>
 </html>

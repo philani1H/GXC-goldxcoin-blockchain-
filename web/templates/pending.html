@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pending Transactions | GXC Blockchain Explorer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --light-bg: #f8fafc;
+            --border-color: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--light-bg);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        [data-theme="dark"] {
+            --light-bg: #0f172a;
+            --border-color: #1e293b;
+        }
+
+        .bg-gxc {
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            background: white;
+        }
+
+        [data-theme="dark"] .card {
+            background: #1e293b;
+        }
+
+        .page-header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 2rem 0;
+            border-radius: 0 0 20px 20px;
+            margin-bottom: 2rem;
+        }
+
+        .pending-badge {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .address-link {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(102, 126, 234, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gxc">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-cube me-2"></i>GXC Explorer
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/pending" class="nav-link active">Pending</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-header">
+        <div class="container">
+            <h1 class="mb-2" style="font-size: 1.75rem; font-weight: 600;">
+                <i class="fas fa-clock me-3"></i>Pending Transactions
+            </h1>
+            <p class="mb-0 opacity-90" style="font-size: 1rem;">
+                Mempool transactions waiting for confirmation
+            </p>
+        </div>
+    </div>
+
+    <div class="container mb-5">
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-list me-2"></i>Mempool</h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshPending()">
+                        <i class="fas fa-sync-alt me-1"></i>Refresh
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="exportPending()">
+                        <i class="fas fa-download me-1"></i>Export
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Hash</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Value</th>
+                                <th>Fee</th>
+                                <th>Age</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pendingTable">
+                            {% if transactions %}
+                                {% for tx in transactions %}
+                                <tr>
+                                    <td>
+                                        <a href="/tx/{{ tx.hash }}" class="text-decoration-none">
+                                            <span class="address-link">{{ tx.hash[:16] }}...</span>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <a href="/address/{{ tx.from }}" class="text-decoration-none">
+                                            <span class="address-link">{{ tx.from[:10] }}...{{ tx.from[-8:] }}</span>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        {% if tx.to %}
+                                        <a href="/address/{{ tx.to }}" class="text-decoration-none">
+                                            <span class="address-link">{{ tx.to[:10] }}...{{ tx.to[-8:] }}</span>
+                                        </a>
+                                        {% else %}
+                                        <span class="text-muted">Contract Creation</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><strong>{{ "{:.4f}".format(tx.value) }} GXC</strong></td>
+                                    <td>{{ "{:.4f}".format(tx.fee) }} GXC</td>
+                                    <td class="text-muted small">
+                                        <span id="age-{{ loop.index }}">Loading...</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-warning pending-badge">Pending</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-5">
+                                        <i class="fas fa-inbox fa-2x mb-3 opacity-50"></i>
+                                        <p class="mb-0">No pending transactions</p>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Update age timestamps
+        function updateAges() {
+            {% if transactions %}
+            {% for tx in transactions %}
+            const timestamp{{ loop.index }} = new Date('{{ tx.timestamp }}');
+            const age{{ loop.index }} = Math.floor((Date.now() - timestamp{{ loop.index }}) / 1000);
+            const el{{ loop.index }} = document.getElementById('age-{{ loop.index }}');
+            if (el{{ loop.index }}) {
+                if (age{{ loop.index }} < 60) {
+                    el{{ loop.index }}.textContent = age{{ loop.index }} + 's ago';
+                } else if (age{{ loop.index }} < 3600) {
+                    el{{ loop.index }}.textContent = Math.floor(age{{ loop.index }} / 60) + 'm ago';
+                } else {
+                    el{{ loop.index }}.textContent = Math.floor(age{{ loop.index }} / 3600) + 'h ago';
+                }
+            }
+            {% endfor %}
+            {% endif %}
+        }
+
+        function refreshPending() {
+            location.reload();
+        }
+
+        function exportPending() {
+            window.location.href = '/api/export/transactions?format=csv&limit=1000';
+        }
+
+        // Auto-refresh every 10 seconds
+        setInterval(refreshPending, 10000);
+        updateAges();
+        setInterval(updateAges, 1000);
+    </script>
+</body>
+
+</html>
+

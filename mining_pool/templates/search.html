@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Miner - {{ pool_name|title }} Pool</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .bg-gxc { background: var(--primary-gradient); }
+        .stat-card { border-left: 4px solid #667eea; }
+    </style>
+</head>
+<body>
+    {% include '_nav.html' %}
+
+    <div class="container mt-4">
+        <h2 class="mb-4"><i class="fas fa-search me-2"></i>Search Miner by Address or Username</h2>
+        
+        <div class="card mb-4">
+            <div class="card-body">
+                <form method="POST" action="/search">
+                    <div class="input-group input-group-lg">
+                        <input type="text" class="form-control" name="query" 
+                               placeholder="Enter GXC address (GXC...) or username..." 
+                               value="{{ query }}" required>
+                        <button class="btn btn-primary" type="submit">
+                            <i class="fas fa-search me-2"></i>Search
+                        </button>
+                    </div>
+                    <small class="text-muted mt-2 d-block">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Search by wallet address or miner username to view hash contribution and earnings
+                    </small>
+                </form>
+            </div>
+        </div>
+
+        {% if query %}
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Search Results for "{{ query }}"</h5>
+            </div>
+            <div class="card-body">
+                {% if results %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Address</th>
+                                <th>Hash Rate</th>
+                                <th>Accepted Shares</th>
+                                <th>Blocks Found</th>
+                                <th>Total Earnings</th>
+                                <th>Total Payouts</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for miner in results %}
+                            <tr>
+                                <td><strong>{{ miner.username }}</strong></td>
+                                <td><code>{{ miner.address }}</code></td>
+                                <td>{{ "%.2f"|format(miner.hash_rate) }} H/s</td>
+                                <td>{{ miner.accepted_shares }}</td>
+                                <td>{{ miner.blocks_found }}</td>
+                                <td><strong class="text-success">{{ "%.4f"|format(miner.estimated_earnings) }} GXC</strong></td>
+                                <td><strong class="text-primary">{{ "%.4f"|format(miner.total_payouts) }} GXC</strong></td>
+                                <td>
+                                    <a href="/miner/{{ miner.username }}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-eye"></i> View Dashboard
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    No miners found matching "{{ query }}". 
+                    <a href="/register">Register as a new miner</a> or try a different search term.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="card-body text-center text-muted">
+                <i class="fas fa-search fa-3x mb-3"></i>
+                <p>Enter an address or username above to search for miner statistics</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+

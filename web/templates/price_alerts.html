@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Alerts | GXC Explorer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --light-bg: #f8fafc;
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--light-bg); }
+        .bg-gxc { background: var(--primary-gradient); }
+        .card { border-radius: 16px; border: 1px solid #e5e7eb; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gxc">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/"><i class="fas fa-cube me-2"></i>GXC Explorer</a>
+            <div class="navbar-nav ms-auto">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/alerts" class="nav-link active">Price Alerts</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mb-5 mt-4">
+        <h1 class="display-5 fw-bold mb-4"><i class="fas fa-bell me-3"></i>Price Alerts</h1>
+
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Create New Alert</h5>
+            </div>
+            <div class="card-body">
+                <form id="alertForm">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">Alert Type</label>
+                            <select class="form-select" id="alertType">
+                                <option value="price_above">Price Above</option>
+                                <option value="price_below">Price Below</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Threshold Price (USD)</label>
+                            <input type="number" class="form-control" id="thresholdPrice" step="0.01" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">&nbsp;</label>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-plus me-1"></i>Create Alert
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Active Alerts</h5>
+            </div>
+            <div class="card-body">
+                <div id="alertsList">
+                    <p class="text-muted text-center">No alerts configured</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Request notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+        
+        function loadAlerts() {
+            const alerts = JSON.parse(localStorage.getItem('gxc_price_alerts') || '[]');
+            const container = document.getElementById('alertsList');
+            
+            if (alerts.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">No alerts configured</p>';
+                return;
+            }
+            
+            let html = '<div class="table-responsive"><table class="table"><thead><tr><th>Type</th><th>Threshold</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+            
+            alerts.forEach((alert, index) => {
+                html += `
+                    <tr>
+                        <td>${alert.type === 'price_above' ? 'Price Above' : 'Price Below'}</td>
+                        <td><strong>$${alert.threshold}</strong></td>
+                        <td><span class="badge bg-${alert.active ? 'success' : 'secondary'}">${alert.active ? 'Active' : 'Inactive'}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-danger" onclick="deleteAlert(${index})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+        
+        document.getElementById('alertForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const alert = {
+                type: document.getElementById('alertType').value,
+                threshold: parseFloat(document.getElementById('thresholdPrice').value),
+                active: true,
+                created: new Date().toISOString()
+            };
+            
+            const alerts = JSON.parse(localStorage.getItem('gxc_price_alerts') || '[]');
+            alerts.push(alert);
+            localStorage.setItem('gxc_price_alerts', JSON.stringify(alerts));
+            
+            loadAlerts();
+            document.getElementById('alertForm').reset();
+        });
+        
+        function deleteAlert(index) {
+            const alerts = JSON.parse(localStorage.getItem('gxc_price_alerts') || '[]');
+            alerts.splice(index, 1);
+            localStorage.setItem('gxc_price_alerts', JSON.stringify(alerts));
+            loadAlerts();
+        }
+        
+        // Check alerts periodically
+        setInterval(() => {
+            const alerts = JSON.parse(localStorage.getItem('gxc_price_alerts') || '[]');
+            fetch('/api/price')
+                .then(res => res.json())
+                .then(data => {
+                    const currentPrice = data.current_price;
+                    
+                    alerts.forEach(alert => {
+                        if (!alert.active) return;
+                        
+                        const triggered = (alert.type === 'price_above' && currentPrice >= alert.threshold) ||
+                                        (alert.type === 'price_below' && currentPrice <= alert.threshold);
+                        
+                        if (triggered && Notification.permission === 'granted') {
+                            new Notification('GXC Price Alert', {
+                                body: `GXC price is now $${currentPrice.toFixed(2)} (${alert.type === 'price_above' ? 'above' : 'below'} $${alert.threshold})`,
+                                icon: '/static/favicon.ico'
+                            });
+                            alert.active = false;
+                        }
+                    });
+                    
+                    localStorage.setItem('gxc_price_alerts', JSON.stringify(alerts));
+                });
+        }, 60000); // Check every minute
+        
+        loadAlerts();
+    </script>
+</body>
+</html>
+

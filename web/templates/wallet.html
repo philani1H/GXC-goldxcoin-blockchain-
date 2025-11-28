@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet | GXC Blockchain Explorer</title>
+    <meta name="description" content="GXC Wallet - Create and manage your GXC wallets">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --dark-color: #1f2937;
+            --light-bg: #f8fafc;
+            --border-color: #e5e7eb;
+            --text-primary: #1f2937;
+            --text-secondary: #64748b;
+            --card-bg: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --dark-color: #f8fafc;
+            --light-bg: #0f172a;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #1e293b;
+            --card-bg: #1e293b;
+        }
+
+        [data-theme="dark"] body {
+            background: var(--light-bg);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .card {
+            background: var(--card-bg);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .text-muted {
+            color: var(--text-secondary) !important;
+        }
+
+        [data-theme="dark"] .bg-white {
+            background: var(--card-bg) !important;
+        }
+
+        [data-theme="dark"] .modal-content {
+            background: var(--card-bg);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .modal-header,
+        [data-theme="dark"] .modal-footer {
+            border-color: var(--border-color);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--light-bg);
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Professional Typography */
+        h1, .h1, .display-1, .display-2, .display-3, .display-4, .display-5, .display-6 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            line-height: 1.3;
+            letter-spacing: -0.02em;
+        }
+
+        h2, .h2 { font-size: 1.5rem; font-weight: 600; }
+        h3, .h3 { font-size: 1.25rem; font-weight: 600; }
+        h4, .h4 { font-size: 1.1rem; font-weight: 600; }
+        h5, .h5 { font-size: 1rem; font-weight: 600; }
+        h6, .h6 { font-size: 0.9rem; font-weight: 600; }
+        .lead { font-size: 1rem; font-weight: 400; }
+        .fw-bold { font-weight: 600 !important; }
+
+        .bg-gxc {
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            background: white;
+            transition: all 0.3s ease;
+        }
+
+        .page-header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 2rem 0;
+            border-radius: 0 0 20px 20px;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .wallet-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .wallet-service-card {
+            border-left: 4px solid var(--success-color);
+            transition: transform 0.2s;
+        }
+
+        .wallet-service-card:hover {
+            transform: translateX(5px);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gxc">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-cube me-2"></i>GXC Explorer
+            </a>
+            <div class="navbar-nav ms-auto d-flex flex-row align-items-center gap-3">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/blocks" class="nav-link">Blocks</a>
+                <a href="/wallet" class="nav-link active">Wallet</a>
+                <button class="btn btn-sm btn-outline-light" id="themeToggle" title="Toggle Dark Mode">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="container">
+            <h1 class="display-5 fw-bold mb-2">
+                <i class="fas fa-wallet me-3"></i>GXC Wallet
+            </h1>
+            <p class="lead mb-0 opacity-90">
+                Secure wallet creation and management for GXC blockchain
+            </p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container mb-5">
+        <!-- Wallet Service Info -->
+        <div class="card wallet-service-card mb-4">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h4 class="fw-bold mb-2">
+                            <i class="fas fa-server me-2 text-success"></i>Wallet Service
+                        </h4>
+                        <p class="text-muted mb-3">
+                            The GXC Wallet Service provides secure wallet creation, management, and transaction capabilities.
+                            Access the full wallet dashboard to create wallets, send transactions, and manage your GXC assets.
+                        </p>
+                        <div class="d-flex gap-2 align-items-center">
+                            <a href="http://localhost:5000" target="_blank" class="btn btn-primary" id="walletDashboardBtn">
+                                <i class="fas fa-external-link-alt me-2"></i>Open Wallet Dashboard
+                            </a>
+                            <button type="button" class="btn btn-outline-primary" id="apiDocsBtn" onclick="showApiDocs()">
+                                <i class="fas fa-book me-2"></i>API Documentation
+                            </a>
+                            <span id="walletServiceStatus" class="ms-2">
+                                <i class="fas fa-circle text-secondary" id="statusIcon"></i>
+                                <small class="text-muted" id="statusText">Checking...</small>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="feature-icon mx-auto mb-3">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <p class="small text-muted mb-0">Secure & Encrypted</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-4">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <div class="feature-icon mx-auto mb-3">
+                            <i class="fas fa-user-plus"></i>
+                        </div>
+                        <h5 class="fw-bold mb-2">Create Account</h5>
+                        <p class="text-muted small mb-3">Register a new user account to start using GXC wallets</p>
+                        <button class="btn btn-outline-primary btn-sm" onclick="showCreateAccount()">
+                            Get Started
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <div class="feature-icon mx-auto mb-3">
+                            <i class="fas fa-wallet"></i>
+                        </div>
+                        <h5 class="fw-bold mb-2">Create Wallet</h5>
+                        <p class="text-muted small mb-3">Generate a new GXC wallet with secure ED25519 cryptography</p>
+                        <button class="btn btn-outline-primary btn-sm" onclick="showCreateWallet()">
+                            Create Wallet
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <div class="feature-icon mx-auto mb-3">
+                            <i class="fas fa-paper-plane"></i>
+                        </div>
+                        <h5 class="fw-bold mb-2">Send GXC</h5>
+                        <p class="text-muted small mb-3">Send GXC tokens to any address on the blockchain</p>
+                        <a href="http://localhost:5000" target="_blank" class="btn btn-outline-primary btn-sm" id="sendGxcBtn">
+                            Open Wallet
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Quick Reference -->
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-code me-2"></i>Quick API Reference</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <h6 class="fw-bold mb-2">Register User</h6>
+                        <div class="bg-dark text-light p-3 rounded" style="font-family: monospace; font-size: 0.85rem;">
+                            <div>POST http://localhost:5000/api/v1/register</div>
+                            <div class="text-muted mt-2">Body: {"username", "email", "password"}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="fw-bold mb-2">Login</h6>
+                        <div class="bg-dark text-light p-3 rounded" style="font-family: monospace; font-size: 0.85rem;">
+                            <div>POST http://localhost:5000/api/v1/login</div>
+                            <div class="text-muted mt-2">Body: {"username", "password"}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="fw-bold mb-2">Create Wallet</h6>
+                        <div class="bg-dark text-light p-3 rounded" style="font-family: monospace; font-size: 0.85rem;">
+                            <div>POST http://localhost:5000/api/v1/wallets/create</div>
+                            <div class="text-muted mt-2">Headers: Authorization: Bearer TOKEN</div>
+                            <div class="text-muted">Body: {"wallet_name", "password"}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="fw-bold mb-2">Get Wallets</h6>
+                        <div class="bg-dark text-light p-3 rounded" style="font-family: monospace; font-size: 0.85rem;">
+                            <div>GET http://localhost:5000/api/v1/wallets</div>
+                            <div class="text-muted mt-2">Headers: Authorization: Bearer TOKEN</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal fade" id="createAccountModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-user-plus me-2"></i>Create Account</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Quick Start:</strong> Register a new account to start using GXC wallets.
+                    </div>
+                    
+                    <h6 class="fw-bold mb-3">Option 1: Use API (For Developers)</h6>
+                    <div class="bg-dark text-light p-3 rounded mb-3" style="font-family: monospace; font-size: 0.85rem;">
+                        <div>POST http://localhost:5000/api/v1/register</div>
+                        <div class="text-muted mt-2">Body: {</div>
+                        <div class="text-muted ms-3">"username": "your_username",</div>
+                        <div class="text-muted ms-3">"email": "your_email@example.com",</div>
+                        <div class="text-muted ms-3">"password": "your_password"</div>
+                        <div class="text-muted">}</div>
+                    </div>
+                    
+                    <h6 class="fw-bold mb-3">Option 2: Use Wallet Dashboard</h6>
+                    <p class="mb-3">Visit the Wallet Dashboard to register and create your first wallet through the web interface.</p>
+                    
+                    <div class="d-grid gap-2">
+                        <a href="http://localhost:5000" target="_blank" class="btn btn-primary">
+                            <i class="fas fa-external-link-alt me-2"></i>Open Wallet Dashboard
+                        </a>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="createWalletModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-wallet me-2"></i>Create Wallet</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Authentication Required:</strong> You must be logged in to create a wallet.
+                    </div>
+                    
+                    <h6 class="fw-bold mb-3">Step 1: Login</h6>
+                    <div class="bg-dark text-light p-3 rounded mb-3" style="font-family: monospace; font-size: 0.85rem;">
+                        <div>POST http://localhost:5000/api/v1/login</div>
+                        <div class="text-muted mt-2">Body: {</div>
+                        <div class="text-muted ms-3">"username": "your_username",</div>
+                        <div class="text-muted ms-3">"password": "your_password"</div>
+                        <div class="text-muted">}</div>
+                        <div class="text-success mt-2">Response: { "token": "JWT_TOKEN", ... }</div>
+                    </div>
+                    
+                    <h6 class="fw-bold mb-3">Step 2: Create Wallet</h6>
+                    <div class="bg-dark text-light p-3 rounded mb-3" style="font-family: monospace; font-size: 0.85rem;">
+                        <div>POST http://localhost:5000/api/v1/wallets/create</div>
+                        <div class="text-muted mt-2">Headers: Authorization: Bearer &lt;JWT_TOKEN&gt;</div>
+                        <div class="text-muted mt-2">Body: {</div>
+                        <div class="text-muted ms-3">"wallet_name": "My Wallet",</div>
+                        <div class="text-muted ms-3">"password": "wallet_password"</div>
+                        <div class="text-muted">}</div>
+                    </div>
+                    
+                    <h6 class="fw-bold mb-3">Or Use Wallet Dashboard</h6>
+                    <p class="mb-3">Visit the Wallet Dashboard to create your wallet through the web interface.</p>
+                    
+                    <div class="d-grid gap-2">
+                        <a href="http://localhost:5000" target="_blank" class="btn btn-primary">
+                            <i class="fas fa-external-link-alt me-2"></i>Open Wallet Dashboard
+                        </a>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Dark Mode Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const html = document.documentElement;
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        html.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+
+        function updateThemeIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.className = 'fas fa-sun';
+            } else {
+                themeIcon.className = 'fas fa-moon';
+            }
+        }
+
+        function showCreateAccount() {
+            const modal = new bootstrap.Modal(document.getElementById('createAccountModal'));
+            modal.show();
+        }
+
+        function showCreateWallet() {
+            const modal = new bootstrap.Modal(document.getElementById('createWalletModal'));
+            modal.show();
+        }
+
+        // API Docs Modal
+        function showApiDocs() {
+            // Check if wallet service is online
+            fetch('http://localhost:5000/api/v1/health')
+                .then(response => {
+                    if (!response.ok) throw new Error('Service not available');
+                    return response.json();
+                })
+                .then(data => {
+                    // Fetch API docs
+                    return fetch('http://localhost:5000/api/v1/docs');
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Docs not available');
+                    return response.json();
+                })
+                .then(docs => {
+                    // Create and show modal with API docs
+                    const modalHtml = `
+                        <div class="modal fade" id="apiDocsModal" tabindex="-1">
+                            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">${docs.title} v${docs.version}</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <p class="text-muted mb-3">Base URL: <code>${docs.base_url}</code></p>
+                                        <h6 class="mb-3">API Endpoints:</h6>
+                                        <div class="list-group">
+                                            ${docs.endpoints.map(endpoint => `
+                                                <div class="list-group-item">
+                                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                                        <div class="flex-grow-1">
+                                                            <h6 class="mb-1">
+                                                                <span class="badge bg-primary me-2">${endpoint.method}</span>
+                                                                <code>${endpoint.path}</code>
+                                                            </h6>
+                                                            <p class="mb-2 text-muted">${endpoint.description}</p>
+                                                            ${endpoint.headers ? `
+                                                                <div class="mb-2">
+                                                                    <strong>Headers:</strong>
+                                                                    <pre class="bg-light p-2 rounded small"><code>${JSON.stringify(endpoint.headers, null, 2)}</code></pre>
+                                                                </div>
+                                                            ` : ''}
+                                                            ${endpoint.body ? `
+                                                                <div class="mb-2">
+                                                                    <strong>Request Body:</strong>
+                                                                    <pre class="bg-light p-2 rounded small"><code>${JSON.stringify(endpoint.body, null, 2)}</code></pre>
+                                                                </div>
+                                                            ` : ''}
+                                                            ${endpoint.response ? `
+                                                                <div>
+                                                                    <strong>Response:</strong>
+                                                                    <pre class="bg-light p-2 rounded small"><code>${JSON.stringify(endpoint.response, null, 2)}</code></pre>
+                                                                </div>
+                                                            ` : ''}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    // Remove existing modal if any
+                    const existingModal = document.getElementById('apiDocsModal');
+                    if (existingModal) existingModal.remove();
+                    
+                    document.body.insertAdjacentHTML('beforeend', modalHtml);
+                    const modal = new bootstrap.Modal(document.getElementById('apiDocsModal'));
+                    modal.show();
+                    // Remove modal after it's hidden
+                    document.getElementById('apiDocsModal').addEventListener('hidden.bs.modal', function() {
+                        this.remove();
+                    });
+                })
+                .catch(error => {
+                    alert('Cannot connect to wallet service. Please ensure it is running on http://localhost:5000\\n\\nError: ' + error.message);
+                });
+        }
+
+        // Check wallet service availability
+        async function checkWalletService() {
+            const statusIcon = document.getElementById('statusIcon');
+            const statusText = document.getElementById('statusText');
+            const walletDashboardBtn = document.getElementById('walletDashboardBtn');
+            const apiDocsBtn = document.getElementById('apiDocsBtn');
+            
+            try {
+                // Try to fetch health endpoint
+                const response = await fetch('http://localhost:5000/api/v1/health', { 
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusIcon.className = 'fas fa-circle text-success';
+                    statusText.textContent = 'Online';
+                    statusText.className = 'text-success';
+                    
+                    // Enable buttons
+                    walletDashboardBtn.classList.remove('disabled');
+                    apiDocsBtn.classList.remove('disabled');
+                } else {
+                    throw new Error('Service not responding');
+                }
+            } catch (error) {
+                // Service not available
+                statusIcon.className = 'fas fa-circle text-danger';
+                statusText.textContent = 'Offline';
+                statusText.className = 'text-danger';
+                
+                // Disable buttons with tooltip
+                walletDashboardBtn.classList.add('disabled');
+                walletDashboardBtn.title = 'Wallet service is not running on localhost:5000';
+                apiDocsBtn.classList.add('disabled');
+                apiDocsBtn.title = 'Wallet service is not running on localhost:5000';
+                
+                console.log('Wallet service may not be running on localhost:5000');
+            }
+        }
+
+        // Check on page load and every 30 seconds
+        checkWalletService();
+        setInterval(checkWalletService, 30000);
+        
+        // Add click handlers to verify links work
+        document.getElementById('walletDashboardBtn').addEventListener('click', function(e) {
+            if (this.classList.contains('disabled')) {
+                e.preventDefault();
+                alert('Wallet service is not running. Please start the wallet service on port 5000 first.');
+            }
+        });
+        
+        document.getElementById('apiDocsBtn').addEventListener('click', function(e) {
+            if (this.classList.contains('disabled')) {
+                e.preventDefault();
+                alert('Wallet service is not running. Please start the wallet service on port 5000 first.');
+            }
+        });
+        
+        // Send GXC button handler
+        const sendGxcBtn = document.getElementById('sendGxcBtn');
+        if (sendGxcBtn) {
+            sendGxcBtn.addEventListener('click', function(e) {
+                // Check if service is available
+                const statusText = document.getElementById('statusText');
+                if (statusText && statusText.textContent === 'Offline') {
+                    e.preventDefault();
+                    alert('Wallet service is not running. Please start the wallet service on port 5000 first.');
+                }
+            });
+        }
+        
+        document.getElementById('sendGxcBtn').addEventListener('click', function(e) {
+            // Check if service is available
+            const statusText = document.getElementById('statusText');
+            if (statusText && statusText.textContent === 'Offline') {
+                e.preventDefault();
+                alert('Wallet service is not running. Please start the wallet service on port 5000 first.');
+            }
+        });
+    </script>
+</body>
+
+</html>
+

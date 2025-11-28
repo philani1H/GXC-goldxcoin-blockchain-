@@ -56,91 +56,104 @@ if(ENABLE_LTO)
     check_ipo_supported(RESULT lto_supported OUTPUT lto_error)
     if(lto_supported)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-        message(STATUS "LTO enabled")
+        message(STATUS "Link Time Optimization enabled")
     else()
         message(WARNING "LTO not supported: ${lto_error}")
     endif()
 endif()
 
-# Find required packages
-find_package(Threads REQUIRED)
-
-# Custom OpenSSL detection that works across all platforms
+# Custom OpenSSL finder function
 function(find_openssl_custom)
-    # First try standard find_package
-    find_package(OpenSSL QUIET)
-    if(OpenSSL_FOUND)
-        message(STATUS "OpenSSL found via standard find_package")
-        return()
-    endif()
-    
-    # Custom detection for Windows
+    # Windows-specific OpenSSL search
     if(WIN32)
         # Common OpenSSL installation paths on Windows
+        # Common OpenSSL installation paths on Windows
+        # Note: Can't use $ENV{ProgramFiles(x86)} due to parentheses in variable name
+        # Using hardcoded paths and ProgramFiles env var (without x86)
         set(OPENSSL_SEARCH_PATHS
             "C:/Program Files/OpenSSL-Win64"
-            "C:/Program Files (x86)/OpenSSL-Win32"
-            "C:/Program Files/OpenSSL"
-            "C:/Program Files (x86)/OpenSSL"
+            "C:/Program Files (x86)/OpenSSL-Win64"
             "C:/OpenSSL-Win64"
-            "C:/OpenSSL-Win32"
             "C:/OpenSSL"
-            "C:/vcpkg/installed/x64-windows"
-            "C:/vcpkg/installed/x86-windows"
-            "$ENV{OPENSSL_ROOT_DIR}"
-            "$ENV{OPENSSL_DIR}"
         )
         
+        # Add environment variable paths if they exist
+        if(DEFINED ENV{OPENSSL_ROOT_DIR})
+            list(APPEND OPENSSL_SEARCH_PATHS "$ENV{OPENSSL_ROOT_DIR}")
+        endif()
+        
+        if(DEFINED ENV{ProgramFiles})
+            list(APPEND OPENSSL_SEARCH_PATHS "$ENV{ProgramFiles}/OpenSSL-Win64")
+        endif()
+        
+        # ProgramFiles(x86) - use hardcoded path since env var has parentheses
+        # Already included in hardcoded paths above
+        
+        # Initialize found flags (local to function)
+        set(OPENSSL_FOUND_INCLUDE_LOCAL FALSE)
+        set(OPENSSL_FOUND_CRYPTO_LOCAL FALSE)
+        set(OPENSSL_FOUND_SSL_LOCAL FALSE)
+        
         foreach(SEARCH_PATH ${OPENSSL_SEARCH_PATHS})
-            if(EXISTS "${SEARCH_PATH}")
-                # Check for include directory
-                if(EXISTS "${SEARCH_PATH}/include/openssl/ssl.h")
-                    set(OPENSSL_INCLUDE_DIR "${SEARCH_PATH}/include" PARENT_SCOPE)
-                    set(OPENSSL_FOUND_INCLUDE TRUE)
-                    message(STATUS "Found OpenSSL includes at: ${SEARCH_PATH}/include")
-                    
-                    # Look for libraries in various subdirectories
-                    set(LIB_SEARCH_PATHS
-                        "${SEARCH_PATH}/lib"
-                        "${SEARCH_PATH}/lib/VC"
-                        "${SEARCH_PATH}/lib/VC/x64/MD"
-                        "${SEARCH_PATH}/lib/VC/x86/MD"
-                        "${SEARCH_PATH}/lib/VC/static"
-                        "${SEARCH_PATH}/out32"
-                        "${SEARCH_PATH}/out32dll"
-                    )
-                    
-                    foreach(LIB_PATH ${LIB_SEARCH_PATHS})
-                        # Check for crypto library
+            if(EXISTS "${SEARCH_PATH}/include/openssl/ssl.h")
+                set(OPENSSL_INCLUDE_DIR "${SEARCH_PATH}/include" PARENT_SCOPE)
+                set(OPENSSL_FOUND_INCLUDE_LOCAL TRUE)
+                message(STATUS "Found OpenSSL includes at: ${SEARCH_PATH}/include")
+                
+                # Look for libraries in various subdirectories
+                set(LIB_SEARCH_PATHS
+                    "${SEARCH_PATH}/lib"
+                    "${SEARCH_PATH}/lib/VC"
+                    "${SEARCH_PATH}/lib/VC/x64/MD"
+                    "${SEARCH_PATH}/lib/VC/x86/MD"
+                    "${SEARCH_PATH}/lib/VC/static"
+                    "${SEARCH_PATH}/out32"
+                    "${SEARCH_PATH}/out32dll"
+                )
+                
+                foreach(LIB_PATH ${LIB_SEARCH_PATHS})
+                    # Check for crypto library
+                    if(NOT OPENSSL_FOUND_CRYPTO_LOCAL)
                         if(EXISTS "${LIB_PATH}/libcrypto.lib")
                             set(OPENSSL_CRYPTO_LIBRARY "${LIB_PATH}/libcrypto.lib" PARENT_SCOPE)
-                            set(OPENSSL_FOUND_CRYPTO TRUE)
+                            set(OPENSSL_FOUND_CRYPTO_LOCAL TRUE)
+                            message(STATUS "Found OpenSSL crypto library: ${LIB_PATH}/libcrypto.lib")
                         elseif(EXISTS "${LIB_PATH}/libeay32.lib")
                             set(OPENSSL_CRYPTO_LIBRARY "${LIB_PATH}/libeay32.lib" PARENT_SCOPE)
-                            set(OPENSSL_FOUND_CRYPTO TRUE)
+                            set(OPENSSL_FOUND_CRYPTO_LOCAL TRUE)
+                            message(STATUS "Found OpenSSL crypto library: ${LIB_PATH}/libeay32.lib")
                         endif()
-                        
-                        # Check for SSL library
+                    endif()
+                    
+                    # Check for SSL library
+                    if(NOT OPENSSL_FOUND_SSL_LOCAL)
                         if(EXISTS "${LIB_PATH}/libssl.lib")
                             set(OPENSSL_SSL_LIBRARY "${LIB_PATH}/libssl.lib" PARENT_SCOPE)
-                            set(OPENSSL_FOUND_SSL TRUE)
+                            set(OPENSSL_FOUND_SSL_LOCAL TRUE)
+                            message(STATUS "Found OpenSSL SSL library: ${LIB_PATH}/libssl.lib")
                         elseif(EXISTS "${LIB_PATH}/ssleay32.lib")
                             set(OPENSSL_SSL_LIBRARY "${LIB_PATH}/ssleay32.lib" PARENT_SCOPE)
-                            set(OPENSSL_FOUND_SSL TRUE)
+                            set(OPENSSL_FOUND_SSL_LOCAL TRUE)
+                            message(STATUS "Found OpenSSL SSL library: ${LIB_PATH}/ssleay32.lib")
                         endif()
-                        
-                        if(OPENSSL_FOUND_CRYPTO AND OPENSSL_FOUND_SSL)
-                            message(STATUS "Found OpenSSL libraries at: ${LIB_PATH}")
-                            break()
-                        endif()
-                    endforeach()
+                    endif()
                     
-                    if(OPENSSL_FOUND_INCLUDE AND OPENSSL_FOUND_CRYPTO AND OPENSSL_FOUND_SSL)
+                    if(OPENSSL_FOUND_CRYPTO_LOCAL AND OPENSSL_FOUND_SSL_LOCAL)
+                        message(STATUS "Found OpenSSL libraries at: ${LIB_PATH}")
                         break()
                     endif()
+                endforeach()
+                
+                if(OPENSSL_FOUND_INCLUDE_LOCAL AND OPENSSL_FOUND_CRYPTO_LOCAL AND OPENSSL_FOUND_SSL_LOCAL)
+                    break()
                 endif()
             endif()
         endforeach()
+        
+        # Set flags for later check
+        set(OPENSSL_FOUND_INCLUDE ${OPENSSL_FOUND_INCLUDE_LOCAL} PARENT_SCOPE)
+        set(OPENSSL_FOUND_CRYPTO ${OPENSSL_FOUND_CRYPTO_LOCAL} PARENT_SCOPE)
+        set(OPENSSL_FOUND_SSL ${OPENSSL_FOUND_SSL_LOCAL} PARENT_SCOPE)
     endif()
     
     # Unix-like systems (Linux, macOS)
@@ -187,13 +200,43 @@ function(find_openssl_custom)
         )
     endif()
     
-    # Verify all components found
-    if(OPENSSL_INCLUDE_DIR AND OPENSSL_CRYPTO_LIBRARY AND OPENSSL_SSL_LIBRARY)
+    # Verify all components found (check both Windows and Unix paths)
+    set(OPENSSL_ALL_FOUND FALSE)
+    
+    if(WIN32)
+        # For Windows, check if we found all components
+        # Check the local variables that were set in the loop above
+        if(OPENSSL_FOUND_INCLUDE_LOCAL AND OPENSSL_FOUND_CRYPTO_LOCAL AND OPENSSL_FOUND_SSL_LOCAL)
+            set(OPENSSL_ALL_FOUND TRUE)
+            message(STATUS "OpenSSL verification: All components found ✓")
+        else()
+            message(STATUS "OpenSSL check: INCLUDE=${OPENSSL_FOUND_INCLUDE_LOCAL}, CRYPTO=${OPENSSL_FOUND_CRYPTO_LOCAL}, SSL=${OPENSSL_FOUND_SSL_LOCAL}")
+        endif()
+    else()
+        # For Unix, check if find_path and find_library succeeded
+        if(OPENSSL_INCLUDE_DIR AND OPENSSL_CRYPTO_LIBRARY AND OPENSSL_SSL_LIBRARY)
+            set(OPENSSL_ALL_FOUND TRUE)
+        endif()
+    endif()
+    
+    if(OPENSSL_ALL_FOUND)
         # Set the variables that find_package(OpenSSL) expects
         set(OPENSSL_FOUND TRUE PARENT_SCOPE)
-        set(OPENSSL_INCLUDE_DIR ${OPENSSL_INCLUDE_DIR} PARENT_SCOPE)
-        set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_CRYPTO_LIBRARY} PARENT_SCOPE)
-        set(OPENSSL_SSL_LIBRARY ${OPENSSL_SSL_LIBRARY} PARENT_SCOPE)
+        
+        # Ensure all variables are set to parent scope
+        if(WIN32)
+            # Variables already set to PARENT_SCOPE in Windows section
+            # Just verify they're set
+            get_property(INCLUDE_DIR_SET DIRECTORY PROPERTY OPENSSL_INCLUDE_DIR)
+            if(NOT INCLUDE_DIR_SET)
+                set(OPENSSL_INCLUDE_DIR "${OPENSSL_INCLUDE_DIR}" PARENT_SCOPE)
+            endif()
+        else()
+            set(OPENSSL_INCLUDE_DIR ${OPENSSL_INCLUDE_DIR} PARENT_SCOPE)
+            set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_CRYPTO_LIBRARY} PARENT_SCOPE)
+            set(OPENSSL_SSL_LIBRARY ${OPENSSL_SSL_LIBRARY} PARENT_SCOPE)
+        endif()
+        
         set(OPENSSL_LIBRARIES ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY} PARENT_SCOPE)
         
         # Create imported targets
@@ -216,27 +259,46 @@ function(find_openssl_custom)
         
         # Windows-specific linking requirements
         if(WIN32)
-            set_target_properties(OpenSSL::Crypto PROPERTIES
-                INTERFACE_LINK_LIBRARIES "ws2_32;crypt32;user32;advapi32"
-            )
+            # Additional Windows-specific setup if needed
         endif()
-        
-        message(STATUS "OpenSSL custom detection successful:")
-        message(STATUS "  Include: ${OPENSSL_INCLUDE_DIR}")
-        message(STATUS "  Crypto: ${OPENSSL_CRYPTO_LIBRARY}")
-        message(STATUS "  SSL: ${OPENSSL_SSL_LIBRARY}")
     else()
-        message(FATAL_ERROR "OpenSSL not found. Please install OpenSSL development libraries.")
+        # OpenSSL not found - set to false
+        set(OPENSSL_FOUND FALSE PARENT_SCOPE)
+        message(WARNING "OpenSSL not found. Some features may be unavailable.")
     endif()
 endfunction()
 
-# Use custom OpenSSL detection
+# Call the custom OpenSSL finder
 find_openssl_custom()
 
-find_package(PkgConfig QUIET)
+# Check if OpenSSL is required
+if(NOT OPENSSL_FOUND)
+    message("")
+    message("==========================================")
+    message("OpenSSL not found!")
+    message("==========================================")
+    message("Please install OpenSSL development libraries:")
+    message("")
+    message("Windows:")
+    message("  1. Download from: https://slproweb.com/products/Win32OpenSSL.html")
+    message("  2. Install to default location (C:/Program Files/OpenSSL-Win64)")
+    message("  3. Or set OPENSSL_ROOT_DIR environment variable to OpenSSL path")
+    message("")
+    message("Linux (Ubuntu/Debian):")
+    message("  sudo apt-get install libssl-dev")
+    message("")
+    message("Linux (RHEL/CentOS):")
+    message("  sudo yum install openssl-devel")
+    message("")
+    message("macOS:")
+    message("  brew install openssl")
+    message("  export OPENSSL_ROOT_DIR=/usr/local/opt/openssl")
+    message("==========================================")
+    message("")
+    message(FATAL_ERROR "OpenSSL not found. Please install OpenSSL development libraries.")
+endif()
 
-# Find optional packages
-find_package(Qt6 QUIET COMPONENTS Core Widgets Charts Network WebSockets)
+# GUI Framework
 if(NOT Qt6_FOUND)
     find_package(Qt5 QUIET COMPONENTS Core Widgets Charts Network WebSockets)
 endif()
@@ -278,8 +340,352 @@ if(NOT leveldb_FOUND)
     endif()
 endif()
 
-# SQLite for wallet storage
-find_package(SQLite3 REQUIRED)
+# SQLite for wallet storage - custom finder
+function(find_sqlite3_custom)
+    # Windows-specific SQLite3 search
+    if(WIN32)
+        # Common SQLite3 installation paths on Windows
+        set(SQLITE3_SEARCH_PATHS
+            "C:/Program Files/SQLite"
+            "C:/Program Files (x86)/SQLite"
+            "C:/SQLite"
+            "C:/sqlite3"
+            "${CMAKE_SOURCE_DIR}/third_party/sqlite3"
+        )
+        
+        # Add environment variable paths if they exist
+        if(DEFINED ENV{SQLITE3_ROOT_DIR})
+            list(APPEND SQLITE3_SEARCH_PATHS "$ENV{SQLITE3_ROOT_DIR}")
+        endif()
+        
+        if(DEFINED ENV{ProgramFiles})
+            list(APPEND SQLITE3_SEARCH_PATHS "$ENV{ProgramFiles}/SQLite")
+        endif()
+        
+        # Initialize found flags (local to function)
+        set(SQLITE3_FOUND_INCLUDE_LOCAL FALSE)
+        set(SQLITE3_FOUND_LIBRARY_LOCAL FALSE)
+        
+        foreach(SEARCH_PATH ${SQLITE3_SEARCH_PATHS})
+            if(EXISTS "${SEARCH_PATH}/include/sqlite3.h" OR EXISTS "${SEARCH_PATH}/sqlite3.h")
+                if(EXISTS "${SEARCH_PATH}/include/sqlite3.h")
+                    set(SQLITE3_INCLUDE_DIR "${SEARCH_PATH}/include" PARENT_SCOPE)
+                else()
+                    set(SQLITE3_INCLUDE_DIR "${SEARCH_PATH}" PARENT_SCOPE)
+                endif()
+                set(SQLITE3_FOUND_INCLUDE_LOCAL TRUE)
+                message(STATUS "Found SQLite3 includes at: ${SQLITE3_INCLUDE_DIR}")
+                
+                # Look for libraries in various subdirectories
+                set(LIB_SEARCH_PATHS
+                    "${SEARCH_PATH}/lib"
+                    "${SEARCH_PATH}/lib/x64"
+                    "${SEARCH_PATH}/lib/x86"
+                    "${SEARCH_PATH}/lib/VC/x64"
+                    "${SEARCH_PATH}/lib/VC/x86"
+                )
+                
+                foreach(LIB_PATH ${LIB_SEARCH_PATHS})
+                    if(NOT SQLITE3_FOUND_LIBRARY_LOCAL)
+                        if(EXISTS "${LIB_PATH}/sqlite3.lib")
+                            set(SQLITE3_LIBRARY "${LIB_PATH}/sqlite3.lib" PARENT_SCOPE)
+                            set(SQLITE3_FOUND_LIBRARY_LOCAL TRUE)
+                            message(STATUS "Found SQLite3 library: ${LIB_PATH}/sqlite3.lib")
+                        elseif(EXISTS "${LIB_PATH}/sqlite3d.lib")
+                            set(SQLITE3_LIBRARY "${LIB_PATH}/sqlite3d.lib" PARENT_SCOPE)
+                            set(SQLITE3_FOUND_LIBRARY_LOCAL TRUE)
+                            message(STATUS "Found SQLite3 library: ${LIB_PATH}/sqlite3d.lib")
+                        endif()
+                    endif()
+                    
+                    if(SQLITE3_FOUND_LIBRARY_LOCAL)
+                        break()
+                    endif()
+                endforeach()
+                
+                if(SQLITE3_FOUND_INCLUDE_LOCAL AND SQLITE3_FOUND_LIBRARY_LOCAL)
+                    break()
+                endif()
+            endif()
+        endforeach()
+        
+        # Also try system-wide search using find_path and find_library (expanded search)
+        if(NOT SQLITE3_FOUND_INCLUDE_LOCAL)
+            find_path(SQLITE3_INCLUDE_DIR
+                NAMES sqlite3.h
+                PATHS
+                    "C:/Program Files/SQLite/include"
+                    "C:/Program Files (x86)/SQLite/include"
+                    "C:/SQLite/include"
+                    "C:/SQLite"
+                    "C:/sqlite3/include"
+                    "C:/sqlite3"
+                    "C:/Program Files/Common Files/SQLite/include"
+                    "$ENV{ProgramFiles}/SQLite/include"
+                    "$ENV{LOCALAPPDATA}/SQLite/include"
+                    "$ENV{APPDATA}/SQLite/include"
+                    "C:/tools/sqlite/include"
+                    "C:/tools/sqlite3/include"
+                PATH_SUFFIXES include
+                NO_DEFAULT_PATH
+            )
+            if(NOT SQLITE3_INCLUDE_DIR)
+                # Try without NO_DEFAULT_PATH to search system paths
+                find_path(SQLITE3_INCLUDE_DIR NAMES sqlite3.h)
+            endif()
+            if(SQLITE3_INCLUDE_DIR)
+                set(SQLITE3_FOUND_INCLUDE_LOCAL TRUE)
+                set(SQLITE3_INCLUDE_DIR ${SQLITE3_INCLUDE_DIR} PARENT_SCOPE)
+                message(STATUS "Found SQLite3 includes at: ${SQLITE3_INCLUDE_DIR}")
+            endif()
+        endif()
+        
+        if(NOT SQLITE3_FOUND_LIBRARY_LOCAL)
+            find_library(SQLITE3_LIBRARY
+                NAMES sqlite3 sqlite3d sqlite3.lib sqlite3d.lib
+                PATHS
+                    "C:/Program Files/SQLite/lib"
+                    "C:/Program Files (x86)/SQLite/lib"
+                    "C:/SQLite/lib"
+                    "C:/SQLite"
+                    "C:/sqlite3/lib"
+                    "C:/sqlite3"
+                    "C:/Program Files/Common Files/SQLite/lib"
+                    "$ENV{ProgramFiles}/SQLite/lib"
+                    "$ENV{LOCALAPPDATA}/SQLite/lib"
+                    "$ENV{APPDATA}/SQLite/lib"
+                    "C:/tools/sqlite/lib"
+                    "C:/tools/sqlite3/lib"
+                PATH_SUFFIXES lib lib/x64 lib/x86 lib/VC/x64 lib/VC/x86
+                NO_DEFAULT_PATH
+            )
+            if(NOT SQLITE3_LIBRARY)
+                # Try without NO_DEFAULT_PATH to search system paths
+                find_library(SQLITE3_LIBRARY NAMES sqlite3 sqlite3d)
+            endif()
+            if(SQLITE3_LIBRARY)
+                set(SQLITE3_FOUND_LIBRARY_LOCAL TRUE)
+                set(SQLITE3_LIBRARY ${SQLITE3_LIBRARY} PARENT_SCOPE)
+                message(STATUS "Found SQLite3 library: ${SQLITE3_LIBRARY}")
+            endif()
+        endif()
+        
+        # If we found library but not include, try to find include near library
+        if(SQLITE3_FOUND_LIBRARY_LOCAL AND NOT SQLITE3_FOUND_INCLUDE_LOCAL)
+            get_filename_component(SQLITE3_LIB_DIR ${SQLITE3_LIBRARY} DIRECTORY)
+            get_filename_component(SQLITE3_LIB_PARENT ${SQLITE3_LIB_DIR} DIRECTORY)
+            if(EXISTS "${SQLITE3_LIB_PARENT}/include/sqlite3.h")
+                set(SQLITE3_INCLUDE_DIR "${SQLITE3_LIB_PARENT}/include" PARENT_SCOPE)
+                set(SQLITE3_FOUND_INCLUDE_LOCAL TRUE)
+                message(STATUS "Found SQLite3 includes at: ${SQLITE3_INCLUDE_DIR} (from library location)")
+            elseif(EXISTS "${SQLITE3_LIB_DIR}/sqlite3.h")
+                set(SQLITE3_INCLUDE_DIR ${SQLITE3_LIB_DIR} PARENT_SCOPE)
+                set(SQLITE3_FOUND_INCLUDE_LOCAL TRUE)
+                message(STATUS "Found SQLite3 includes at: ${SQLITE3_INCLUDE_DIR} (same as library)")
+            endif()
+        endif()
+        
+        # If still not found, check if we can use the amalgamation (single-file SQLite)
+        if(NOT SQLITE3_FOUND_INCLUDE_LOCAL OR NOT SQLITE3_FOUND_LIBRARY_LOCAL)
+            if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/sqlite3/sqlite3.h" AND 
+               EXISTS "${CMAKE_SOURCE_DIR}/third_party/sqlite3/sqlite3.c")
+                set(SQLITE3_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/third_party/sqlite3" PARENT_SCOPE)
+                set(SQLITE3_FOUND_INCLUDE_LOCAL TRUE)
+                set(SQLITE3_USE_AMALGAMATION TRUE PARENT_SCOPE)
+                message(STATUS "Found SQLite3 amalgamation in third_party directory")
+            endif()
+        endif()
+    else()
+        # Unix-like systems (Linux, macOS) - use standard find_package
+        find_path(SQLITE3_INCLUDE_DIR
+            NAMES sqlite3.h
+            PATHS
+                /usr/include
+                /usr/local/include
+                /opt/local/include
+        )
+        
+        find_library(SQLITE3_LIBRARY
+            NAMES sqlite3
+            PATHS
+                /usr/lib
+                /usr/local/lib
+                /opt/local/lib
+                /usr/lib/x86_64-linux-gnu
+                /usr/lib/i386-linux-gnu
+        )
+        
+        if(SQLITE3_INCLUDE_DIR AND SQLITE3_LIBRARY)
+            set(SQLITE3_FOUND_INCLUDE_LOCAL TRUE)
+            set(SQLITE3_FOUND_LIBRARY_LOCAL TRUE)
+            set(SQLITE3_INCLUDE_DIR ${SQLITE3_INCLUDE_DIR} PARENT_SCOPE)
+            set(SQLITE3_LIBRARY ${SQLITE3_LIBRARY} PARENT_SCOPE)
+        endif()
+    endif()
+    
+    # Verify all components found
+    set(SQLITE3_ALL_FOUND FALSE)
+    
+    if(WIN32)
+        # For Windows, check if we found all components (library OR amalgamation)
+        if(SQLITE3_FOUND_INCLUDE_LOCAL AND (SQLITE3_FOUND_LIBRARY_LOCAL OR SQLITE3_USE_AMALGAMATION))
+            set(SQLITE3_ALL_FOUND TRUE)
+            message(STATUS "SQLite3 verification: All components found ✓")
+        else()
+            message(STATUS "SQLite3 check: INCLUDE=${SQLITE3_FOUND_INCLUDE_LOCAL}, LIBRARY=${SQLITE3_FOUND_LIBRARY_LOCAL}, AMALGAMATION=${SQLITE3_USE_AMALGAMATION}")
+        endif()
+    else()
+        if(SQLITE3_INCLUDE_DIR AND SQLITE3_LIBRARY)
+            set(SQLITE3_ALL_FOUND TRUE)
+        endif()
+    endif()
+    
+    if(SQLITE3_ALL_FOUND)
+        set(SQLITE3_FOUND TRUE PARENT_SCOPE)
+        
+        # Ensure all variables are set to parent scope
+        if(WIN32)
+            if(NOT SQLITE3_INCLUDE_DIR)
+                message(WARNING "SQLITE3_INCLUDE_DIR not set despite finding SQLite3")
+            endif()
+            if(NOT SQLITE3_LIBRARY AND NOT SQLITE3_USE_AMALGAMATION)
+                message(WARNING "SQLITE3_LIBRARY not set despite finding SQLite3")
+            endif()
+        else()
+            set(SQLITE3_INCLUDE_DIR ${SQLITE3_INCLUDE_DIR} PARENT_SCOPE)
+            set(SQLITE3_LIBRARY ${SQLITE3_LIBRARY} PARENT_SCOPE)
+        endif()
+        
+        # Set amalgamation flag to parent scope if needed
+        if(SQLITE3_USE_AMALGAMATION)
+            set(SQLITE3_USE_AMALGAMATION TRUE PARENT_SCOPE)
+        endif()
+    else()
+        set(SQLITE3_FOUND FALSE PARENT_SCOPE)
+        message(WARNING "SQLite3 not found. Some features may be unavailable.")
+    endif()
+endfunction()
+
+# Call the custom SQLite3 finder
+find_sqlite3_custom()
+
+# If SQLite3 not found, download and use amalgamation
+if(NOT SQLITE3_FOUND)
+    message(STATUS "SQLite3 not found in system. Downloading amalgamation...")
+    
+    set(SQLITE3_DIR "${CMAKE_SOURCE_DIR}/third_party/sqlite3")
+    set(SQLITE3_AMALGAMATION_URL "https://www.sqlite.org/2024/sqlite-amalgamation-3490200.zip")
+    set(SQLITE3_ZIP "${CMAKE_BINARY_DIR}/sqlite3.zip")
+    
+    # Create directory
+    file(MAKE_DIRECTORY ${SQLITE3_DIR})
+    
+    # Check if we already have it
+    if(NOT EXISTS "${SQLITE3_DIR}/sqlite3.h" OR NOT EXISTS "${SQLITE3_DIR}/sqlite3.c")
+        message(STATUS "Downloading SQLite3 amalgamation from sqlite.org...")
+        
+        # Download using file(DOWNLOAD)
+        file(DOWNLOAD 
+            ${SQLITE3_AMALGAMATION_URL}
+            ${SQLITE3_ZIP}
+            SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS
+        )
+        
+        list(GET DOWNLOAD_STATUS 0 STATUS_CODE)
+        if(STATUS_CODE EQUAL 0)
+            message(STATUS "Extracting SQLite3...")
+            execute_process(
+                COMMAND ${CMAKE_COMMAND} -E tar xzf ${SQLITE3_ZIP}
+                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                RESULT_VARIABLE EXTRACT_RESULT
+            )
+            
+            # Move files to third_party/sqlite3
+            if(EXTRACT_RESULT EQUAL 0)
+                file(GLOB SQLITE3_FILES "${CMAKE_BINARY_DIR}/sqlite-amalgamation-*/sqlite3.*")
+                foreach(FILE ${SQLITE3_FILES})
+                    get_filename_component(FILENAME ${FILE} NAME)
+                    file(COPY ${FILE} DESTINATION ${SQLITE3_DIR})
+                endforeach()
+            endif()
+        else()
+            message(WARNING "Failed to download SQLite3. Will try to use existing files if available.")
+        endif()
+    endif()
+    
+    # Check if we have the files now
+    if(EXISTS "${SQLITE3_DIR}/sqlite3.h" AND EXISTS "${SQLITE3_DIR}/sqlite3.c")
+        set(SQLITE3_INCLUDE_DIR ${SQLITE3_DIR})
+        set(SQLITE3_FOUND TRUE)
+        set(SQLITE3_USE_AMALGAMATION TRUE)
+        message(STATUS "Using SQLite3 amalgamation from ${SQLITE3_DIR}")
+    else()
+        # Last resort: provide clear manual instructions
+        message("")
+        message("==========================================")
+        message("SQLite3 Auto-Download Failed")
+        message("==========================================")
+        message("Please manually download SQLite3 amalgamation:")
+        message("")
+        message("1. Go to: https://www.sqlite.org/download.html")
+        message("2. Download: sqlite-amalgamation-*.zip")
+        message("3. Extract sqlite3.h and sqlite3.c")
+        message("4. Place them in: ${SQLITE3_DIR}/")
+        message("")
+        message("Or install SQLite3 system-wide:")
+        message("  Windows: Extract to C:/SQLite")
+        message("  Linux: sudo apt-get install libsqlite3-dev")
+        message("  macOS: brew install sqlite")
+        message("==========================================")
+        message("")
+        message(FATAL_ERROR "SQLite3 is required. Please download and install it manually.")
+    endif()
+endif()
+
+# Create SQLite3 target (either imported or from source)
+if(SQLITE3_USE_AMALGAMATION)
+    # Compile SQLite3 from amalgamation source
+    add_library(SQLite::SQLite3 STATIC
+        ${SQLITE3_DIR}/sqlite3.c
+    )
+    target_include_directories(SQLite::SQLite3 PUBLIC ${SQLITE3_INCLUDE_DIR})
+    set_target_properties(SQLite::SQLite3 PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+    )
+    message(STATUS "SQLite3 will be compiled from amalgamation source")
+elseif(SQLITE3_FOUND)
+    # Use pre-built library
+    if(NOT TARGET SQLite::SQLite3)
+        add_library(SQLite::SQLite3 UNKNOWN IMPORTED)
+        set_target_properties(SQLite::SQLite3 PROPERTIES
+            IMPORTED_LOCATION "${SQLITE3_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${SQLITE3_INCLUDE_DIR}"
+        )
+    endif()
+endif()
+
+# Create SQLite3 target (either imported or from source)
+if(SQLITE3_USE_AMALGAMATION)
+    # Compile SQLite3 from amalgamation source
+    add_library(SQLite::SQLite3 STATIC
+        ${SQLITE3_DIR}/sqlite3.c
+    )
+    target_include_directories(SQLite::SQLite3 PUBLIC ${SQLITE3_INCLUDE_DIR})
+    set_target_properties(SQLite::SQLite3 PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+    )
+    message(STATUS "SQLite3 will be compiled from amalgamation source")
+elseif(SQLITE3_FOUND)
+    # Use pre-built library
+    if(NOT TARGET SQLite::SQLite3)
+        add_library(SQLite::SQLite3 UNKNOWN IMPORTED)
+        set_target_properties(SQLite::SQLite3 PROPERTIES
+            IMPORTED_LOCATION "${SQLITE3_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${SQLITE3_INCLUDE_DIR}"
+        )
+    endif()
+endif()
 
 # WebSocket library
 find_package(websocketpp QUIET)
@@ -435,11 +841,22 @@ if(CUDA_FOUND AND BUILD_MINING_CLIENT)
     target_include_directories(gxc_mining PRIVATE ${CUDA_INCLUDE_DIRS})
 endif()
 
-# OpenCL support for GPU mining
+# OpenCL support for GPU mining (optional - won't fail build if not found)
 find_package(OpenCL QUIET)
 if(OpenCL_FOUND AND BUILD_MINING_CLIENT)
+    message(STATUS "OpenCL found - GPU mining support enabled")
     add_definitions(-DHAVE_OPENCL)
-    target_link_libraries(gxc_mining OpenCL::OpenCL)
+    if(TARGET OpenCL::OpenCL)
+        target_link_libraries(gxc_mining OpenCL::OpenCL)
+    else()
+        # Fallback for older CMake versions
+        target_link_libraries(gxc_mining ${OpenCL_LIBRARIES})
+        target_include_directories(gxc_mining PRIVATE ${OpenCL_INCLUDE_DIRS})
+    endif()
+else()
+    if(BUILD_MINING_CLIENT)
+        message(STATUS "OpenCL not found - GPU mining will use CUDA or CPU only")
+    endif()
 endif()
 
 # Mining client executables
