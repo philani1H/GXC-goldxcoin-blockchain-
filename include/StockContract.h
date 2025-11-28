@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <cstdint>
 #include <vector>
 #include <unordered_map>
 #include <ctime>
@@ -85,6 +86,7 @@ private:
     
 public:
     // Constructor
+    StockContract();
     StockContract(const std::string& tickerIn, const std::string& companyNameIn, 
                   const std::string& exchangeIn, const std::string& priceOracleIn);
     

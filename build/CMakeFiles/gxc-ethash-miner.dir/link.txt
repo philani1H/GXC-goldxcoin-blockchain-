@@ -1,0 +1,1 @@
+/usr/bin/g++ -O3 -DNDEBUG "CMakeFiles/gxc-ethash-miner.dir/mining/ethash_main.cpp.o" -o gxc-ethash-miner  libgxc_mining.a libgxc_core.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so /usr/lib/x86_64-linux-gnu/libsqlite3.so -ldl 

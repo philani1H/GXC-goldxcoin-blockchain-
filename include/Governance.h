@@ -4,6 +4,8 @@
 #include <vector>
 #include <unordered_map>
 #include <ctime>
+#include <cstdint>
+#include <mutex>
 
 enum class VoteType {
     FOR,
@@ -76,7 +78,8 @@ private:
     std::string executionTxHash;
     
 public:
-    // Constructor
+    // Constructors
+    Proposal();
     Proposal(const std::string& proposerIn, const std::string& titleIn, 
              const std::string& descriptionIn, const std::vector<ParameterChange>& changesIn,
              uint32_t votingPeriodDays = 7);
@@ -138,6 +141,7 @@ public:
 
 class GovernanceSystem {
 private:
+    mutable std::mutex proposalsMutex;
     std::unordered_map<std::string, Proposal> proposals;
     std::unordered_map<std::string, std::vector<Vote>> proposalVotes;
     std::unordered_map<std::string, std::time_t> voterLastActivity;

@@ -47,6 +47,7 @@ public:
     // Transaction management
     bool addTransaction(const Transaction& transaction);
     void calculateMerkleRoot();
+    std::string calculateMerkleRoot() const; // Const version for validation
     
     // Hash calculations
     std::string calculateHash() const;

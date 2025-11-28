@@ -1,9 +1,9 @@
 #include "GoldToken.h"
 #include "blockchain.h"
 #include <iostream>
+#include <algorithm>
 
-GoldToken::GoldToken(Blockchain* blockchainPtr) : tokenId("GXC-G"), symbol("GXC-G"), name("GXC Gold Token"), decimals(8), totalSupply(0), totalReserves(0), transfersEnabled(true), blockchain(blockchainPtr) {
-    if (blockchain) std::cout << "[GoldToken] Blockchain height: " << blockchain->getHeight() << std::endl;
+GoldToken::GoldToken() : tokenId("GXC-G"), symbol("GXC-G"), name("GXC Gold Token"), decimals(8), totalSupply(0), totalReserves(0), transfersEnabled(true) {
 }
 
 bool GoldToken::mint(const std::string& to, double goldGrams, const std::string&) {
@@ -48,11 +48,19 @@ std::vector<GoldReserve> GoldToken::getActiveReserves() const {
     return active;
 }
 void GoldToken::addAuthorizedIssuer(const std::string& issuer) { authorizedIssuers.push_back(issuer); }
-void GoldToken::removeAuthorizedIssuer(const std::string& issuer) { authorizedIssuers.erase(std::remove(authorizedIssuers.begin(), authorizedIssuers.end(), issuer), authorizedIssuers.end()); }
-bool GoldToken::isAuthorizedIssuer(const std::string& issuer) const { return std::find(authorizedIssuers.begin(), authorizedIssuers.end(), issuer) != authorizedIssuers.end(); }
+void GoldToken::removeAuthorizedIssuer(const std::string& issuer) { 
+    authorizedIssuers.erase(std::remove(authorizedIssuers.begin(), authorizedIssuers.end(), issuer), authorizedIssuers.end()); 
+}
+bool GoldToken::isAuthorizedIssuer(const std::string& issuer) const { 
+    return std::find(authorizedIssuers.begin(), authorizedIssuers.end(), issuer) != authorizedIssuers.end(); 
+}
 void GoldToken::addAuthorizedAuditor(const std::string& auditor) { authorizedAuditors.push_back(auditor); }
-void GoldToken::removeAuthorizedAuditor(const std::string& auditor) { authorizedAuditors.erase(std::remove(authorizedAuditors.begin(), authorizedAuditors.end(), auditor), authorizedAuditors.end()); }
-bool GoldToken::isAuthorizedAuditor(const std::string& auditor) const { return std::find(authorizedAuditors.begin(), authorizedAuditors.end(), auditor) != authorizedAuditors.end(); }
+void GoldToken::removeAuthorizedAuditor(const std::string& auditor) { 
+    authorizedAuditors.erase(std::remove(authorizedAuditors.begin(), authorizedAuditors.end(), auditor), authorizedAuditors.end()); 
+}
+bool GoldToken::isAuthorizedAuditor(const std::string& auditor) const { 
+    return std::find(authorizedAuditors.begin(), authorizedAuditors.end(), auditor) != authorizedAuditors.end(); 
+}
 void GoldToken::updatePriceReference(const std::string& ref) { lastPriceReference = ref; lastPriceUpdate = std::time(nullptr); }
 std::string GoldToken::getCurrentPriceReference() const { return lastPriceReference; }
 bool GoldToken::isPriceDataFresh(uint32_t maxAgeSeconds) const { return std::time(nullptr) - lastPriceUpdate < maxAgeSeconds; }

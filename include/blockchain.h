@@ -65,9 +65,19 @@ private:
     void processHalving(uint32_t blockNumber);
     bool validateConsensus(const Block& block) const;
     std::shared_ptr<Block> lastBlock;
-    std::mutex chainMutex;
-    std::mutex transactionMutex;
-    std::unordered_map<std::string, struct TraceabilityEntry> traceabilityIndex;
+    mutable std::mutex chainMutex;
+    mutable std::mutex transactionMutex;
+    
+    // Traceability entry structure
+    struct TraceabilityEntry {
+        std::string txHash;
+        std::string prevTxHash;
+        double amount;
+        std::string fromAddress;
+        std::string toAddress;
+        uint64_t timestamp;
+    };
+    std::unordered_map<std::string, TraceabilityEntry> traceabilityIndex;
     
 public:
     // Constructor
@@ -78,7 +88,7 @@ public:
     void createGenesisBlock();
     bool addBlock(const Block& block);
     bool validateBlock(const Block& block);
-    bool validateProofOfWork(const Block& block);
+    bool validateProofOfWork(const Block& block) const;
     bool validateBlockTraceability(const Block& block);
     bool validateTransaction(const Transaction& tx);
     bool validateTraceability();

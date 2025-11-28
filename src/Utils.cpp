@@ -6,11 +6,12 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <ctime>
 
 namespace Utils {
 
-std::time_t getCurrentTimestamp() {
-    return std::time(nullptr);
+uint64_t getCurrentTimestamp() {
+    return static_cast<uint64_t>(std::time(nullptr));
 }
 
 uint32_t randomUint32() {
@@ -201,9 +202,10 @@ bool endsWith(const std::string& str, const std::string& suffix) {
     return str.substr(str.length() - suffix.length()) == suffix;
 }
 
-std::string formatTimestamp(std::time_t timestamp) {
+std::string formatTimestamp(uint64_t timestamp, const std::string& format) {
+    std::time_t time = static_cast<std::time_t>(timestamp);
     std::ostringstream oss;
-    oss << std::put_time(std::localtime(&timestamp), "%Y-%m-%d %H:%M:%S");
+    oss << std::put_time(std::localtime(&time), format.c_str());
     return oss.str();
 }
 

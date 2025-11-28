@@ -367,7 +367,9 @@ bool Database::saveBlock(const Block& block) {
         sqlite3_bind_text(stmt, 8, block.getMinerAddress().c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_int(stmt, 9, static_cast<int>(block.getBlockType()));
         sqlite3_bind_int(stmt, 10, static_cast<int>(block.getTransactions().size()));
-        sqlite3_bind_int(stmt, 11, static_cast<int>(block.getSize()));
+        // Calculate block size from transactions
+        size_t blockSize = block.getTransactions().size() * 256; // Approximate size
+        sqlite3_bind_int(stmt, 11, static_cast<int>(blockSize));
         
         rc = sqlite3_step(stmt);
         sqlite3_finalize(stmt);
@@ -430,12 +432,22 @@ bool Database::saveTransaction(const Transaction& tx, const std::string& blockHa
         sqlite3_bind_text(stmt, 2, blockHash.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_int(stmt, 3, static_cast<int>(blockHeight));
         sqlite3_bind_text(stmt, 4, tx.getSenderAddress().c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_text(stmt, 5, tx.getRecipientAddress().c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_double(stmt, 6, tx.getAmount());
+        sqlite3_bind_text(stmt, 5, tx.getReceiverAddress().c_str(), -1, SQLITE_STATIC);
+        // Calculate total amount from outputs
+        double totalAmount = 0.0;
+        for (const auto& output : tx.getOutputs()) {
+            totalAmount += output.amount;
+        }
+        sqlite3_bind_double(stmt, 6, totalAmount);
         sqlite3_bind_double(stmt, 7, tx.getFee());
         sqlite3_bind_int64(stmt, 8, tx.getTimestamp());
         sqlite3_bind_int64(stmt, 9, tx.getNonce());
-        sqlite3_bind_text(stmt, 10, tx.getSignature().c_str(), -1, SQLITE_STATIC);
+        // Get signature from first input if available
+        std::string signature = "";
+        if (!tx.getInputs().empty()) {
+            signature = tx.getInputs()[0].signature;
+        }
+        sqlite3_bind_text(stmt, 10, signature.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_int(stmt, 11, tx.isCoinbaseTransaction() ? 1 : 0);
         sqlite3_bind_text(stmt, 12, tx.getPrevTxHash().c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_double(stmt, 13, tx.getReferencedAmount());
@@ -623,7 +635,7 @@ bool Database::saveTraceabilityRecord(const Transaction& tx, size_t blockHeight)
     return rc == SQLITE_DONE;
 }
 
-Block Database::getBlock(const std::string& hash) {
+Block Database::getBlock(const std::string& hash) const {
     if (!db) {
         return Block();
     }
@@ -646,15 +658,16 @@ Block Database::getBlock(const std::string& hash) {
     Block block;
     
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-        block.setIndex(sqlite3_column_int(stmt, 0));
-        block.setHash(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
-        block.setPreviousHash(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)));
-        block.setMerkleRoot(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
+        uint32_t index = sqlite3_column_int(stmt, 0);
+        std::string prevHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        BlockType blockType = static_cast<BlockType>(sqlite3_column_int(stmt, 8));
+        
+        // Construct block with proper type
+        block = Block(index, prevHash, blockType);
         block.setTimestamp(sqlite3_column_int64(stmt, 4));
         block.setDifficulty(sqlite3_column_double(stmt, 5));
         block.setNonce(sqlite3_column_int64(stmt, 6));
         block.setMinerAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)));
-        block.setBlockType(static_cast<BlockType>(sqlite3_column_int(stmt, 8)));
         
         // Load transactions for this block
         auto transactions = getTransactionsByBlockHash(hash);
@@ -667,7 +680,7 @@ Block Database::getBlock(const std::string& hash) {
     return block;
 }
 
-std::vector<Transaction> Database::getTransactionsByBlockHash(const std::string& blockHash) {
+std::vector<Transaction> Database::getTransactionsByBlockHash(const std::string& blockHash) const {
     std::vector<Transaction> transactions;
     
     if (!db) {
@@ -694,12 +707,12 @@ std::vector<Transaction> Database::getTransactionsByBlockHash(const std::string&
         Transaction tx;
         tx.setHash(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
         tx.setSenderAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
-        tx.setRecipientAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)));
-        tx.setAmount(sqlite3_column_double(stmt, 3));
+        tx.setReceiverAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)));
+        // Amount is calculated from outputs, not stored directly
         tx.setFee(sqlite3_column_double(stmt, 4));
         tx.setTimestamp(sqlite3_column_int64(stmt, 5));
         tx.setNonce(sqlite3_column_int64(stmt, 6));
-        tx.setSignature(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)));
+        // Signature is stored in TransactionInput, not Transaction
         tx.setCoinbaseTransaction(sqlite3_column_int(stmt, 8) == 1);
         tx.setPrevTxHash(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)));
         tx.setReferencedAmount(sqlite3_column_double(stmt, 10));
@@ -723,7 +736,7 @@ std::vector<Transaction> Database::getTransactionsByBlockHash(const std::string&
     return transactions;
 }
 
-std::vector<TransactionInput> Database::getTransactionInputs(const std::string& txHash) {
+std::vector<TransactionInput> Database::getTransactionInputs(const std::string& txHash) const {
     std::vector<TransactionInput> inputs;
     
     if (!db) {
@@ -760,7 +773,7 @@ std::vector<TransactionInput> Database::getTransactionInputs(const std::string& 
     return inputs;
 }
 
-std::vector<TransactionOutput> Database::getTransactionOutputs(const std::string& txHash) {
+std::vector<TransactionOutput> Database::getTransactionOutputs(const std::string& txHash) const {
     std::vector<TransactionOutput> outputs;
     
     if (!db) {
@@ -795,7 +808,7 @@ std::vector<TransactionOutput> Database::getTransactionOutputs(const std::string
     return outputs;
 }
 
-double Database::getAddressBalance(const std::string& address) {
+double Database::getAddressBalance(const std::string& address) const {
     if (!db) {
         return 0.0;
     }
@@ -820,7 +833,7 @@ double Database::getAddressBalance(const std::string& address) {
     return balance;
 }
 
-size_t Database::getBlockCount() {
+size_t Database::getBlockCount() const {
     if (!db) {
         return 0;
     }

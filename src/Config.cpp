@@ -194,7 +194,12 @@ bool Config::saveToFile(const std::string& filename) {
     };
     
     for (const auto& category : categories) {
-        file << "# " << Utils::capitalize(category) << " Settings\n";
+        // Capitalize first letter
+        std::string capCategory = category;
+        if (!capCategory.empty()) {
+            capCategory[0] = std::toupper(capCategory[0]);
+        }
+        file << "# " << capCategory << " Settings\n";
         
         for (const auto& [key, value] : configMap) {
             if (key.find(category) == 0 || 

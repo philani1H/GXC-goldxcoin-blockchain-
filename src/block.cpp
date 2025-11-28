@@ -68,6 +68,15 @@ void Block::calculateMerkleRoot() {
     merkleRoot = ::calculateMerkleRoot(txHashes);
 }
 
+std::string Block::calculateMerkleRoot() const {
+    std::vector<std::string> txHashes;
+    for (const auto& tx : transactions) {
+        txHashes.push_back(tx.getHash());
+    }
+    
+    return ::calculateMerkleRoot(txHashes);
+}
+
 bool Block::addTransaction(const Transaction& transaction) {
     // Verify the transaction
     if (!transaction.verifyTransaction()) {

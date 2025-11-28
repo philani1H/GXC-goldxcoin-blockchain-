@@ -1,6 +1,7 @@
 #include <unordered_map>
 #include <string>
 #include <memory>
+#include <iostream>
 #include "GoldToken.h"
 #include "StockContract.h"
 #include "blockchain.h"

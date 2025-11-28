@@ -7,6 +7,7 @@
 #include <queue>
 #include <thread>
 #include <atomic>
+#include <condition_variable>
 
 enum class LogLevel {
     DEBUG = 0,
@@ -48,11 +49,12 @@ private:
     std::string getCurrentTimestamp() const;
     std::string logLevelToString(LogLevel level) const;
     
-    // Constructor/Destructor (private for singleton)
+    // Constructor (private for singleton)
     Logger();
-    ~Logger();
 
 public:
+    // Destructor (public so unique_ptr can delete)
+    ~Logger();
     // Singleton access
     static Logger& getInstance();
     static void cleanup();
@@ -61,9 +63,6 @@ public:
     static bool initialize();
     static bool initialize(const std::string& logPath, LogLevel minLevel = LogLevel::INFO);
     static void shutdown();
-    
-    // Configuration
-    bool initialize(const std::string& logPath, LogLevel minLevel = LogLevel::INFO);
     void setLogLevel(LogLevel level);
     void setConsoleOutput(bool enabled);
     void setAsyncLogging(bool enabled);

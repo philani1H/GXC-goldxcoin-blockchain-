@@ -240,7 +240,7 @@ void Transaction::signInputs(const std::string& privateKey) {
     // Simplified signing - in practice would use proper cryptographic signing
     for (auto& input : inputs) {
         std::string message = input.txHash + std::to_string(input.outputIndex) + std::to_string(input.amount);
-        input.signature = HashUtils::sha256(message + privateKey);
+        input.signature = sha256(message + privateKey);
         // In real implementation, would derive public key from private key
         input.publicKey = "PUBKEY_" + privateKey.substr(0, 10);
     }

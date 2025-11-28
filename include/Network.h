@@ -10,6 +10,10 @@
 #include <cstdint>
 #include <memory>
 
+// Forward declarations
+class Block;
+class Transaction;
+
 // Network message types
 enum class MessageType : uint8_t {
     VERSION = 0x01,
@@ -62,19 +66,8 @@ struct NetworkConfig {
     std::string userAgent = "/GXC:2.0.0/";
 };
 
-// Peer information
-struct PeerInfo {
-    std::string address;
-    uint16_t port;
-    uint32_t version;
-    std::string userAgent;
-    int64_t lastSeen;
-    bool isOutbound;
-    bool isConnected;
-    double pingTime;
-    uint32_t height;
-    std::string nodeId;
-};
+// Peer information - forward declaration, actual definition in PeerManager.h
+struct PeerInfo;
 
 // Network message structure
 struct NetworkMessage {
@@ -217,6 +210,79 @@ private:
 };
 
 // Network utilities
+// Network class for P2P communication
+struct NetworkPeer {
+    std::string host;
+    int port;
+    int socket;
+    bool connected;
+    uint64_t lastSeen;
+    uint64_t lastPing;
+    uint64_t bytesReceived;
+    uint64_t bytesSent;
+    uint32_t messagesReceived;
+    uint32_t messagesSent;
+    std::string version;
+};
+
+class Network {
+private:
+    bool isRunning;
+    int serverSocket;
+    int port;
+    std::mutex peersMutex;
+    std::unordered_map<std::string, NetworkPeer> peers;
+    std::function<void(const std::string&)> blockHandler;
+    std::function<void(const std::string&)> transactionHandler;
+    
+    std::thread serverThread;
+    std::thread peerManagerThread;
+    std::thread messageProcessorThread;
+    
+    uint64_t lastUpdate;
+    
+    // Private methods
+    bool initializeSocket();
+    void serverLoop();
+    void peerManagerLoop();
+    void messageProcessorLoop();
+    void disconnectPeer(NetworkPeer& peer);
+    void performPeerHealthChecks();
+    void maintainPeerConnections();
+    void connectToSeedNodes();
+    void processIncomingMessages();
+    void receiveMessages(NetworkPeer& peer);
+    void processMessage(NetworkPeer& peer, const std::string& message);
+    void handlePingMessage(NetworkPeer& peer, const std::string& message);
+    void handlePongMessage(NetworkPeer& peer, const std::string& message);
+    void handleHandshakeMessage(NetworkPeer& peer, const std::string& message);
+    void handleTransactionMessage(NetworkPeer& peer, const std::string& message);
+    void handleBlockMessage(NetworkPeer& peer, const std::string& message);
+    bool sendMessage(const std::string& peerKey, const std::string& message);
+    void broadcastMessage(const std::string& message);
+    void sendPing(const std::string& peerKey);
+    void sendPong(const std::string& peerKey);
+    
+public:
+    Network();
+    ~Network();
+    
+    bool start(int networkPort);
+    void stop();
+    void update();
+    size_t getPeerCount() const;
+    
+    void setBlockHandler(std::function<void(const std::string&)> handler);
+    void setTransactionHandler(std::function<void(const std::string&)> handler);
+    
+    bool addPeer(const std::string& host, int peerPort, int socket = -1);
+    bool connectToPeer(const std::string& host, int peerPort);
+    void sendHandshake(const std::string& peerKey);
+    bool broadcastBlock(const Block& block);
+    bool broadcastTransaction(const Transaction& tx);
+    std::vector<std::string> getPeers() const;
+};
+
 class NetworkUtils {
 public:
     static std::string ipToString(uint32_t ip);

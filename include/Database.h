@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <mutex>
 #include <sqlite3.h>
-#include <leveldb/db.h>
 #include "transaction.h"
 #include "Block.h"
 
@@ -97,6 +97,26 @@ public:
     bool backup(const std::string& backupPath);
     bool restore(const std::string& backupPath);
     uint64_t getDatabaseSize() const;
+    bool createIndexes();
+    
+    // Additional block operations
+    bool saveBlock(const Block& block);
+    Block getBlock(const std::string& hash) const;
+    
+    // Additional transaction operations
+    bool saveTransaction(const Transaction& tx, const std::string& blockHash, size_t blockIndex);
+    bool saveTransactionInputs(const Transaction& tx);
+    bool saveTransactionOutputs(const Transaction& tx);
+    bool updateUtxoSet(const Transaction& tx);
+    bool saveTraceabilityRecord(const Transaction& tx, size_t blockIndex);
+    std::vector<Transaction> getTransactionsByBlockHash(const std::string& blockHash) const;
+    std::vector<TransactionInput> getTransactionInputs(const std::string& txHash) const;
+    std::vector<TransactionOutput> getTransactionOutputs(const std::string& txHash) const;
+    
+    // Additional query operations
+    double getAddressBalance(const std::string& address) const;
+    size_t getBlockCount() const;
+    bool isConnected() const;
     
     // Price data storage (for PoP oracle)
     bool storePriceData(const std::string& asset, double price, uint32_t timestamp);

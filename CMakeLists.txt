@@ -304,6 +304,7 @@ if(NOT Qt6_FOUND)
 endif()
 
 # System-specific libraries
+find_package(Threads REQUIRED)
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SYSTEMD libsystemd)
