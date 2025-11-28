@@ -815,7 +815,12 @@ class GXCMiner:
         self.log(f"💰 Total Earned: {self.total_earned:.8f} GXC", "INFO")
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the miner"""
     root = tk.Tk()
     app = GXCMiner(root)
     root.mainloop()
+
+
+if __name__ == "__main__":
+    main()

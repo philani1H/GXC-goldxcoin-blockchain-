@@ -88,15 +88,53 @@ try {
     Write-Host "`nPackaging Python GXHash miner..." -ForegroundColor Yellow
     
     $pythonMinerDir = "$minersDir\gxhash-miner-python"
-    New-Item -ItemType Directory -Path $pythonMinerDir | Out-Null
+    New-Item -ItemType Directory -Path $pythonMinerDir -Force | Out-Null
     
     # Copy Python miner
     Copy-Item "mining\gxhash_miner.py" "$pythonMinerDir\gxhash_miner.py"
     
+    # Copy setup.py if it exists
+    if (Test-Path "mining\setup.py") {
+        Copy-Item "mining\setup.py" "$pythonMinerDir\setup.py"
+    }
+    
     # Create requirements.txt
-    @"
+    if (Test-Path "mining\gxhash_miner_requirements.txt") {
+        Copy-Item "mining\gxhash_miner_requirements.txt" "$pythonMinerDir\requirements.txt"
+    } else {
+        @"
 requests>=2.31.0
 "@ | Out-File "$pythonMinerDir\requirements.txt" -Encoding UTF8
+    }
+    
+    # Create installation script
+    @"
+@echo off
+echo Installing GXC GXHash Miner...
+echo.
+
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo Python not found! Please install Python 3.7+ from https://www.python.org/downloads/
+    pause
+    exit 1
+)
+
+echo Installing from source...
+pip install -e . --user
+if errorlevel 1 (
+    echo Trying alternative installation...
+    pip install -r requirements.txt --user
+)
+
+echo.
+echo ✅ Installation complete!
+echo.
+echo You can now run: gxc-gxhash-miner
+echo Or: python gxhash_miner.py
+echo.
+pause
+"@ | Out-File "$pythonMinerDir\install.bat" -Encoding ASCII
     
     # Create README
     @"
