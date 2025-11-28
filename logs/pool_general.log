@@ -1,0 +1,18 @@
+Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+============================================================
+GXC General Mining Pool (All Algorithms)
+============================================================
+Stratum: stratum+tcp://localhost:3333
+Dashboard: http://localhost:6000
+Algorithms: SHA-256, Ethash, GXHash
+============================================================
+[pool] Starting web server on 0.0.0.0:6000
+[pool] Stratum server listening on port 3333
+ * Serving Flask app 'pool_base'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:6000
+ * Running on http://100.64.63.77:6000
+Press CTRL+C to quit
+127.0.0.1 - - [28/Nov/2025 09:35:53] "GET / HTTP/1.1" 200 -

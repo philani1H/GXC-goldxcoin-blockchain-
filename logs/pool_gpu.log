@@ -1,0 +1,17 @@
+Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+============================================================
+GXC GPU Mining Pool (Ethash)
+============================================================
+Stratum: stratum+tcp://localhost:3334
+Dashboard: http://localhost:6001
+Algorithm: Ethash (GPU)
+============================================================
+[gpu-pool] Starting web server on 0.0.0.0:6001
+[gpu-pool] Stratum server listening on port 4444
+ * Serving Flask app 'pool_base'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:6001
+ * Running on http://100.64.63.77:6001
+Press CTRL+C to quit

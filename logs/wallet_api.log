@@ -1,0 +1,25 @@
+ * Serving Flask app 'wallet_service'
+ * Debug mode: off
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://100.64.63.77:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:100.64.134.16 - - [28/Nov/2025 09:37:54] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:100.64.134.16 - - [28/Nov/2025 09:37:57] "GET /login HTTP/1.1" 200 -
+/workspaces/GXC-goldxcoin-blockchain-/api/wallet_service.py:573: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  'exp': datetime.utcnow() + timedelta(hours=24)
+INFO:werkzeug:100.64.134.16 - - [28/Nov/2025 09:38:08] "[32mPOST /login HTTP/1.1[0m" 302 -
+ERROR:__main__:Error fetching balance for GXCd77af4fc903006a3be54b5ed043893500e216c9c: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /api/v1/address/GXCd77af4fc903006a3be54b5ed043893500e216c9c/balance (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fa0974a83e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+ERROR:__main__:Error fetching blockchain info: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /api/v1/blockchain/info (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fa09747fc80>: Failed to establish a new connection: [Errno 111] Connection refused'))
+INFO:werkzeug:100.64.134.16 - - [28/Nov/2025 09:38:08] "GET /dashboard HTTP/1.1" 200 -
+INFO:werkzeug:100.64.134.16 - - [28/Nov/2025 09:39:07] "GET /wallet/e8273e20-c532-4f6f-b9f0-654306f57038/settings HTTP/1.1" 200 -
+ERROR:__main__:Error fetching balance for GXCd77af4fc903006a3be54b5ed043893500e216c9c: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /api/v1/address/GXCd77af4fc903006a3be54b5ed043893500e216c9c/balance (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fa0974aa420>: Failed to establish a new connection: [Errno 111] Connection refused'))
+INFO:werkzeug:100.64.134.16 - - [28/Nov/2025 09:39:25] "GET /wallet/e8273e20-c532-4f6f-b9f0-654306f57038/send HTTP/1.1" 200 -
+ERROR:__main__:Error fetching balance for GXCd77af4fc903006a3be54b5ed043893500e216c9c: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /api/v1/address/GXCd77af4fc903006a3be54b5ed043893500e216c9c/balance (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fa097458e60>: Failed to establish a new connection: [Errno 111] Connection refused'))
+ERROR:__main__:Error fetching blockchain info: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /api/v1/blockchain/info (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fa0974aa900>: Failed to establish a new connection: [Errno 111] Connection refused'))
+INFO:werkzeug:100.64.134.16 - - [28/Nov/2025 09:44:59] "GET /dashboard HTTP/1.1" 200 -
+INFO:werkzeug:100.64.134.16 - - [28/Nov/2025 09:45:08] "GET /wallet/e8273e20-c532-4f6f-b9f0-654306f57038/settings HTTP/1.1" 200 -
+ERROR:__main__:Error fetching balance for GXCd77af4fc903006a3be54b5ed043893500e216c9c: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /api/v1/address/GXCd77af4fc903006a3be54b5ed043893500e216c9c/balance (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fa0974a8590>: Failed to establish a new connection: [Errno 111] Connection refused'))
+ERROR:__main__:Error fetching blockchain info: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /api/v1/blockchain/info (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fa0974ab4a0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+INFO:werkzeug:100.64.134.16 - - [28/Nov/2025 09:45:31] "GET /dashboard HTTP/1.1" 200 -

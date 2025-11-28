@@ -72,8 +72,9 @@
         <h3>For GPU Miners (Ethash)</h3>
         <div class="code-block">
 # Download GPU miner
-wget https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-miner-gpu.tar.gz
-tar -xzf gxc-miner-gpu.tar.gz
+# Visit http://localhost:3000/downloads or use:
+curl -O http://localhost:3000/api/downloads/linux/ethash
+tar -xzf ethash_miner_gui-linux-x64.tar.gz
 
 # Configure
 cat > mining.conf << EOF
@@ -91,8 +92,9 @@ EOF
         <h3>For CPU/General Mining (GXHash)</h3>
         <div class="code-block">
 # Download miner
-wget https://github.com/gxc-blockchain/gxc-blockchain/releases/latest/download/gxc-miner-linux-x64.tar.gz
-tar -xzf gxc-miner-linux-x64.tar.gz
+# Visit http://localhost:3000/downloads or use:
+curl -O http://localhost:3000/api/downloads/linux/gxhash
+tar -xzf gxhash_miner_gui-linux-x64.tar.gz
 
 # Configure
 cat > mining.conf << EOF
