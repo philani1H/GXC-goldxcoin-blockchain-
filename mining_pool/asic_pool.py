@@ -18,7 +18,7 @@ try:
     pool = MiningPool(
         pool_name='asic-pool',
         algorithm='sha256',
-        port=3333,
+        port=3335,  # ASIC pool Stratum port
         rpc_url=os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
     )
     # Expose Flask app for Vercel

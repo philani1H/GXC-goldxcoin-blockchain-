@@ -18,7 +18,7 @@ try:
     pool = MiningPool(
         pool_name='gpu-pool',
         algorithm='ethash',
-        port=4444,
+        port=3334,  # GPU pool Stratum port
         rpc_url=os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
     )
     # Expose Flask app for Vercel
