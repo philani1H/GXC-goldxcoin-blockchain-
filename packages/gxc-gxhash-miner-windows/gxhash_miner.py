@@ -188,10 +188,10 @@ class GXCMiner:
                     self.root.after(0, lambda: self.log(f"📊 Chain: {info.get('chain', 'unknown')}", "INFO"))
                     self.root.after(0, lambda: self.log(f"📊 Blocks: {info.get('blocks', 0)}", "INFO"))
                 else:
-                    # Try alternative endpoints
+                    # Try alternative endpoints (testnet ports)
                     alt_endpoints = [
                         ("http://127.0.0.1:8545", "http://127.0.0.1:8080"),
-                        ("http://localhost:8332", "http://localhost:8080"),
+                        ("http://localhost:18332", "http://localhost:8080"),  # Testnet port
                     ]
                     
                     for rpc, rest in alt_endpoints:
