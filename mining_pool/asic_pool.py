@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GXC ASIC Mining Pool (SHA-256)
-https://asic-pool.gxc.network
+Public endpoint for third-party ASIC miners
 """
 
 import os
@@ -12,14 +12,22 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
 from pool_base import MiningPool
+from pool_config import (
+    ASIC_POOL_STRATUM_URL,
+    ASIC_POOL_DASHBOARD_URL,
+    ASIC_POOL_HOST,
+    ASIC_POOL_STRATUM_PORT,
+    ASIC_POOL_DASHBOARD_PORT,
+    BLOCKCHAIN_NODE_URL
+)
 
 # Create pool instance (for Vercel deployment)
 try:
     pool = MiningPool(
         pool_name='asic-pool',
         algorithm='sha256',
-        port=3335,  # ASIC pool Stratum port
-        rpc_url=os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
+        port=ASIC_POOL_STRATUM_PORT,
+        rpc_url=BLOCKCHAIN_NODE_URL
     )
     # Expose Flask app for Vercel
     app = pool.app
@@ -35,10 +43,17 @@ if __name__ == '__main__':
     print("=" * 60)
     print("GXC ASIC Mining Pool (SHA-256)")
     print("=" * 60)
-    print(f"Stratum: stratum+tcp://localhost:3335")
-    print(f"Dashboard: http://localhost:6002")
+    print(f"Public Stratum Endpoint: {ASIC_POOL_STRATUM_URL}")
+    print(f"Public Dashboard: {ASIC_POOL_DASHBOARD_URL}")
+    print(f"Stratum Port: {ASIC_POOL_STRATUM_PORT} (listening on {ASIC_POOL_HOST})")
+    print(f"Dashboard Port: {ASIC_POOL_DASHBOARD_PORT}")
     print(f"Algorithm: SHA-256 (ASIC)")
+    print(f"Blockchain Node: {BLOCKCHAIN_NODE_URL}")
+    print("=" * 60)
+    print()
+    print("✅ Pool is PUBLIC - Third-party ASIC miners can connect!")
+    print(f"   Connect with: {ASIC_POOL_STRATUM_URL}")
     print("=" * 60)
     
-    pool.run(host='0.0.0.0', port=6002, debug=False, allow_unsafe_werkzeug=True)
+    pool.run(host=ASIC_POOL_HOST, port=ASIC_POOL_DASHBOARD_PORT, debug=False, allow_unsafe_werkzeug=True)
 

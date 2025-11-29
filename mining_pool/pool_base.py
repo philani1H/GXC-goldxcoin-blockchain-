@@ -26,6 +26,16 @@ class MiningPool:
         self.port = port
         self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
         
+        # Public endpoints for third-party miners
+        self.stratum_url = os.environ.get(
+            f'{pool_name.upper().replace("-", "_")}_STRATUM_URL',
+            os.environ.get('POOL_STRATUM_URL', f'stratum+tcp://{pool_name}.gxc.network:{port}')
+        )
+        self.dashboard_url = os.environ.get(
+            f'{pool_name.upper().replace("-", "_")}_DASHBOARD_URL',
+            os.environ.get('POOL_DASHBOARD_URL', f'https://{pool_name}.gxc.network')
+        )
+        
         # Pool state
         self.miners = {}  # miner_id -> MinerInfo
         self.current_job = None
@@ -677,6 +687,8 @@ class MiningPool:
                                  stats=stats,
                                  miners=miners,
                                  pool_port=self.port,
+                                 stratum_url=self.stratum_url,
+                                 dashboard_url=self.dashboard_url,
                                  docs_url=docs_url)
         
         @self.app.route('/api/stats')
@@ -764,7 +776,9 @@ class MiningPool:
                                  algorithm=self.algorithm,
                                  username=username,
                                  address=address,
-                                 pool_port=self.port)
+                                 pool_port=self.port,
+                                 stratum_url=self.stratum_url,
+                                 dashboard_url=self.dashboard_url)
         
         @self.app.route('/search', methods=['GET', 'POST'])
         def search_miner():
@@ -898,7 +912,9 @@ class MiningPool:
                                  pool_name=self.pool_name,
                                  algorithm=self.algorithm,
                                  miner=miner_stats,
-                                 pool_port=self.port)
+                                 pool_port=self.port,
+                                 stratum_url=self.stratum_url,
+                                 dashboard_url=self.dashboard_url)
         
         @self.app.route('/payouts')
         def payouts():
@@ -942,7 +958,9 @@ class MiningPool:
                                  algorithm=self.algorithm,
                                  stats=stats,
                                  pool_port=self.port,
-                                 rpc_url=self.rpc_url)
+                                 rpc_url=self.rpc_url,
+                                 stratum_url=self.stratum_url,
+                                 dashboard_url=self.dashboard_url)
         
         @self.app.route('/help')
         def help_page():
@@ -950,7 +968,9 @@ class MiningPool:
             return render_template('pool_help.html',
                                  pool_name=self.pool_name,
                                  algorithm=self.algorithm,
-                                 pool_port=self.port)
+                                 pool_port=self.port,
+                                 stratum_url=self.stratum_url,
+                                 dashboard_url=self.dashboard_url)
         
         @self.app.route('/statistics')
         def statistics():

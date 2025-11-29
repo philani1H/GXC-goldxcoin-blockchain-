@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GXC General Mining Pool (All Algorithms)
-https://pool.gxc.network
+Public endpoint for third-party miners
 """
 
 import os
@@ -12,14 +12,22 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
 from pool_base import MiningPool
+from pool_config import (
+    GENERAL_POOL_STRATUM_URL,
+    GENERAL_POOL_DASHBOARD_URL,
+    GENERAL_POOL_HOST,
+    GENERAL_POOL_STRATUM_PORT,
+    GENERAL_POOL_DASHBOARD_PORT,
+    BLOCKCHAIN_NODE_URL
+)
 
 # Create pool instance (for Vercel deployment)
 try:
     pool = MiningPool(
         pool_name='pool',
         algorithm='all',
-        port=3333,
-        rpc_url=os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
+        port=GENERAL_POOL_STRATUM_PORT,
+        rpc_url=BLOCKCHAIN_NODE_URL
     )
     # Expose Flask app for Vercel
     app = pool.app
@@ -35,10 +43,17 @@ if __name__ == '__main__':
     print("=" * 60)
     print("GXC General Mining Pool (All Algorithms)")
     print("=" * 60)
-    print(f"Stratum: stratum+tcp://localhost:3333")
-    print(f"Dashboard: http://localhost:6000")
+    print(f"Public Stratum Endpoint: {GENERAL_POOL_STRATUM_URL}")
+    print(f"Public Dashboard: {GENERAL_POOL_DASHBOARD_URL}")
+    print(f"Stratum Port: {GENERAL_POOL_STRATUM_PORT} (listening on {GENERAL_POOL_HOST})")
+    print(f"Dashboard Port: {GENERAL_POOL_DASHBOARD_PORT}")
     print(f"Algorithms: SHA-256, Ethash, GXHash")
+    print(f"Blockchain Node: {BLOCKCHAIN_NODE_URL}")
+    print("=" * 60)
+    print()
+    print("✅ Pool is PUBLIC - Third-party miners can connect!")
+    print(f"   Connect with: {GENERAL_POOL_STRATUM_URL}")
     print("=" * 60)
     
-    pool.run(host='0.0.0.0', port=6000, debug=False, allow_unsafe_werkzeug=True)
+    pool.run(host=GENERAL_POOL_HOST, port=GENERAL_POOL_DASHBOARD_PORT, debug=False, allow_unsafe_werkzeug=True)
 
