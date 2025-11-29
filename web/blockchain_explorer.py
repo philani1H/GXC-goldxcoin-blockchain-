@@ -4004,8 +4004,9 @@ def downloads_page():
         }
     except:
         pass
+    
     """Miner downloads page"""
-    return render_template('downloads.html')
+    return render_template('downloads.html', stratum_urls=stratum_urls)
 
 @app.route('/api/downloads/<platform>/<algorithm>')
 def download_miner(platform, algorithm):
