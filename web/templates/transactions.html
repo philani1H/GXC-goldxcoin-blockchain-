@@ -254,18 +254,18 @@
                             {% for tx in transactions %}
                             <tr>
                                 <td>
-                                    <a href="/tx/{{ tx.hash }}" class="hash-text text-decoration-none">
-                                        {{ tx.hash[:12] }}...
+                                    <a href="/tx/{{ tx.hash|default('') }}" class="hash-text text-decoration-none">
+                                        {{ (tx.hash|default('Unknown'))[:12] }}...
                                     </a>
                                 </td>
                                 <td>
-                                    <a href="/block/{{ tx.block }}" class="text-decoration-none fw-bold text-primary">
-                                        #{{ tx.block }}
+                                    <a href="/block/{{ tx.block|default(0) }}" class="text-decoration-none fw-bold text-primary">
+                                        #{{ tx.block|default(0) }}
                                     </a>
                                 </td>
                                 <td>
-                                    <a href="/address/{{ tx.from }}" class="address-link text-decoration-none">
-                                        {{ tx.from[:8] }}...
+                                    <a href="/address/{{ tx.from|default('') }}" class="address-link text-decoration-none">
+                                        {{ (tx.from|default('Unknown'))[:8] }}...
                                     </a>
                                 </td>
                                 <td>
@@ -281,7 +281,7 @@
                                 </td>
                                 <td>
                                     <span class="value-highlight">
-                                        {{ "%.4f"|format(tx.value) }} GXC
+                                        {{ "%.4f"|format(tx.value|default(0.0)) }} GXC
                                     </span>
                                 </td>
                                 <td>

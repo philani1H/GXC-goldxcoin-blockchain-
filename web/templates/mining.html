@@ -279,11 +279,15 @@
                                         {% for miner in top_miners.top_miners %}
                                         <tr>
                                             <td>
+                                                {% if miner.address %}
                                                 <a href="/address/{{ miner.address }}" class="text-decoration-none">
                                                     {{ miner.address[:10] }}...{{ miner.address[-8:] }}
                                                 </a>
+                                                {% else %}
+                                                <span class="text-muted">Unknown</span>
+                                                {% endif %}
                                             </td>
-                                            <td><span class="badge bg-primary rounded-pill">{{ miner.block_count }}</span></td>
+                                            <td><span class="badge bg-primary rounded-pill">{{ miner.block_count|default(0) }}</span></td>
                                         </tr>
                                         {% endfor %}
                                     {% else %}

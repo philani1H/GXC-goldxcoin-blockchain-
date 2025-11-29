@@ -5,6 +5,7 @@ Handles Stratum protocol, blockchain RPC connection, and pool management
 """
 
 import os
+import sys
 import json
 import sqlite3
 import requests
@@ -17,6 +18,14 @@ from typing import Dict, List, Optional, Tuple
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 from flask_socketio import SocketIO, emit
 
+# Import centralized network configuration
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from config.railway_config import get_rpc_url, get_network, get_network_config
+    USE_CENTRAL_CONFIG = True
+except ImportError:
+    USE_CENTRAL_CONFIG = False
+
 class MiningPool:
     """Base class for GXC mining pools"""
     
@@ -24,9 +33,17 @@ class MiningPool:
         self.pool_name = pool_name
         self.algorithm = algorithm
         self.port = port
-        # Use RAILWAY_NODE_URL from environment, fallback to Railway URL
-        railway_url = os.environ.get('RAILWAY_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
-        self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_NODE_URL', railway_url)
+        
+        # Use centralized network-aware configuration
+        if USE_CENTRAL_CONFIG:
+            self.rpc_url = rpc_url or get_rpc_url()
+            self.network = get_network()
+            self.network_config = get_network_config()
+        else:
+            # Fallback to environment variables
+            railway_url = os.environ.get('RAILWAY_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
+            self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_NODE_URL', railway_url)
+            self.network = os.environ.get('GXC_NETWORK', 'testnet')
         
         # Public endpoints for third-party miners
         self.stratum_url = os.environ.get(

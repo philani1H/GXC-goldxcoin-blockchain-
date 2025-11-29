@@ -11,6 +11,6 @@ echo "Installing dependencies..."
 pip3 install -r requirements.txt --user
 
 echo ""
-echo "✅ Installation complete!"
+echo "??? Installation complete!"
 echo ""
 echo "You can now run: python3 gxhash_miner.py"

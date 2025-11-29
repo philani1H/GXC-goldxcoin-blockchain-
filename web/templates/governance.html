@@ -44,13 +44,13 @@
                     <div class="col-md-6">
                         <div class="card proposal-card h-100">
                             <div class="card-body">
-                                <h6 class="card-title">{{ proposal.title }}</h6>
-                                <p class="card-text text-muted small">{{ proposal.description[:100] }}...</p>
+                                <h6 class="card-title">{{ proposal.title|default("Untitled Proposal") }}</h6>
+                                <p class="card-text text-muted small">{{ (proposal.description|default(""))[:100] }}...</p>
                                 <div class="d-flex justify-content-between align-items-center mt-3">
                                     <div>
-                                        <small class="text-muted">Votes: {{ "%.0f" % proposal.total_votes }}</small>
+                                        <small class="text-muted">Votes: {{ "%.0f"|format(proposal.total_votes|default(0.0)) }}</small>
                                     </div>
-                                    <a href="/api/governance/proposal/{{ proposal.proposal_id }}" class="btn btn-sm btn-primary">View Details</a>
+                                    <a href="/api/governance/proposal/{{ proposal.proposal_id|default(0) }}" class="btn btn-sm btn-primary">View Details</a>
                                 </div>
                             </div>
                         </div>
@@ -85,13 +85,19 @@
                         <tbody>
                             {% for proposal in proposals %}
                             <tr>
-                                <td>{{ proposal.title }}</td>
-                                <td><a href="/address/{{ proposal.proposer }}">{{ proposal.proposer[:16] }}...</a></td>
-                                <td><span class="badge bg-{% if proposal.status == 'active' %}success{% elif proposal.status == 'passed' %}primary{% else %}secondary{% endif %}">{{ proposal.status }}</span></td>
-                                <td>{{ "%.2f" % proposal.votes_for }}</td>
-                                <td>{{ "%.2f" % proposal.votes_against }}</td>
-                                <td>{{ "%.2f" % proposal.total_votes }}</td>
-                                <td><a href="/api/governance/proposal/{{ proposal.proposal_id }}" class="btn btn-sm btn-outline-primary">View</a></td>
+                                <td>{{ proposal.title|default("Untitled") }}</td>
+                                <td>
+                                    {% if proposal.proposer %}
+                                    <a href="/address/{{ proposal.proposer }}">{{ proposal.proposer[:16] }}...</a>
+                                    {% else %}
+                                    <span class="text-muted">Unknown</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="badge bg-{% if (proposal.status|default('pending')) == 'active' %}success{% elif (proposal.status|default('pending')) == 'passed' %}primary{% else %}secondary{% endif %}">{{ proposal.status|default("pending") }}</span></td>
+                                <td>{{ "%.2f"|format(proposal.votes_for|default(0.0)) }}</td>
+                                <td>{{ "%.2f"|format(proposal.votes_against|default(0.0)) }}</td>
+                                <td>{{ "%.2f"|format(proposal.total_votes|default(0.0)) }}</td>
+                                <td><a href="/api/governance/proposal/{{ proposal.proposal_id|default(0) }}" class="btn btn-sm btn-outline-primary">View</a></td>
                             </tr>
                             {% endfor %}
                         </tbody>

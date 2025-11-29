@@ -35,19 +35,19 @@
         <div class="row g-3 mb-4">
             <div class="col-md-4">
                 <div class="card text-center p-3">
-                    <div class="h3 text-primary">{{ "{:,}".format(stats.total_transfers) }}</div>
+                    <div class="h3 text-primary">{{ "{:,}".format(stats.total_transfers|default(0)) }}</div>
                     <div class="text-muted">Total Transfers</div>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="card text-center p-3">
-                    <div class="h3 text-primary">{{ "%.2f" % stats.total_volume }}</div>
+                    <div class="h3 text-primary">{{ "%.2f"|format(stats.total_volume|default(0.0)) }}</div>
                     <div class="text-muted">Total Volume</div>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="card text-center p-3">
-                    <div class="h3 text-primary">{{ stats.chains_supported }}</div>
+                    <div class="h3 text-primary">{{ stats.chains_supported|default(0) }}</div>
                     <div class="text-muted">Chains Supported</div>
                 </div>
             </div>
@@ -75,13 +75,19 @@
                         <tbody>
                             {% for transfer in transfers %}
                             <tr>
-                                <td><code>{{ transfer.transfer_id[:16] }}...</code></td>
-                                <td><span class="chain-badge bg-info text-white">{{ transfer.source_chain }}</span></td>
-                                <td>{{ transfer.source_asset }}</td>
-                                <td><strong>{{ "%.8f" % transfer.amount }}</strong></td>
-                                <td><a href="/address/{{ transfer.destination_address }}">{{ transfer.destination_address[:16] }}...</a></td>
-                                <td><span class="badge bg-{% if transfer.status == 'confirmed' %}success{% elif transfer.status == 'pending' %}warning{% else %}danger{% endif %}">{{ transfer.status }}</span></td>
-                                <td>{{ transfer.collected_signatures }}/{{ transfer.required_signatures }}</td>
+                                <td><code>{{ (transfer.transfer_id|default(""))[:16] }}...</code></td>
+                                <td><span class="chain-badge bg-info text-white">{{ transfer.source_chain|default("Unknown") }}</span></td>
+                                <td>{{ transfer.source_asset|default("N/A") }}</td>
+                                <td><strong>{{ "%.8f"|format(transfer.amount|default(0.0)) }}</strong></td>
+                                <td>
+                                    {% if transfer.destination_address %}
+                                    <a href="/address/{{ transfer.destination_address }}">{{ transfer.destination_address[:16] }}...</a>
+                                    {% else %}
+                                    <span class="text-muted">Unknown</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="badge bg-{% if (transfer.status|default('pending')) == 'confirmed' %}success{% elif (transfer.status|default('pending')) == 'pending' %}warning{% else %}danger{% endif %}">{{ transfer.status|default("pending") }}</span></td>
+                                <td>{{ transfer.collected_signatures|default(0) }}/{{ transfer.required_signatures|default(0) }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -110,17 +116,17 @@
                         <tbody>
                             {% for validator in validators %}
                             <tr>
-                                <td><code>{{ validator.validator_id[:16] }}...</code></td>
-                                <td><strong>{{ "%.2f" % validator.collateral }} GXC</strong></td>
-                                <td>{{ "{:,}".format(validator.transfers_validated) }}</td>
+                                <td><code>{{ (validator.validator_id|default(""))[:16] }}...</code></td>
+                                <td><strong>{{ "%.2f"|format(validator.collateral|default(0.0)) }} GXC</strong></td>
+                                <td>{{ "{:,}".format(validator.transfers_validated|default(0)) }}</td>
                                 <td>
-                                    {% if validator.is_active %}
+                                    {% if validator.is_active|default(False) %}
                                     <span class="badge bg-success">Active</span>
                                     {% else %}
                                     <span class="badge bg-secondary">Inactive</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ validator.last_seen or 'N/A' }}</td>
+                                <td>{{ validator.last_seen|default('N/A') }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>

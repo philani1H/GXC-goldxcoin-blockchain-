@@ -92,16 +92,16 @@
             <div class="row align-items-center">
                 <div class="col-md-8">
                     <div class="mb-2 opacity-75">Current Price</div>
-                    <div class="price-value">${{ "{:.4f}".format(price_data.current_price) }}</div>
+                    <div class="price-value">${{ "{:.4f}".format(price_data.current_price|default(0.0)) }}</div>
                     <div class="mt-2">
-                        <span class="me-3">BTC: {{ "{:.8f}".format(price_data.price_btc) }}</span>
-                        <span>Market Cap: ${{ "{:,.0f}".format(price_data.market_cap) }}</span>
+                        <span class="me-3">BTC: {{ "{:.8f}".format(price_data.price_btc|default(0.0)) }}</span>
+                        <span>Market Cap: ${{ "{:,.0f}".format(price_data.market_cap|default(0.0)) }}</span>
                     </div>
                 </div>
                 <div class="col-md-4 text-end">
                     <div class="mb-2 opacity-75">24h Volume</div>
                     <div style="font-size: 1.5rem; font-weight: 600;">
-                        ${{ "{:,.0f}".format(price_data.volume_24h) }}
+                        ${{ "{:,.0f}".format(price_data.volume_24h|default(0.0)) }}
                     </div>
                 </div>
             </div>
@@ -112,7 +112,7 @@
             <div class="col-md-4">
                 <div class="card text-center p-3">
                     <div style="font-size: 1.25rem; font-weight: 600; color: #667eea;">
-                        ${{ "{:,.0f}".format(price_data.market_cap) }}
+                        ${{ "{:,.0f}".format(price_data.market_cap|default(0.0)) }}
                     </div>
                     <small class="text-muted">Market Cap</small>
                 </div>
@@ -120,7 +120,7 @@
             <div class="col-md-4">
                 <div class="card text-center p-3">
                     <div style="font-size: 1.25rem; font-weight: 600; color: #667eea;">
-                        {{ "{:,.0f}".format(price_data.supply_circulating) }}
+                        {{ "{:,.0f}".format(price_data.supply_circulating|default(31000000)) }}
                     </div>
                     <small class="text-muted">Circulating Supply</small>
                 </div>
@@ -128,7 +128,7 @@
             <div class="col-md-4">
                 <div class="card text-center p-3">
                     <div style="font-size: 1.25rem; font-weight: 600; color: #667eea;">
-                        ${{ "{:,.0f}".format(price_data.volume_24h) }}
+                        ${{ "{:,.0f}".format(price_data.volume_24h|default(0.0)) }}
                     </div>
                     <small class="text-muted">24h Volume</small>
                 </div>

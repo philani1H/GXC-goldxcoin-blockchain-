@@ -365,12 +365,16 @@ def main():
         RPCHandler.blockchain = blockchain
         
         # Start RPC server
-        # Use 0.0.0.0 for Railway/cloud deployment, 127.0.0.1 for local
-        host = '0.0.0.0' if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('PORT') else '127.0.0.1'
+        # Always bind to 0.0.0.0 for better compatibility (accessible via localhost and 127.0.0.1)
+        host = '0.0.0.0'
         server_address = (host, port)
         httpd = HTTPServer(server_address, RPCHandler)
         
-        print(f"[BLOCKCHAIN] RPC server started on http://{host}:{port}")
+        if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('PORT'):
+            print(f"[BLOCKCHAIN] RPC server started on http://0.0.0.0:{port} (Railway)")
+        else:
+            print(f"[BLOCKCHAIN] RPC server started on http://localhost:{port}")
+            print(f"[BLOCKCHAIN] Accessible at: http://localhost:{port} or http://127.0.0.1:{port}")
         print(f"[BLOCKCHAIN] Current height: {blockchain.current_height}")
         print(f"[BLOCKCHAIN] Current difficulty: {blockchain.current_difficulty}")
         print()

@@ -46,18 +46,26 @@ if __name__ == '__main__':
     # Get port from Railway environment (for dashboard)
     dashboard_port = int(os.environ.get('PORT', GENERAL_POOL_DASHBOARD_PORT))
     
-    # Get Railway public URL if available
-    railway_public_url = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
-    railway_service_url = os.environ.get('RAILWAY_STATIC_URL', '')
+    # Get Railway domain - prioritize explicit environment variables
+    explicit_stratum_url = os.environ.get('GENERAL_POOL_STRATUM_URL', '')
+    explicit_dashboard_url = os.environ.get('GENERAL_POOL_DASHBOARD_URL', '')
     
-    # Determine public URLs
-    if railway_public_url:
-        public_stratum_url = f"stratum+tcp://{railway_public_url}:{GENERAL_POOL_STRATUM_PORT}"
-        public_dashboard_url = f"https://{railway_public_url}"
-    elif railway_service_url:
-        public_stratum_url = f"stratum+tcp://{railway_service_url}:{GENERAL_POOL_STRATUM_PORT}"
-        public_dashboard_url = f"https://{railway_service_url}"
+    # Check if we're running on Railway
+    is_railway = os.environ.get('PORT') and os.environ.get('RAILWAY_ENVIRONMENT')
+    
+    # Determine public URLs - use Railway domain when on Railway
+    if explicit_stratum_url and explicit_dashboard_url:
+        # Use explicit URLs from railway.toml
+        public_stratum_url = explicit_stratum_url
+        public_dashboard_url = explicit_dashboard_url
+    elif is_railway:
+        # On Railway - use the actual Railway domain
+        # Railway domain format: project-name-production.up.railway.app
+        domain = "gxc-pool-production.up.railway.app"
+        public_stratum_url = f"stratum+tcp://{domain}:{GENERAL_POOL_STRATUM_PORT}"
+        public_dashboard_url = f"https://{domain}"
     else:
+        # Local development - use defaults
         public_stratum_url = GENERAL_POOL_STRATUM_URL
         public_dashboard_url = GENERAL_POOL_DASHBOARD_URL
     

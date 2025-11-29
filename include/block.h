@@ -37,6 +37,7 @@ private:
     
 public:
     // Constructors
+    Block(); // Default constructor
     Block(uint32_t indexIn, const std::string& previousHashIn, BlockType type);
     
     // Mining and validation
@@ -46,6 +47,7 @@ public:
     // Transaction management
     bool addTransaction(const Transaction& transaction);
     void calculateMerkleRoot();
+    std::string calculateMerkleRoot() const; // Const version for validation
     
     // Hash calculations
     std::string calculateHash() const;
@@ -69,6 +71,12 @@ public:
     std::string getPopReference() const { return popReference; }
     
     // Setters
+    void setIndex(uint32_t idx) { index = idx; }
+    void setPreviousHash(const std::string& prevHash) { previousHash = prevHash; }
+    void setTimestamp(std::time_t ts) { timestamp = ts; }
+    void setDifficulty(double diff) { difficulty = diff; }
+    void setNonce(uint64_t n) { nonce = n; }
+    void incrementNonce() { nonce++; }
     void setMinerAddress(const std::string& address) { minerAddress = address; }
     void setValidatorSignature(const std::string& signature) { validatorSignature = signature; }
     void setBlockReward(double reward) { blockReward = reward; }

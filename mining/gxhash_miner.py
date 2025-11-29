@@ -19,14 +19,31 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 import os
 
+# Import centralized network configuration
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+try:
+    from config.railway_config import (
+        get_network, get_rpc_url, get_rest_url, get_miner_address, get_network_config
+    )
+    USE_CENTRAL_CONFIG = True
+except ImportError:
+    USE_CENTRAL_CONFIG = False
+    print("[WARNING] Central config not found, using default configuration")
+
 class BlockchainClient:
     """Client for connecting to GXC blockchain node"""
     
     def __init__(self, rpc_url: str = None, rest_url: str = None):
-        # Use Railway URL from environment, fallback to Railway URL for production
-        RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
-        self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL))
-        self.rest_url = rest_url or os.environ.get('BLOCKCHAIN_REST_URL', self.rpc_url)
+        if USE_CENTRAL_CONFIG:
+            self.rpc_url = rpc_url or get_rpc_url()
+            self.rest_url = rest_url or get_rest_url()
+            self.network = get_network()
+        else:
+            # Fallback to default configuration
+            RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+            self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL))
+            self.rest_url = rest_url or os.environ.get('BLOCKCHAIN_REST_URL', self.rpc_url)
+            self.network = os.environ.get('GXC_NETWORK', 'testnet')
         self.session = requests.Session()
         self.session.timeout = 10
         

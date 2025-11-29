@@ -188,23 +188,27 @@
 
                             <div class="mb-3">
                                 <small class="text-muted d-block mb-1">Address</small>
+                                {% if val.address %}
                                 <a href="/address/{{ val.address }}"
                                     class="address-link text-decoration-none text-truncate d-block">
                                     {{ val.address[:10] }}...{{ val.address[-8:] }}
                                 </a>
+                                {% else %}
+                                <span class="text-muted">Unknown</span>
+                                {% endif %}
                             </div>
 
                             <div class="row g-2 mb-3">
                                 <div class="col-6">
                                     <div class="p-2 bg-light rounded">
                                         <small class="text-muted d-block" style="font-size: 0.7rem">STAKE</small>
-                                        <span class="fw-bold">{{ "{:,.2f}".format(val.stake or 0) }}</span>
+                                        <span class="fw-bold">{{ "{:,.2f}".format(val.stake|default(0.0)) }}</span>
                                     </div>
                                 </div>
                                 <div class="col-6">
                                     <div class="p-2 bg-light rounded">
                                         <small class="text-muted d-block" style="font-size: 0.7rem">BLOCKS</small>
-                                        <span class="fw-bold">{{ val.blocks_mined or 0 }}</span>
+                                        <span class="fw-bold">{{ val.blocks_mined|default(0) }}</span>
                                     </div>
                                 </div>
                             </div>

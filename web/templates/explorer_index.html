@@ -422,6 +422,32 @@
         </div>
     </nav>
 
+    <!-- Connection Status Banner -->
+    {% if connection_info and not connection_info.connected %}
+    <div class="container mt-3">
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Blockchain node not connected!</strong> 
+            The explorer is currently using cached data only. 
+            {% if network_info %}
+            <span class="badge bg-secondary ms-2">{{ network_info.network }}</span>
+            {% endif %}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>
+    {% elif connection_info and connection_info.connected %}
+    <div class="container mt-3">
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>Connected to {{ connection_info.active_node|upper }} node</strong>
+            {% if network_info %}
+            <span class="badge bg-primary ms-2">{{ network_info.network }}</span>
+            {% endif %}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Search Bar -->
     <div class="container mt-4">
         <div class="row justify-content-center">
@@ -464,7 +490,7 @@
                         <div class="stats-label">
                             <i class="fas fa-cubes me-2"></i>Total Blocks
                         </div>
-                        <div class="stats-value">{{ "{:,}".format(stats.total_blocks) }}</div>
+                        <div class="stats-value">{{ "{:,}".format(stats.total_blocks|default(0)) }}</div>
                     </div>
                 </div>
             </div>
@@ -474,7 +500,7 @@
                         <div class="stats-label">
                             <i class="fas fa-exchange-alt me-2"></i>Transactions
                         </div>
-                        <div class="stats-value">{{ "{:,}".format(stats.total_transactions) }}</div>
+                        <div class="stats-value">{{ "{:,}".format(stats.total_transactions|default(0)) }}</div>
                     </div>
                 </div>
             </div>
@@ -484,7 +510,7 @@
                         <div class="stats-label">
                             <i class="fas fa-users me-2"></i>Addresses
                         </div>
-                        <div class="stats-value">{{ "{:,}".format(stats.total_addresses) }}</div>
+                        <div class="stats-value">{{ "{:,}".format(stats.total_addresses|default(0)) }}</div>
                     </div>
                 </div>
             </div>
@@ -494,7 +520,7 @@
                         <div class="stats-label">
                             <i class="fas fa-coins me-2"></i>Total Supply
                         </div>
-                        <div class="stats-value">{{ "{:,.0f}".format(stats.total_supply) }}</div>
+                        <div class="stats-value">{{ "{:,.0f}".format(stats.total_supply|default(0)) }}</div>
                         <small class="d-block mt-1 opacity-75">GXC</small>
                     </div>
                 </div>
@@ -526,40 +552,63 @@
                                     </tr>
                                 </thead>
                                 <tbody id="blocks-table">
-                                    {% for block in blocks %}
-                                    <tr>
-                                        <td>
-                                            <a href="/block/{{ block.number }}" class="text-decoration-none">
-                                                {{ block.number }}
-                                            </a>
-                                        </td>
-                                        <td class="text-muted small">
-                                            <script>
-                                                document.write(timeAgo('{{ block.timestamp }}'));
-                                            </script>
-                                        </td>
-                                        <td>
-                                            <span class="badge badge-modern bg-secondary">{{ block.tx_count }}</span>
-                                        </td>
-                                        <td>
-                                            <a href="/address/{{ block.miner }}"
-                                                class="address-link text-decoration-none">
-                                                {{ block.miner[:10] }}...
-                                            </a>
-                                        </td>
-                                        <td>
-                                            {% if block.consensus_type == 'pow' %}
-                                            <span class="badge-modern badge-pow">
-                                                <span class="block-type-indicator pow-indicator"></span>PoW
-                                            </span>
-                                            {% else %}
-                                            <span class="badge-modern badge-pos">
-                                                <span class="block-type-indicator pos-indicator"></span>PoS
-                                            </span>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
+                                    {% if blocks and blocks|length > 0 %}
+                                        {% for block in blocks %}
+                                        <tr>
+                                            <td>
+                                                <a href="/block/{{ block.number|default(0) }}" class="text-decoration-none">
+                                                    {{ block.number|default(0) }}
+                                                </a>
+                                            </td>
+                                            <td class="text-muted small">
+                                                <script>
+                                                    document.write(timeAgo('{{ block.timestamp|default("") }}'));
+                                                </script>
+                                            </td>
+                                            <td>
+                                                <span class="badge badge-modern bg-secondary">{{ block.tx_count|default(0) }}</span>
+                                            </td>
+                                            <td>
+                                                {% if block.miner %}
+                                                <a href="/address/{{ block.miner }}"
+                                                    class="address-link text-decoration-none">
+                                                    {{ block.miner[:10] }}...
+                                                </a>
+                                                {% else %}
+                                                <span class="text-muted">Unknown</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if (block.consensus_type|default('pow')) == 'pow' %}
+                                                <span class="badge-modern badge-pow">
+                                                    <span class="block-type-indicator pow-indicator"></span>PoW
+                                                </span>
+                                                {% else %}
+                                                <span class="badge-modern badge-pos">
+                                                    <span class="block-type-indicator pos-indicator"></span>PoS
+                                                </span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="5" class="text-center py-5 text-muted">
+                                                <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
+                                                <p class="mb-0">No blocks found in database</p>
+                                                <small>
+                                                    {% if connection_info and not connection_info.connected %}
+                                                    <span class="text-warning">
+                                                        <i class="fas fa-exclamation-triangle"></i> 
+                                                        Blockchain node is not connected. Explorer will show data once connected.
+                                                    </span>
+                                                    {% else %}
+                                                    Waiting for blocks to be mined...
+                                                    {% endif %}
+                                                </small>
+                                            </td>
+                                        </tr>
+                                    {% endif %}
                                 </tbody>
                             </table>
                         </div>
@@ -593,37 +642,60 @@
                                     </tr>
                                 </thead>
                                 <tbody id="transactions-table">
-                                    {% for tx in transactions %}
-                                    <tr>
-                                        <td>
-                                            <a href="/tx/{{ tx.hash }}" class="hash-text text-decoration-none">
-                                                {{ tx.hash[:12] }}...
-                                            </a>
-                                        </td>
-                                        <td>
-                                            <a href="/address/{{ tx.from }}" class="address-link text-decoration-none">
-                                                {{ tx.from[:8] }}...
-                                            </a>
-                                        </td>
-                                        <td>
-                                            {% if tx.to %}
-                                            <a href="/address/{{ tx.to }}" class="address-link text-decoration-none">
-                                                {{ tx.to[:8] }}...
-                                            </a>
-                                            {% else %}
-                                            <span class="text-muted">Contract Creation</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            <span class="value-highlight">{{ "%.4f"|format(tx.value) }} GXC</span>
-                                        </td>
-                                        <td class="text-muted small">
-                                            <script>
-                                                document.write(timeAgo('{{ tx.timestamp }}'));
-                                            </script>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
+                                    {% if transactions and transactions|length > 0 %}
+                                        {% for tx in transactions %}
+                                        <tr>
+                                            <td>
+                                                <a href="/tx/{{ tx.hash|default('') }}" class="hash-text text-decoration-none">
+                                                    {{ (tx.hash|default('Unknown'))[:12] }}...
+                                                </a>
+                                            </td>
+                                            <td>
+                                                {% if tx.from %}
+                                                <a href="/address/{{ tx.from }}" class="address-link text-decoration-none">
+                                                    {{ tx.from[:8] }}...
+                                                </a>
+                                                {% else %}
+                                                <span class="text-muted">Coinbase</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if tx.to %}
+                                                <a href="/address/{{ tx.to }}" class="address-link text-decoration-none">
+                                                    {{ tx.to[:8] }}...
+                                                </a>
+                                                {% else %}
+                                                <span class="text-muted">Contract Creation</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="value-highlight">{{ "%.4f"|format(tx.value|default(0.0)) }} GXC</span>
+                                            </td>
+                                            <td class="text-muted small">
+                                                <script>
+                                                    document.write(timeAgo('{{ tx.timestamp|default("") }}'));
+                                                </script>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="5" class="text-center py-5 text-muted">
+                                                <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
+                                                <p class="mb-0">No transactions found in database</p>
+                                                <small>
+                                                    {% if connection_info and not connection_info.connected %}
+                                                    <span class="text-warning">
+                                                        <i class="fas fa-exclamation-triangle"></i> 
+                                                        Blockchain node is not connected. Explorer will show transactions once blocks are synced.
+                                                    </span>
+                                                    {% else %}
+                                                    Waiting for transactions...
+                                                    {% endif %}
+                                                </small>
+                                            </td>
+                                        </tr>
+                                    {% endif %}
                                 </tbody>
                             </table>
                         </div>
@@ -762,7 +834,7 @@
                     <div class="row g-3">
                         <div class="col-6">
                             <div class="bg-white bg-opacity-10 rounded p-3 text-center">
-                                <div class="fw-bold">{{ "{:,}".format(stats.total_blocks) }}</div>
+                                <div class="fw-bold">{{ "{:,}".format(stats.total_blocks|default(0)) }}</div>
                                 <small class="opacity-75">Latest Block</small>
                             </div>
                         </div>
@@ -840,8 +912,12 @@
                     const toast = new bootstrap.Toast(toastElement);
                     const toastBody = document.getElementById('toast-body');
                     if (toastBody) {
+                        const blockNum = block.number || block.block_number || block.height || 0;
+                        const miner = block.miner || block.miner_address || '';
+                        const txCount = (block.transactions || []).length || block.transaction_count || block.tx_count || 0;
+                        const minerDisplay = miner ? `${miner.substring(0, 10)}...` : 'Unknown';
                         toastBody.innerHTML =
-                            `Block #${block.number || block.block_number} mined by ${(block.miner || '').substring(0, 10)}... with ${(block.transactions || []).length} transactions`;
+                            `Block #${blockNum} mined by ${minerDisplay} with ${txCount} transactions`;
                         toast.show();
                     }
                 }
@@ -860,19 +936,28 @@
             const tbody = document.getElementById('blocks-table');
             if (!tbody) return;
             
-            const blockNumber = newBlock.number || newBlock.block_number || 0;
-            const miner = newBlock.miner || '';
-            const txCount = (newBlock.transactions || []).length;
+            const blockNumber = newBlock.number || newBlock.block_number || newBlock.height || 0;
+            const miner = newBlock.miner || newBlock.miner_address || '';
+            const txCount = (newBlock.transactions || []).length || newBlock.transaction_count || newBlock.tx_count || 0;
             const consensusType = newBlock.consensus_type || newBlock.consensusType || 'pow';
             
             const row = tbody.insertRow(0);
+            
+            // Handle empty miner address
+            const minerCell = miner ? 
+                `<a href="/address/${miner}" class="address-link text-decoration-none">${miner.substring(0, 10)}...</a>` :
+                `<span class="text-muted">Unknown</span>`;
 
             row.innerHTML = `
                 <td><a href="/block/${blockNumber}" class="text-decoration-none">${blockNumber}</a></td>
                 <td class="text-muted small">just now</td>
-                <td><span class="badge bg-secondary">${txCount}</span></td>
-                <td><a href="/address/${miner}" class="address-link text-decoration-none">${miner.substring(0, 10)}...</a></td>
-                <td><span class="badge bg-${consensusType === 'pos' ? 'success' : 'warning'}">${consensusType.toUpperCase()}</span></td>
+                <td><span class="badge badge-modern bg-secondary">${txCount}</span></td>
+                <td>${minerCell}</td>
+                <td>
+                    ${consensusType === 'pos' ? 
+                        '<span class="badge-modern badge-pos"><span class="block-type-indicator pos-indicator"></span>PoS</span>' : 
+                        '<span class="badge-modern badge-pow"><span class="block-type-indicator pow-indicator"></span>PoW</span>'}
+                </td>
             `;
 
             // Remove last row if we have more than 10
@@ -1010,7 +1095,7 @@
         if (typeof socket !== 'undefined' && socket) {
             socket.on('new_block', function(data) {
                 if (notificationPermission) {
-                    const blockNum = data.number || data.block_number || 0;
+                    const blockNum = data.number || data.block_number || data.height || 0;
                     showNotification('New Block Mined', `Block #${blockNum} has been mined`, '/static/favicon.ico');
                 }
             });

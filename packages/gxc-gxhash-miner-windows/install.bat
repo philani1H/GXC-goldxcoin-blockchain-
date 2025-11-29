@@ -18,7 +18,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo ✅ Installation complete!
+echo ??? Installation complete!
 echo.
 echo You can now run: python gxhash_miner.py
 echo.

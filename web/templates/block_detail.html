@@ -195,14 +195,14 @@
             <div class="d-flex align-items-center justify-content-between flex-wrap">
                 <div>
                     <h1 class="display-5 fw-bold mb-2">
-                        <i class="fas fa-cube me-3"></i>Block #{{ block[0] }}
+                        <i class="fas fa-cube me-3"></i>Block #{{ block[0]|default(0) }}
                     </h1>
                     <p class="mb-0 opacity-90">
-                        <i class="fas fa-clock me-2"></i>{{ block[3] }}
+                        <i class="fas fa-clock me-2"></i>{{ block[3]|default("Unknown") }}
                     </p>
                 </div>
                 <div>
-                    {% if block[12] == 'pow' %}
+                    {% if block[12]|default('pow') == 'pow' %}
                     <span class="badge-modern badge-pow fs-5">
                         <i class="fas fa-hammer me-2"></i>Proof of Work
                     </span>
@@ -222,25 +222,25 @@
         <div class="row g-3 mb-4">
             <div class="col-md-3 col-6">
                 <div class="stat-card">
-                    <div class="stat-value">{{ block[10] }}</div>
+                    <div class="stat-value">{{ block[10]|default(0) }}</div>
                     <div class="stat-label"><i class="fas fa-exchange-alt me-1"></i>Transactions</div>
                 </div>
             </div>
             <div class="col-md-3 col-6">
                 <div class="stat-card">
-                    <div class="stat-value">{{ "%.2f"|format(block[11]) }}</div>
+                    <div class="stat-value">{{ "%.2f"|format(block[11]|default(12.5)) }}</div>
                     <div class="stat-label"><i class="fas fa-coins me-1"></i>Reward (GXC)</div>
                 </div>
             </div>
             <div class="col-md-3 col-6">
                 <div class="stat-card">
-                    <div class="stat-value">{{ "%.0f"|format(block[7]) }}</div>
+                    <div class="stat-value">{{ "%.0f"|format(block[7]|default(0)) }}</div>
                     <div class="stat-label"><i class="fas fa-database me-1"></i>Size (bytes)</div>
                 </div>
             </div>
             <div class="col-md-3 col-6">
                 <div class="stat-card">
-                    <div class="stat-value">{{ "%.2f"|format(block[5]) }}</div>
+                    <div class="stat-value">{{ "%.2f"|format(block[5]|default(0.1)) }}</div>
                     <div class="stat-label"><i class="fas fa-chart-line me-1"></i>Difficulty</div>
                 </div>
             </div>
@@ -256,7 +256,7 @@
                     <div class="row">
                         <div class="col-md-3 info-label">Block Hash</div>
                         <div class="col-md-9 info-value">
-                            <div class="hash-text">{{ block[1] }}</div>
+                            <div class="hash-text">{{ block[1]|default("N/A") }}</div>
                         </div>
                     </div>
                 </div>
@@ -264,7 +264,7 @@
                     <div class="row">
                         <div class="col-md-3 info-label">Parent Hash</div>
                         <div class="col-md-9 info-value">
-                            <div class="hash-text">{{ block[2] }}</div>
+                            <div class="hash-text">{{ block[2]|default("N/A") }}</div>
                         </div>
                     </div>
                 </div>
@@ -272,9 +272,13 @@
                     <div class="row">
                         <div class="col-md-3 info-label">Miner</div>
                         <div class="col-md-9 info-value">
+                            {% if block[4] %}
                             <a href="/address/{{ block[4] }}" class="text-decoration-none">
                                 <div class="hash-text">{{ block[4] }}</div>
                             </a>
+                            {% else %}
+                            <span class="text-muted">Unknown</span>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -282,7 +286,7 @@
                     <div class="row">
                         <div class="col-md-3 info-label">Timestamp</div>
                         <div class="col-md-9 info-value">
-                            <i class="fas fa-calendar-alt text-primary me-2"></i>{{ block[3] }}
+                            <i class="fas fa-calendar-alt text-primary me-2"></i>{{ block[3]|default("Unknown") }}
                         </div>
                     </div>
                 </div>
@@ -290,7 +294,7 @@
                     <div class="row">
                         <div class="col-md-3 info-label">Difficulty</div>
                         <div class="col-md-9 info-value">
-                            {{ "%.6f"|format(block[5]) }}
+                            {{ "%.6f"|format(block[5]|default(0.1)) }}
                         </div>
                     </div>
                 </div>
@@ -298,7 +302,7 @@
                     <div class="row">
                         <div class="col-md-3 info-label">Total Difficulty</div>
                         <div class="col-md-9 info-value">
-                            {{ "%.6f"|format(block[6]) }}
+                            {{ "%.6f"|format(block[6]|default(block[5]|default(0.1))) }}
                         </div>
                     </div>
                 </div>

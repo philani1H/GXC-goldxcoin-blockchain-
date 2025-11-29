@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api.py"
+    }
+  ],
+  "env": {
+    "VERCEL": "1",
+    "DATABASE_PATH": "/tmp/gxc_wallets.db",
+    "BACKUP_STORAGE_PATH": "/tmp/wallet_backups/",
+    "RAILWAY_NODE_URL": "https://gxc-chain112-blockchain-node-production.up.railway.app",
+    "BLOCKCHAIN_NODE_URL": "https://gxc-chain112-blockchain-node-production.up.railway.app"
+  }
+}
+

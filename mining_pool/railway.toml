@@ -28,6 +28,7 @@ GENERAL_POOL_STRATUM_PORT = "3333"
 GENERAL_POOL_DASHBOARD_PORT = "6000"
 GENERAL_POOL_HOST = "0.0.0.0"
 
-# Public URLs (set these to your Railway pool URLs after deployment)
-# GENERAL_POOL_STRATUM_URL = "stratum+tcp://your-pool.up.railway.app:3333"
-# GENERAL_POOL_DASHBOARD_URL = "https://your-pool-dashboard.up.railway.app"
+# Public URLs (updated with actual Railway domain)
+# These will be used by the pool server
+GENERAL_POOL_STRATUM_URL = "stratum+tcp://gxc-pool-production.up.railway.app:3333"
+GENERAL_POOL_DASHBOARD_URL = "https://gxc-pool-production.up.railway.app"

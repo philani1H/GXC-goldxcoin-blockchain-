@@ -18,14 +18,51 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'gxc_explorer_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Railway Node URL (Testnet)
-RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+# Network Configuration
+NETWORK = os.environ.get('GXC_NETWORK', 'testnet').lower()  # 'testnet' or 'mainnet'
+NETWORK_CONFIG = {
+    'testnet': {
+        'address_prefix': 'tGXC',
+        'block_time': 60,
+        'difficulty': 0.1,
+        'block_reward': 12.5,
+        'rpc_port': 18332,
+        'railway_url': 'https://gxc-chain112-blockchain-node-production.up.railway.app',
+        'local_url': 'http://localhost:18332',
+    },
+    'mainnet': {
+        'address_prefix': 'GXC',
+        'block_time': 600,
+        'difficulty': 1.0,
+        'block_reward': 50.0,
+        'rpc_port': 8332,
+        'railway_url': None,  # Set when mainnet Railway node is deployed
+        'local_url': 'http://localhost:8332',
+    }
+}
+
+# Get current network config
+CURRENT_NETWORK = NETWORK_CONFIG.get(NETWORK, NETWORK_CONFIG['testnet'])
+
+# Railway Node URLs - Network specific
+RAILWAY_NODE_URL = CURRENT_NETWORK.get('railway_url') or NETWORK_CONFIG['testnet']['railway_url']
+LOCAL_NODE_URL = CURRENT_NETWORK['local_url']
 
 # Configuration
-# Use Railway URL from environment, fallback to Railway URL for production
-BLOCKCHAIN_NODE_URL = os.environ.get('BLOCKCHAIN_NODE_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL))  # GXC node RPC endpoint
-# Use /tmp for Vercel (writable), otherwise use local path
-DATABASE_PATH = os.environ.get('DATABASE_PATH', '/tmp/gxc_explorer.db' if os.path.exists('/tmp') else 'gxc_explorer.db')
+# Use Railway URL from environment, fallback to network-specific Railway URL
+BLOCKCHAIN_NODE_URL = os.environ.get('BLOCKCHAIN_NODE_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL))
+# Active node URL (will be set by connection test)
+ACTIVE_NODE_URL = BLOCKCHAIN_NODE_URL
+ACTIVE_NODE_TYPE = None  # 'railway' or 'local'
+CONNECTION_STATUS = {
+    'railway': {'connected': False, 'last_check': None, 'error': None},
+    'local': {'connected': False, 'last_check': None, 'error': None}
+}
+
+# Network-aware database path - separate databases for testnet/mainnet
+base_db_path = '/tmp' if os.path.exists('/tmp') else '.'
+db_filename = f'gxc_explorer_{NETWORK}.db'
+DATABASE_PATH = os.environ.get('DATABASE_PATH', os.path.join(base_db_path, db_filename))
 
 # Helper function for safe integer conversion from request parameters
 def safe_int(value, default=0, min_val=None, max_val=None):
@@ -74,6 +111,224 @@ def safe_float(value, default=0.0, min_val=None, max_val=None):
         return result
     except (ValueError, TypeError):
         return default
+
+# Global RPC call helper with better error handling
+def rpc_call(method, params=None, timeout=10, retry=True, show_errors=True):
+    """
+    Make RPC call to blockchain node with robust error handling and fallback
+    
+    Args:
+        method: RPC method name
+        params: RPC parameters (list or dict)
+        timeout: Request timeout in seconds
+        retry: Whether to retry with fallback node
+        show_errors: Whether to print error messages
+    
+    Returns:
+        RPC result or None on failure
+    """
+    global ACTIVE_NODE_URL, ACTIVE_NODE_TYPE, CONNECTION_STATUS
+    
+    if params is None:
+        params = []
+    
+    payload = {
+        'jsonrpc': '2.0',
+        'method': method,
+        'params': params if isinstance(params, list) else [params] if params else [],
+        'id': 1
+    }
+    
+    # Try active node first
+    nodes_to_try = []
+    if ACTIVE_NODE_TYPE == 'railway' or ACTIVE_NODE_URL == RAILWAY_NODE_URL:
+        nodes_to_try = [('railway', RAILWAY_NODE_URL), ('local', LOCAL_NODE_URL)]
+    else:
+        nodes_to_try = [('local', LOCAL_NODE_URL), ('railway', RAILWAY_NODE_URL)]
+    
+    for node_type, node_url in nodes_to_try:
+        try:
+            response = requests.post(node_url, json=payload, timeout=timeout)
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Check for RPC error
+                if 'error' in result:
+                    error_msg = result['error']
+                    CONNECTION_STATUS[node_type]['error'] = str(error_msg)
+                    if show_errors:
+                        print(f"[RPC] {node_type.upper()} node error: {error_msg}")
+                    continue  # Try next node
+                
+                # Success!
+                if 'result' in result and result['result'] is not None:
+                    CONNECTION_STATUS[node_type]['connected'] = True
+                    CONNECTION_STATUS[node_type]['last_check'] = time.time()
+                    CONNECTION_STATUS[node_type]['error'] = None
+                    ACTIVE_NODE_URL = node_url
+                    ACTIVE_NODE_TYPE = node_type
+                    return result['result']
+                elif 'result' in result:
+                    # Result is None or empty, which is valid for some methods
+                    CONNECTION_STATUS[node_type]['connected'] = True
+                    CONNECTION_STATUS[node_type]['last_check'] = time.time()
+                    CONNECTION_STATUS[node_type]['error'] = None
+                    ACTIVE_NODE_URL = node_url
+                    ACTIVE_NODE_TYPE = node_type
+                    return result.get('result')
+            else:
+                CONNECTION_STATUS[node_type]['error'] = f"HTTP {response.status_code}"
+                if show_errors and retry:
+                    print(f"[RPC] {node_type.upper()} node returned status {response.status_code}")
+                
+        except requests.exceptions.Timeout:
+            CONNECTION_STATUS[node_type]['connected'] = False
+            CONNECTION_STATUS[node_type]['error'] = "Timeout"
+            if show_errors and retry:
+                print(f"[RPC] {node_type.upper()} node timeout (>{timeout}s)")
+        except requests.exceptions.ConnectionError as e:
+            CONNECTION_STATUS[node_type]['connected'] = False
+            error_msg = str(e)
+            CONNECTION_STATUS[node_type]['error'] = error_msg
+            if show_errors and retry:
+                print(f"[RPC] Cannot connect to {node_type.upper()} node: {error_msg[:60]}")
+        except Exception as e:
+            CONNECTION_STATUS[node_type]['connected'] = False
+            CONNECTION_STATUS[node_type]['error'] = str(e)[:100]
+            if show_errors and retry:
+                print(f"[RPC] {node_type.upper()} node error: {str(e)[:60]}")
+        
+        # If retry is False, don't try fallback
+        if not retry:
+            break
+    
+    # All nodes failed
+    return None
+
+def test_blockchain_connection():
+    """Test connection to blockchain nodes and set active node with improved diagnostics"""
+    global ACTIVE_NODE_URL, ACTIVE_NODE_TYPE
+    
+    print("[EXPLORER] Testing blockchain connection...")
+    
+    # List of RPC methods to try (in order)
+    test_methods = [
+        ('getblockchaininfo', []),
+        ('getblockcount', []),
+        ('getblocktemplate', [{'algorithm': 'sha256'}]),
+    ]
+    
+    # Test Railway node
+    print(f"  Testing Railway node: {RAILWAY_NODE_URL}")
+    for method, params in test_methods:
+        try:
+            payload = {
+                'jsonrpc': '2.0',
+                'method': method,
+                'params': params,
+                'id': 1
+            }
+            response = requests.post(RAILWAY_NODE_URL, json=payload, timeout=10, 
+                                   headers={'Content-Type': 'application/json'})
+            if response.status_code == 200:
+                result = response.json()
+                # Check for valid response (either result or no error)
+                if 'result' in result and result.get('result') is not None:
+                    ACTIVE_NODE_URL = RAILWAY_NODE_URL
+                    ACTIVE_NODE_TYPE = 'railway'
+                    height = result['result'].get('blocks') or result['result'].get('height') or result['result'] or 0
+                    print(f"  ✅ Railway node connected! Height: {height}")
+                    CONNECTION_STATUS['railway']['connected'] = True
+                    CONNECTION_STATUS['railway']['last_check'] = time.time()
+                    CONNECTION_STATUS['railway']['error'] = None
+                    return True, 'railway'
+                elif 'error' in result:
+                    # Method might not exist, try next method
+                    continue
+            elif response.status_code in [404, 405]:
+                # Try root path
+                try:
+                    if not RAILWAY_NODE_URL.endswith('/'):
+                        test_url = RAILWAY_NODE_URL + '/'
+                    else:
+                        test_url = RAILWAY_NODE_URL.rstrip('/')
+                    response = requests.post(test_url, json=payload, timeout=10,
+                                           headers={'Content-Type': 'application/json'})
+                    if response.status_code == 200:
+                        result = response.json()
+                        if 'result' in result and result.get('result') is not None:
+                            ACTIVE_NODE_URL = test_url if RAILWAY_NODE_URL.endswith('/') else RAILWAY_NODE_URL
+                            ACTIVE_NODE_TYPE = 'railway'
+                            print(f"  ✅ Railway node connected (via alternate path)!")
+                            CONNECTION_STATUS['railway']['connected'] = True
+                            CONNECTION_STATUS['railway']['last_check'] = time.time()
+                            CONNECTION_STATUS['railway']['error'] = None
+                            return True, 'railway'
+                except:
+                    pass
+        except requests.exceptions.Timeout:
+            CONNECTION_STATUS['railway']['error'] = "Timeout (>10s)"
+            continue
+        except requests.exceptions.ConnectionError as e:
+            error_msg = str(e)
+            CONNECTION_STATUS['railway']['error'] = error_msg[:100]
+            # Only print error for first method attempt
+            if method == test_methods[0][0]:
+                print(f"  ⚠️  Railway node connection error: {error_msg[:60]}...")
+            continue
+        except Exception as e:
+            error_msg = str(e)
+            CONNECTION_STATUS['railway']['error'] = error_msg[:100]
+            if method == test_methods[0][0]:
+                print(f"  ⚠️  Railway node error: {error_msg[:60]}...")
+            continue
+    
+    CONNECTION_STATUS['railway']['connected'] = False
+    
+    # Test local node
+    print(f"  Testing local node: {LOCAL_NODE_URL}")
+    for method, params in test_methods:
+        try:
+            payload = {
+                'jsonrpc': '2.0',
+                'method': method,
+                'params': params,
+                'id': 1
+            }
+            response = requests.post(LOCAL_NODE_URL, json=payload, timeout=5,
+                                   headers={'Content-Type': 'application/json'})
+            if response.status_code == 200:
+                result = response.json()
+                if 'result' in result and result.get('result') is not None:
+                    ACTIVE_NODE_URL = LOCAL_NODE_URL
+                    ACTIVE_NODE_TYPE = 'local'
+                    height = result['result'].get('blocks') or result['result'].get('height') or result['result'] or 0
+                    print(f"  ✅ Local node connected! Height: {height}")
+                    CONNECTION_STATUS['local']['connected'] = True
+                    CONNECTION_STATUS['local']['last_check'] = time.time()
+                    CONNECTION_STATUS['local']['error'] = None
+                    return True, 'local'
+                elif 'error' in result:
+                    continue
+        except requests.exceptions.ConnectionError as e:
+            error_msg = str(e)
+            CONNECTION_STATUS['local']['error'] = error_msg[:100]
+            if method == test_methods[0][0]:
+                print(f"  ⚠️  Local node connection error: {error_msg[:60]}...")
+            continue
+        except Exception as e:
+            error_msg = str(e)
+            CONNECTION_STATUS['local']['error'] = error_msg[:100]
+            if method == test_methods[0][0]:
+                print(f"  ⚠️  Local node error: {error_msg[:60]}...")
+            continue
+    
+    CONNECTION_STATUS['local']['connected'] = False
+    print(f"  ❌ No blockchain nodes available")
+    print(f"     Railway: {CONNECTION_STATUS['railway'].get('error', 'Unknown error')}")
+    print(f"     Local: {CONNECTION_STATUS['local'].get('error', 'Unknown error')}")
+    return False, None
 
 # Detect environment (Vercel or local)
 IS_VERCEL = os.environ.get('VERCEL', '0') == '1' or 'vercel' in os.environ.get('VERCEL_URL', '').lower()
@@ -580,72 +835,127 @@ class BlockchainExplorer:
     def get_latest_block(self):
         """Get latest block from the node"""
         try:
-            # Try gxc_getLatestBlock first, then fallback to getblock
-            methods = ['gxc_getLatestBlock', 'getlatestblock', 'getblock']
+            # First try to get blockchain info to get latest height
+            info = rpc_call('getblockchaininfo', timeout=10, show_errors=False)
+            if info:
+                height = info.get('blocks') or info.get('height') or 0
+                if height > 0:
+                    # Get the latest block by number
+                    block = self.get_block_by_number(height)
+                    if block:
+                        return block
             
-            for method in methods:
-                try:
-                    if method == 'getblock':
-                        # getblock with no params returns latest
-                        payload = {
-                            'jsonrpc': '2.0',
-                            'method': method,
-                            'params': [],
-                            'id': 1
-                        }
-                    else:
-                        payload = {
-                            'jsonrpc': '2.0',
-                            'method': method,
-                            'params': [],
-                            'id': 1
-                        }
-                    
-                    response = requests.post(BLOCKCHAIN_NODE_URL, json=payload, timeout=10)
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        if 'result' in result and result['result']:
-                            return result['result']
-                except:
-                    continue
-            
-            return None
-        except Exception as e:
-            print(f"Error getting latest block: {e}")
-            return None
-    
-    def get_block_by_number(self, block_number):
-        """Get block by number from the node"""
-        try:
             # Try multiple methods for compatibility
             methods = [
-                ('gxc_getBlockByNumber', [block_number, True]),
-                ('getblockbynumber', [block_number, True]),
-                ('getblock', [int(block_number)])
+                ('gxc_getLatestBlock', []),
+                ('getlatestblock', []),
+                ('getblock', ['latest']),
+                ('getblock', [-1])
             ]
             
             for method, params in methods:
-                try:
-                    payload = {
-                        'jsonrpc': '2.0',
-                        'method': method,
-                        'params': params,
-                        'id': 1
-                    }
-                    
-                    response = requests.post(BLOCKCHAIN_NODE_URL, json=payload, timeout=10)
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        if 'result' in result and result['result']:
-                            return result['result']
-                except:
-                    continue
+                result = rpc_call(method, params=params, timeout=10, show_errors=False)
+                if result:
+                    # Normalize the block data to ensure consistent field names
+                    normalized = self._normalize_block_data(result)
+                    return normalized
             
             return None
         except Exception as e:
-            print(f"Error getting block by number: {e}")
+            print(f"[EXPLORER] Error getting latest block: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def _normalize_block_data(self, block_data):
+        """Normalize block data from different node formats to consistent format"""
+        if not block_data:
+            return None
+        
+        # Create normalized block with all possible field mappings
+        normalized = {}
+        
+        # Block number/height
+        normalized['number'] = block_data.get('number') or block_data.get('block_number') or block_data.get('height') or 0
+        normalized['block_number'] = normalized['number']
+        normalized['height'] = normalized['number']
+        
+        # Block hash
+        normalized['hash'] = block_data.get('hash') or block_data.get('block_hash') or ''
+        normalized['block_hash'] = normalized['hash']
+        
+        # Parent hash
+        normalized['parent_hash'] = block_data.get('parent_hash') or block_data.get('prev_hash') or block_data.get('previousblockhash') or ''
+        normalized['prev_hash'] = normalized['parent_hash']
+        
+        # Timestamp
+        normalized['timestamp'] = block_data.get('timestamp') or int(time.time())
+        
+        # Miner
+        normalized['miner'] = block_data.get('miner') or block_data.get('miner_address') or ''
+        normalized['miner_address'] = normalized['miner']
+        
+        # Transactions - handle both list and dict formats
+        transactions = block_data.get('transactions') or []
+        if isinstance(transactions, dict):
+            transactions = [transactions]
+        elif not isinstance(transactions, list):
+            transactions = []
+        
+        normalized['transactions'] = transactions
+        normalized['transaction_count'] = len(transactions) or block_data.get('transaction_count') or block_data.get('tx_count') or 0
+        normalized['tx_count'] = normalized['transaction_count']
+        
+        # Difficulty
+        normalized['difficulty'] = block_data.get('difficulty') or 0.1
+        
+        # Nonce
+        normalized['nonce'] = block_data.get('nonce') or 0
+        
+        # Consensus type
+        normalized['consensus_type'] = block_data.get('consensus_type') or block_data.get('consensusType') or 'pow'
+        normalized['consensusType'] = normalized['consensus_type']
+        
+        # Copy other fields
+        for key in ['reward', 'size', 'gas_used', 'gas_limit', 'merkle_root', 'merkleRoot', 'total_difficulty', 'totalDifficulty']:
+            if key in block_data:
+                normalized[key] = block_data[key]
+        
+        return normalized
+    
+    def get_block_by_number(self, block_number):
+        """Get block by number from the node with full transaction data"""
+        try:
+            # Try multiple methods for compatibility, with verbose flag to get transactions
+            methods = [
+                ('gxc_getBlockByNumber', [block_number, True]),  # True = verbose, include transactions
+                ('getblockbynumber', [block_number, True]),
+                ('getblock', [int(block_number), True]),  # True = verbose
+                ('getblock', [str(block_number), True]),
+                ('getblock', [int(block_number)]),  # Fallback without verbose
+                ('getblock', [str(block_number)])
+            ]
+            
+            for method, params in methods:
+                result = rpc_call(method, params=params, timeout=10, show_errors=False)
+                if result:
+                    # Normalize the block data to ensure consistent field names
+                    normalized = self._normalize_block_data(result)
+                    
+                    # If transactions are not included, try to fetch them separately
+                    if not normalized.get('transactions') or len(normalized['transactions']) == 0:
+                        # Try to get transactions for this block
+                        tx_result = rpc_call('getblocktransactions', [block_number], timeout=10, show_errors=False)
+                        if tx_result:
+                            normalized['transactions'] = tx_result if isinstance(tx_result, list) else [tx_result]
+                    
+                    return normalized
+            
+            return None
+        except Exception as e:
+            print(f"[EXPLORER] Error getting block by number {block_number}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def store_block(self, block_data):
@@ -738,10 +1048,22 @@ class BlockchainExplorer:
                 block_data.get('popReference') or block_data.get('pop_reference') or ''
             ))
             
-            # Store transactions
-            if 'transactions' in block_data and block_data['transactions']:
-                for i, tx in enumerate(block_data['transactions']):
-                    self.store_transaction(tx, block_number, i)
+            # Store transactions - handle both list and single transaction
+            transactions = block_data.get('transactions') or []
+            if isinstance(transactions, dict):
+                transactions = [transactions]
+            elif not isinstance(transactions, list):
+                transactions = []
+            
+            for i, tx in enumerate(transactions):
+                if tx:  # Only store if transaction data exists
+                    try:
+                        self.store_transaction(tx, block_number, i)
+                    except Exception as e:
+                        print(f"Error storing transaction {i} in block {block_number}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        continue  # Continue with next transaction
             
             conn.commit()
             
@@ -752,11 +1074,39 @@ class BlockchainExplorer:
             conn.close()
     
     def store_transaction(self, tx_data, block_number, tx_index):
-        """Store transaction data"""
+        """Store transaction data with robust field handling"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         try:
+            # Normalize transaction data - handle various field name formats
+            tx_hash = tx_data.get('hash') or tx_data.get('tx_hash') or tx_data.get('transactionHash') or ''
+            from_addr = tx_data.get('from') or tx_data.get('from_address') or tx_data.get('fromAddress') or ''
+            to_addr = tx_data.get('to') or tx_data.get('to_address') or tx_data.get('toAddress') or None
+            value = tx_data.get('value') or tx_data.get('amount') or 0.0
+            fee = tx_data.get('fee') or tx_data.get('gasPrice', 0.0) * tx_data.get('gasUsed', 0) or 0.0
+            gas_price = tx_data.get('gasPrice') or tx_data.get('gas_price') or 0.0
+            gas_used = tx_data.get('gasUsed') or tx_data.get('gas_used') or 0
+            status = tx_data.get('status') or 'success'
+            tx_type = tx_data.get('type') or tx_data.get('tx_type') or 'transfer'
+            input_data = tx_data.get('input') or tx_data.get('input_data') or tx_data.get('data') or ''
+            nonce = tx_data.get('nonce') or 0
+            contract_addr = tx_data.get('contractAddress') or tx_data.get('contract_address') or None
+            
+            # Get timestamp - prefer from tx_data, fallback to current time
+            if 'timestamp' in tx_data:
+                if isinstance(tx_data['timestamp'], (int, float)):
+                    tx_timestamp = datetime.fromtimestamp(tx_data['timestamp'])
+                elif isinstance(tx_data['timestamp'], str):
+                    try:
+                        tx_timestamp = datetime.fromisoformat(tx_data['timestamp'].replace('Z', '+00:00'))
+                    except:
+                        tx_timestamp = datetime.utcnow()
+                else:
+                    tx_timestamp = tx_data['timestamp']
+            else:
+                tx_timestamp = datetime.utcnow()
+            
             cursor.execute('''
                 INSERT OR REPLACE INTO transactions (
                     tx_hash, block_number, tx_index, from_address,
@@ -765,21 +1115,21 @@ class BlockchainExplorer:
                     contract_address
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                tx_data['hash'],
+                tx_hash,
                 block_number,
                 tx_index,
-                tx_data['from'],
-                tx_data.get('to'),
-                float(tx_data['value']),
-                float(tx_data.get('fee', 0.0)),
-                float(tx_data.get('gasPrice', 0.0)),
-                int(tx_data.get('gasUsed', 0)),
-                tx_data.get('status', 'success'),
-                datetime.utcnow(),
-                tx_data.get('input'),
-                int(tx_data.get('nonce', 0)),
-                tx_data.get('type', 'transfer'),
-                tx_data.get('contractAddress')
+                from_addr,
+                to_addr,
+                float(value),
+                float(fee),
+                float(gas_price),
+                int(gas_used),
+                status,
+                tx_timestamp,
+                input_data,
+                int(nonce),
+                tx_type,
+                contract_addr
             ))
             
             # Update address balances and activity
@@ -830,6 +1180,39 @@ class BlockchainExplorer:
         finally:
             conn.close()
     
+    def get_block_by_number_from_db(self, block_number):
+        """Get a specific block from database by number"""
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT block_number, block_hash, timestamp, miner_address,
+                       transaction_count, reward, consensus_type, difficulty
+                FROM blocks
+                WHERE block_number = ?
+            ''', (block_number,))
+            
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'number': row[0] if row[0] is not None else 0,
+                    'hash': row[1] if row[1] else '',
+                    'timestamp': row[2] if row[2] else datetime.now(),
+                    'miner': row[3] if row[3] else '',
+                    'tx_count': row[4] if row[4] is not None else 0,
+                    'reward': row[5] if row[5] is not None else 12.5,
+                    'consensus_type': row[6] if row[6] else 'pow',
+                    'difficulty': row[7] if len(row) > 7 and row[7] is not None else 0.1
+                }
+            return None
+            
+        except Exception as e:
+            print(f"Error getting block from database: {e}")
+            return None
+        finally:
+            conn.close()
+    
     def get_recent_blocks(self, limit=10):
         """Get recent blocks from database"""
         conn = sqlite3.connect(DATABASE_PATH)
@@ -838,7 +1221,7 @@ class BlockchainExplorer:
         try:
             cursor.execute('''
                 SELECT block_number, block_hash, timestamp, miner_address,
-                       transaction_count, reward, consensus_type
+                       transaction_count, reward, consensus_type, difficulty
                 FROM blocks
                 ORDER BY block_number DESC
                 LIMIT ?
@@ -847,13 +1230,14 @@ class BlockchainExplorer:
             blocks = []
             for row in cursor.fetchall():
                 blocks.append({
-                    'number': row[0],
-                    'hash': row[1],
-                    'timestamp': row[2],
-                    'miner': row[3],
-                    'tx_count': row[4],
-                    'reward': row[5],
-                    'consensus_type': row[6]
+                    'number': row[0] if row[0] is not None else 0,
+                    'hash': row[1] if row[1] else '',
+                    'timestamp': row[2] if row[2] else datetime.now(),
+                    'miner': row[3] if row[3] else '',
+                    'tx_count': row[4] if row[4] is not None else 0,
+                    'reward': row[5] if row[5] is not None else 12.5,
+                    'consensus_type': row[6] if row[6] else 'pow',
+                    'difficulty': row[7] if len(row) > 7 and row[7] is not None else 0.1
                 })
             
             return blocks
@@ -874,28 +1258,31 @@ class BlockchainExplorer:
                 SELECT tx_hash, block_number, from_address, to_address,
                        value, fee, status, timestamp, tx_type
                 FROM transactions
-                ORDER BY block_number DESC, tx_index DESC
+                ORDER BY block_number DESC, COALESCE(tx_index, 0) DESC, timestamp DESC
                 LIMIT ?
             ''', (limit,))
             
             transactions = []
             for row in cursor.fetchall():
+                # Ensure all fields have defaults
                 transactions.append({
-                    'hash': row[0],
-                    'block': row[1],
-                    'from': row[2],
-                    'to': row[3],
-                    'value': row[4],
-                    'fee': row[5],
-                    'status': row[6],
-                    'timestamp': row[7],
-                    'type': row[8]
+                    'hash': row[0] if row[0] else '',
+                    'block': row[1] if row[1] is not None else 0,
+                    'from': row[2] if row[2] else '',
+                    'to': row[3] if row[3] else None,
+                    'value': row[4] if row[4] is not None else 0.0,
+                    'fee': row[5] if row[5] is not None else 0.0,
+                    'status': row[6] if row[6] else 'success',
+                    'timestamp': row[7] if row[7] else datetime.now(),
+                    'type': row[8] if row[8] else 'transfer'
                 })
             
             return transactions
             
         except Exception as e:
             print(f"Error getting recent transactions: {e}")
+            import traceback
+            traceback.print_exc()
             return []
         finally:
             conn.close()
@@ -929,7 +1316,7 @@ class BlockchainExplorer:
             
             # Calculate stats if none exist
             cursor.execute('SELECT COUNT(*) FROM blocks')
-            total_blocks = cursor.fetchone()[0]
+            total_blocks = cursor.fetchone()[0] or 0
             
             cursor.execute('SELECT COUNT(*) FROM transactions')
             total_transactions = cursor.fetchone()[0]
@@ -949,7 +1336,16 @@ class BlockchainExplorer:
             
         except Exception as e:
             print(f"Error getting network stats: {e}")
-            return {}
+            # Return default stats if error
+            return {
+                'total_blocks': 0,
+                'total_transactions': 0,
+                'total_addresses': 0,
+                'total_supply': 31000000,
+                'hash_rate': 0.0,
+                'difficulty': 0.0,
+                'avg_block_time': 0.0
+            }
         finally:
             conn.close()
     
@@ -2294,11 +2690,36 @@ class BlockchainExplorer:
                             self.store_block(latest_block)
                             last_height = current_height
                             
-                            # Emit to connected clients
+                            # Emit to connected clients with normalized data
                             try:
-                                socketio.emit('new_block', latest_block)
-                            except:
-                                pass  # SocketIO might not be initialized
+                                # Get the stored block from database to ensure consistent format
+                                stored_block = self.get_block_by_number_from_db(current_height)
+                                if stored_block:
+                                    # Convert to dict format for WebSocket
+                                    emit_block = {
+                                        'number': stored_block.get('number', current_height),
+                                        'block_number': stored_block.get('number', current_height),
+                                        'height': stored_block.get('number', current_height),
+                                        'hash': stored_block.get('hash', ''),
+                                        'miner': stored_block.get('miner', ''),
+                                        'miner_address': stored_block.get('miner', ''),
+                                        'tx_count': stored_block.get('tx_count', 0),
+                                        'transaction_count': stored_block.get('tx_count', 0),
+                                        'transactions': [],
+                                        'consensus_type': stored_block.get('consensus_type', 'pow'),
+                                        'timestamp': str(stored_block.get('timestamp', ''))
+                                    }
+                                    socketio.emit('new_block', emit_block)
+                                else:
+                                    # Fallback to normalized latest_block
+                                    socketio.emit('new_block', latest_block)
+                            except Exception as e:
+                                print(f"[EXPLORER] Error emitting block: {e}")
+                                # Try to emit original block anyway
+                                try:
+                                    socketio.emit('new_block', latest_block)
+                                except:
+                                    pass  # SocketIO might not be initialized
                             
                             # Update network stats periodically
                             if current_height % 10 == 0:
@@ -2308,26 +2729,17 @@ class BlockchainExplorer:
                             pass
                     else:
                         # No block data, try to get blockchain info
-                        try:
-                            response = requests.post(BLOCKCHAIN_NODE_URL, json={
-                                'jsonrpc': '2.0',
-                                'method': 'getblockchaininfo',
-                                'params': [],
-                                'id': 1
-                            }, timeout=5)
-                            if response.status_code == 200:
-                                info = response.json().get('result', {})
-                                height = info.get('blocks', 0)
-                                if height > last_height:
-                                    print(f"[EXPLORER] Blockchain height: {height}, fetching blocks...")
-                                    # Try to fetch missing blocks
-                                    for h in range(max(0, last_height + 1), height + 1):
-                                        block = self.get_block_by_number(h)
-                                        if block:
-                                            self.store_block(block)
-                                    last_height = height
-                        except:
-                            pass
+                        info = rpc_call('getblockchaininfo', timeout=5, show_errors=False)
+                        if info:
+                            height = info.get('blocks', 0)
+                            if height > last_height:
+                                print(f"[EXPLORER] Blockchain height: {height}, fetching blocks...")
+                                # Try to fetch missing blocks
+                                for h in range(max(0, last_height + 1), height + 1):
+                                    block = self.get_block_by_number(h)
+                                    if block:
+                                        self.store_block(block)
+                                last_height = height
                     
                     time.sleep(5)  # Check every 5 seconds
                     
@@ -2390,81 +2802,215 @@ class BlockchainExplorer:
             conn.close()
 
 # Initialize explorer
+print("=" * 60)
+print("[EXPLORER] Initializing blockchain explorer...")
+print(f"[EXPLORER] Network: {NETWORK.upper()}")
+print(f"[EXPLORER] Database: {DATABASE_PATH}")
+print(f"[EXPLORER] Address prefix: {CURRENT_NETWORK['address_prefix']}")
+print(f"[EXPLORER] Block reward: {CURRENT_NETWORK['block_reward']} GXC")
+print(f"[EXPLORER] Node URL: {BLOCKCHAIN_NODE_URL}")
+print("=" * 60)
 explorer = BlockchainExplorer()
+
+# Test blockchain connection on startup (non-blocking)
+def test_connection_async():
+    """Test connection in background thread to avoid blocking startup with retries"""
+    # Wait longer for node to start up (especially if node was just started)
+    time.sleep(5)  # Increased wait time for node initialization
+    
+    print("[EXPLORER] Testing blockchain connection on startup...")
+    
+    # Try multiple times with delays
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            connected, node_type = test_blockchain_connection()
+            if connected:
+                print(f"[EXPLORER] ✅ Connected to {node_type} node ({NETWORK.upper()})")
+                return
+            else:
+                if attempt < max_attempts - 1:
+                    wait_time = 5 * (attempt + 1)  # Progressive delay: 5s, 10s, 15s
+                    print(f"[EXPLORER] ⚠️  Connection attempt {attempt + 1}/{max_attempts} failed, retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+        except Exception as e:
+            print(f"[EXPLORER] Error testing connection: {e}")
+            if attempt < max_attempts - 1:
+                time.sleep(5)
+    
+    print(f"[EXPLORER] ⚠️  No blockchain nodes available after {max_attempts} attempts - explorer will use cached data")
+    print(f"[EXPLORER] 💡 Run 'python test_node_connection.py' to diagnose connection issues")
+
+# Start connection test in background
+connection_test_thread = threading.Thread(target=test_connection_async)
+connection_test_thread.daemon = True
+connection_test_thread.start()
 
 # Web Routes
 @app.route('/')
 def index():
     """Main explorer page"""
-    # Try to sync latest block first
+    # Try to sync latest block and transactions first
     try:
         latest_block = explorer.get_latest_block()
         if latest_block:
+            # Store block (which will also store transactions if included)
             explorer.store_block(latest_block)
+            print(f"[EXPLORER] Synced latest block #{latest_block.get('number') or latest_block.get('height') or 0}")
     except Exception as e:
         print(f"Error syncing latest block: {e}")
+        import traceback
+        traceback.print_exc()
     
-    recent_blocks = explorer.get_recent_blocks(10)
-    recent_transactions = explorer.get_recent_transactions(15)
-    network_stats = explorer.get_network_stats()
+    # Get data from database
+    recent_blocks = explorer.get_recent_blocks(10) or []
+    recent_transactions = explorer.get_recent_transactions(15) or []
+    
+    # If no transactions but we have blocks, try to fetch transactions from recent blocks
+    if not recent_transactions and recent_blocks:
+        print("[EXPLORER] No transactions in database, trying to fetch from recent blocks...")
+        for block in recent_blocks[:5]:  # Check last 5 blocks
+            block_num = block.get('number', 0)
+            if block_num > 0:
+                try:
+                    block_data = explorer.get_block_by_number(block_num)
+                    if block_data and block_data.get('transactions'):
+                        explorer.store_block(block_data)
+                except Exception as e:
+                    print(f"Error fetching transactions for block {block_num}: {e}")
+        # Refresh transactions
+        recent_transactions = explorer.get_recent_transactions(15) or []
+    network_stats = explorer.get_network_stats() or {}
+    
+    # Ensure stats has all required keys with defaults
+    if not network_stats or not isinstance(network_stats, dict):
+        network_stats = {}
+    network_stats.setdefault('total_blocks', 0)
+    network_stats.setdefault('total_transactions', 0)
+    network_stats.setdefault('total_addresses', 0)
+    network_stats.setdefault('total_supply', 31000000)
+    network_stats.setdefault('hash_rate', 0.0)
+    network_stats.setdefault('difficulty', 0.0)
+    network_stats.setdefault('avg_block_time', 0.0)
     
     # If no blocks, try to get blockchain info and show connection status
     if not recent_blocks:
-        try:
-            response = requests.post(BLOCKCHAIN_NODE_URL, json={
-                'jsonrpc': '2.0',
-                'method': 'getblockchaininfo',
-                'params': [],
-                'id': 1
-            }, timeout=5)
-            if response.status_code == 200:
-                info = response.json().get('result', {})
-                height = info.get('blocks', 0)
-                if height > 0:
-                    # Try to fetch and store blocks
-                    for h in range(max(0, height - 9), height + 1):
-                        block = explorer.get_block_by_number(h)
-                        if block:
-                            explorer.store_block(block)
-                    # Refresh data
-                    recent_blocks = explorer.get_recent_blocks(10)
-        except Exception as e:
-            print(f"Error fetching blockchain info: {e}")
+        info = rpc_call('getblockchaininfo', timeout=5, show_errors=False)
+        if info:
+            height = info.get('blocks') or info.get('height') or 0
+            if height > 0:
+                print(f"[EXPLORER] No blocks in database, syncing from height {height}...")
+                # Try to fetch and store recent blocks (last 20)
+                synced_count = 0
+                for h in range(max(0, height - 19), height + 1):
+                    block = explorer.get_block_by_number(h)
+                    if block:
+                        explorer.store_block(block)
+                        synced_count += 1
+                print(f"[EXPLORER] Synced {synced_count} blocks from testnet node")
+                # Refresh data
+                recent_blocks = explorer.get_recent_blocks(10)
+    
+    # Get connection status for display
+    connection_info = {
+        'active_node': ACTIVE_NODE_TYPE or 'unknown',
+        'active_url': ACTIVE_NODE_URL or 'none',
+        'railway_status': CONNECTION_STATUS['railway'],
+        'local_status': CONNECTION_STATUS['local'],
+        'connected': ACTIVE_NODE_TYPE is not None
+    }
+    
+    # Network information for display
+    network_info = {
+        'network': NETWORK.upper(),
+        'address_prefix': CURRENT_NETWORK['address_prefix'],
+        'block_reward': CURRENT_NETWORK['block_reward'],
+        'block_time': CURRENT_NETWORK['block_time'],
+        'is_testnet': NETWORK == 'testnet',
+        'is_mainnet': NETWORK == 'mainnet'
+    }
     
     return render_template('explorer_index.html', 
                          blocks=recent_blocks,
                          transactions=recent_transactions,
                          stats=network_stats,
-                         blockchain_node_url=BLOCKCHAIN_NODE_URL)
+                         blockchain_node_url=ACTIVE_NODE_URL or BLOCKCHAIN_NODE_URL,
+                         connection_info=connection_info,
+                         network_info=network_info)
 
 @app.route('/block/<block_number>')
 def block_detail(block_number):
     """Block detail page"""
+    try:
+        block_number = int(block_number)
+    except:
+        return "Invalid block number", 400
+    
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
     try:
-        # Get block data
+        # Get block data from database
         cursor.execute('''
             SELECT * FROM blocks WHERE block_number = ?
         ''', (block_number,))
         
         block = cursor.fetchone()
+        
+        # If block not in database, try to fetch from node
+        if not block:
+            print(f"[EXPLORER] Block {block_number} not in database, fetching from node...")
+            block_data = explorer.get_block_by_number(block_number)
+            if block_data:
+                explorer.store_block(block_data)
+                # Re-fetch from database
+                cursor.execute('''
+                    SELECT * FROM blocks WHERE block_number = ?
+                ''', (block_number,))
+                block = cursor.fetchone()
+        
         if not block:
             return "Block not found", 404
         
         # Get block transactions
         cursor.execute('''
             SELECT * FROM transactions WHERE block_number = ?
-            ORDER BY tx_index
+            ORDER BY COALESCE(tx_index, 0)
         ''', (block_number,))
         
         transactions = cursor.fetchall()
         
+        # If no transactions in DB but block has transaction_count > 0, try to fetch from node
+        if not transactions and block[10] and block[10] > 0:  # transaction_count field
+            print(f"[EXPLORER] Block {block_number} has {block[10]} transactions but none in DB, fetching from node...")
+            block_data = explorer.get_block_by_number(block_number)
+            if block_data and block_data.get('transactions'):
+                # Store transactions
+                for i, tx in enumerate(block_data['transactions']):
+                    explorer.store_transaction(tx, block_number, i)
+                # Re-fetch transactions
+                cursor.execute('''
+                    SELECT * FROM transactions WHERE block_number = ?
+                    ORDER BY COALESCE(tx_index, 0)
+                ''', (block_number,))
+                transactions = cursor.fetchall()
+        
+        # Get connection info for template
+        connection_info = {
+            'active_node': ACTIVE_NODE_TYPE or 'unknown',
+            'connected': ACTIVE_NODE_TYPE is not None
+        }
+        
         return render_template('block_detail.html', 
                              block=block,
-                             transactions=transactions)
+                             transactions=transactions,
+                             connection_info=connection_info)
         
+    except Exception as e:
+        print(f"Error in block_detail: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Error loading block: {str(e)}", 500
     finally:
         conn.close()
 
@@ -2475,12 +3021,59 @@ def transaction_detail(tx_hash):
     cursor = conn.cursor()
     
     try:
-        # Get transaction
+        # Get transaction from database
         cursor.execute('''
             SELECT * FROM transactions WHERE tx_hash = ?
         ''', (tx_hash,))
         
         transaction = cursor.fetchone()
+        
+        # If transaction not in database, try to get it from node
+        if not transaction:
+            print(f"[EXPLORER] Transaction {tx_hash} not in database, trying to fetch from node...")
+            # Try multiple RPC methods to get complete transaction data
+            tx_data = None
+            methods = [
+                ('gettransaction', [tx_hash]),
+                ('getrawtransaction', [tx_hash, True]),
+                ('gxc_getTransaction', [tx_hash]),
+                ('gettx', [tx_hash])
+            ]
+            
+            for method, params in methods:
+                tx_data = rpc_call(method, params=params, timeout=10, show_errors=False)
+                if tx_data:
+                    break
+            
+            if tx_data:
+                # Get block number from transaction - try multiple field names
+                block_number = (tx_data.get('blockNumber') or tx_data.get('block_number') or 
+                              tx_data.get('blockheight') or tx_data.get('blockHeight') or 
+                              tx_data.get('block') or 0)
+                
+                if block_number > 0:
+                    # Store the block first to ensure it exists and get all its transactions
+                    block_data = explorer.get_block_by_number(block_number)
+                    if block_data:
+                        explorer.store_block(block_data)
+                        # If transaction wasn't in the block's transactions, store it separately
+                        block_txs = block_data.get('transactions') or []
+                        tx_found_in_block = any(
+                            (tx.get('hash') or tx.get('tx_hash') or '') == tx_hash 
+                            for tx in block_txs
+                        )
+                        if not tx_found_in_block:
+                            explorer.store_transaction(tx_data, block_number, tx_data.get('index', 0))
+                else:
+                    # Transaction not in a block yet (pending), store with block 0
+                    explorer.store_transaction(tx_data, 0, tx_data.get('index', 0))
+                
+                # Re-fetch from database
+                cursor.execute('''
+                    SELECT * FROM transactions WHERE tx_hash = ?
+                ''', (tx_hash,))
+                transaction = cursor.fetchone()
+        
         if not transaction:
             return "Transaction not found", 404
         
@@ -2500,7 +3093,7 @@ def transaction_detail(tx_hash):
         ''', (tx_hash,))
         outputs = cursor.fetchall()
         
-        # Get traceability chain - build from transaction data
+        # Get traceability chain - build from transaction data, fetch missing data from node
         traceability_chain = []
         current_tx_hash = tx_hash
         visited = set()  # Prevent infinite loops
@@ -2512,25 +3105,63 @@ def transaction_detail(tx_hash):
             
             # Get current transaction's previous transaction info
             cursor.execute('''
-                SELECT prev_tx_hash, referenced_amount, traceability_valid, block_number
+                SELECT prev_tx_hash, referenced_amount, traceability_valid, block_number, value
                 FROM transactions
                 WHERE tx_hash = ?
             ''', (current_tx_hash,))
             
             tx_data = cursor.fetchone()
+            
+            # If transaction not in DB, try to fetch from node
+            if not tx_data:
+                print(f"[EXPLORER] Transaction {current_tx_hash} not in DB for traceability, fetching from node...")
+                tx_node_data = rpc_call('gettransaction', [current_tx_hash], timeout=5, show_errors=False)
+                if not tx_node_data:
+                    tx_node_data = rpc_call('getrawtransaction', [current_tx_hash, True], timeout=5, show_errors=False)
+                
+                if tx_node_data:
+                    block_num = tx_node_data.get('blockNumber') or tx_node_data.get('block_number') or 0
+                    explorer.store_transaction(tx_node_data, block_num, tx_node_data.get('index', 0))
+                    # Re-fetch from DB
+                    cursor.execute('''
+                        SELECT prev_tx_hash, referenced_amount, traceability_valid, block_number, value
+                        FROM transactions
+                        WHERE tx_hash = ?
+                    ''', (current_tx_hash,))
+                    tx_data = cursor.fetchone()
+            
             if not tx_data or not tx_data[0] or tx_data[0] == '0' or tx_data[0] is None:
                 break
             
-            prev_tx_hash, ref_amount, trace_valid, block_height = tx_data
+            prev_tx_hash, ref_amount, trace_valid, block_height, tx_value = tx_data
             
-            # Get previous transaction details
+            # Get previous transaction details - fetch from node if not in DB
             cursor.execute('''
-                SELECT amount, block_number
+                SELECT value, block_number
                 FROM transactions
                 WHERE tx_hash = ?
             ''', (prev_tx_hash,))
             
             prev_tx_data = cursor.fetchone()
+            
+            # If previous transaction not in DB, try to fetch from node
+            if not prev_tx_data:
+                print(f"[EXPLORER] Previous transaction {prev_tx_hash} not in DB for traceability, fetching from node...")
+                prev_tx_node_data = rpc_call('gettransaction', [prev_tx_hash], timeout=5, show_errors=False)
+                if not prev_tx_node_data:
+                    prev_tx_node_data = rpc_call('getrawtransaction', [prev_tx_hash, True], timeout=5, show_errors=False)
+                
+                if prev_tx_node_data:
+                    prev_block_num = prev_tx_node_data.get('blockNumber') or prev_tx_node_data.get('block_number') or 0
+                    explorer.store_transaction(prev_tx_node_data, prev_block_num, prev_tx_node_data.get('index', 0))
+                    # Re-fetch from DB
+                    cursor.execute('''
+                        SELECT value, block_number
+                        FROM transactions
+                        WHERE tx_hash = ?
+                    ''', (prev_tx_hash,))
+                    prev_tx_data = cursor.fetchone()
+            
             if not prev_tx_data:
                 break
             
@@ -2540,7 +3171,9 @@ def transaction_detail(tx_hash):
                 'referenced_amount': ref_amount or 0.0,
                 'validation_status': bool(trace_valid) if trace_valid is not None else True,
                 'block_height': block_height or 0,
-                'level': level + 1
+                'level': level + 1,
+                'tx_value': tx_value or 0.0,
+                'prev_tx_value': prev_tx_data[0] if prev_tx_data else 0.0
             })
             
             current_tx_hash = prev_tx_hash
@@ -2567,6 +3200,58 @@ def address_detail(address):
         ''', (address,))
         
         addr_info = cursor.fetchone()
+        
+        # If address not in database, try to get balance and data from node
+        if not addr_info:
+            print(f"[EXPLORER] Address {address} not in database, fetching from node...")
+            # Try multiple methods to get balance
+            balance = None
+            methods = [
+                ('getbalance', [address]),
+                ('gxc_getBalance', [address]),
+                ('getaddressbalance', [address])
+            ]
+            
+            for method, params in methods:
+                balance = rpc_call(method, params=params, timeout=10, show_errors=False)
+                if balance is not None:
+                    break
+            
+            if balance is None:
+                balance = 0.0
+            
+            # Try to get address transaction count and other info
+            tx_count = 0
+            try:
+                # Try to get transaction history
+                tx_history = rpc_call('getaddresstxids', [address], timeout=10, show_errors=False)
+                if tx_history and isinstance(tx_history, list):
+                    tx_count = len(tx_history)
+                    # Store any missing transactions
+                    for tx_hash in tx_history[:100]:  # Limit to first 100
+                        try:
+                            tx_data = rpc_call('gettransaction', [tx_hash], timeout=5, show_errors=False)
+                            if tx_data:
+                                block_num = tx_data.get('blockNumber') or tx_data.get('block_number') or 0
+                                explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0))
+                        except:
+                            pass
+            except:
+                pass
+            
+            # Create address entry
+            cursor.execute('''
+                INSERT OR IGNORE INTO addresses (address, balance, first_seen, last_seen, transaction_count)
+                VALUES (?, ?, datetime('now'), datetime('now'), ?)
+            ''', (address, balance, tx_count))
+            conn.commit()
+            
+            # Re-fetch
+            cursor.execute('''
+                SELECT * FROM addresses WHERE address = ?
+            ''', (address,))
+            addr_info = cursor.fetchone()
+        
         if not addr_info:
             return "Address not found", 404
         
@@ -2574,16 +3259,66 @@ def address_detail(address):
         cursor.execute('''
             SELECT * FROM transactions 
             WHERE from_address = ? OR to_address = ?
-            ORDER BY block_number DESC, tx_index DESC
+            ORDER BY block_number DESC, COALESCE(tx_index, 0) DESC
             LIMIT 50
         ''', (address, address))
         
         transactions = cursor.fetchall()
         
+        # If no transactions in DB but address exists, try to fetch from node
+        if not transactions and addr_info:
+            print(f"[EXPLORER] Address {address} has no transactions in DB, trying to fetch from node...")
+            try:
+                # Try to get transaction history from node
+                tx_history = rpc_call('getaddresstxids', [address], timeout=10, show_errors=False)
+                if tx_history and isinstance(tx_history, list):
+                    # Fetch and store transactions
+                    for tx_hash in tx_history[:50]:  # Limit to 50
+                        try:
+                            tx_data = rpc_call('gettransaction', [tx_hash], timeout=5, show_errors=False)
+                            if not tx_data:
+                                tx_data = rpc_call('getrawtransaction', [tx_hash, True], timeout=5, show_errors=False)
+                            
+                            if tx_data:
+                                block_num = tx_data.get('blockNumber') or tx_data.get('block_number') or 0
+                                if block_num > 0:
+                                    # Ensure block exists
+                                    block_data = explorer.get_block_by_number(block_num)
+                                    if block_data:
+                                        explorer.store_block(block_data)
+                                
+                                explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0))
+                        except Exception as e:
+                            print(f"Error fetching transaction {tx_hash}: {e}")
+                            continue
+                    
+                    # Re-fetch transactions from database
+                    cursor.execute('''
+                        SELECT * FROM transactions 
+                        WHERE from_address = ? OR to_address = ?
+                        ORDER BY block_number DESC, COALESCE(tx_index, 0) DESC
+                        LIMIT 50
+                    ''', (address, address))
+                    transactions = cursor.fetchall()
+            except Exception as e:
+                print(f"Error fetching address transactions: {e}")
+        
+        # Get connection info
+        connection_info = {
+            'active_node': ACTIVE_NODE_TYPE or 'unknown',
+            'connected': ACTIVE_NODE_TYPE is not None
+        }
+        
         return render_template('address_detail.html',
                              address_info=addr_info,
-                             transactions=transactions)
+                             transactions=transactions,
+                             connection_info=connection_info)
         
+    except Exception as e:
+        print(f"Error in address_detail: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"Error loading address: {str(e)}", 500
     finally:
         conn.close()
 
@@ -2618,28 +3353,32 @@ def blocks_list():
             explorer.store_block(latest_block)
         
         # Also try to get blockchain info and sync missing blocks
-        response = requests.post(BLOCKCHAIN_NODE_URL, json={
-            'jsonrpc': '2.0',
-            'method': 'getblockchaininfo',
-            'params': [],
-            'id': 1
-        }, timeout=5)
-        if response.status_code == 200:
-            info = response.json().get('result', {})
-            height = info.get('blocks', 0)
+        info = rpc_call('getblockchaininfo', timeout=5, show_errors=False)
+        if info:
+            height = info.get('blocks') or info.get('height') or 0
             if height > 0:
                 # Get recent blocks from database to see what we have
                 recent = explorer.get_recent_blocks(1)
-                last_stored = recent[0]['number'] if recent else -1
+                last_stored = recent[0]['number'] if recent and len(recent) > 0 else -1
                 
-                # Sync missing blocks (last 20)
-                for h in range(max(0, height - 19), height + 1):
-                    if h > last_stored:
-                        block = explorer.get_block_by_number(h)
-                        if block:
-                            explorer.store_block(block)
+                # Sync missing blocks (last 50 blocks or from last stored)
+                sync_start = max(0, height - 49)
+                if last_stored >= 0:
+                    sync_start = max(sync_start, last_stored + 1)
+                
+                synced_count = 0
+                for h in range(sync_start, height + 1):
+                    block = explorer.get_block_by_number(h)
+                    if block:
+                        explorer.store_block(block)
+                        synced_count += 1
+                
+                if synced_count > 0:
+                    print(f"[EXPLORER] Synced {synced_count} new blocks on /blocks page")
     except Exception as e:
         print(f"Error syncing blocks: {e}")
+        import traceback
+        traceback.print_exc()
     
     blocks = explorer.get_recent_blocks(50)
     return render_template('blocks.html', blocks=blocks, blockchain_node_url=BLOCKCHAIN_NODE_URL)
@@ -2996,7 +3735,12 @@ def api_hashrate():
 @app.route('/gas')
 def gas_tracker():
     """Gas & Fee Tracker page"""
-    gas_stats = explorer.get_gas_stats()
+    gas_stats = explorer.get_gas_stats() or {}
+    # Ensure all required keys exist
+    gas_stats.setdefault('avg_gas_price', 0.0)
+    gas_stats.setdefault('avg_gas_used', 0)
+    gas_stats.setdefault('total_gas_used', 0)
+    gas_stats.setdefault('gas_limit', 0)
     return render_template('gas_tracker.html', gas_stats=gas_stats)
 
 @app.route('/api/gas')
@@ -3008,7 +3752,12 @@ def api_gas():
 @app.route('/price')
 def price_page():
     """Price & Market Data page"""
-    price_data = explorer.get_price_data()
+    price_data = explorer.get_price_data() or {}
+    # Ensure all required keys exist
+    price_data.setdefault('current_price', 0.0)
+    price_data.setdefault('price_change_24h', 0.0)
+    price_data.setdefault('volume_24h', 0.0)
+    price_data.setdefault('market_cap', 0.0)
     return render_template('price.html', price_data=price_data)
 
 @app.route('/api/price')
@@ -3036,12 +3785,75 @@ def api_portfolio():
 @app.route('/health')
 def network_health():
     """Network Health Dashboard"""
-    health_data = explorer.get_network_health()
+    health_data = explorer.get_network_health() or {}
+    # Ensure all required keys exist
+    health_data.setdefault('status', 'unknown')
+    health_data.setdefault('uptime', 0.0)
+    health_data.setdefault('peers', 0)
+    health_data.setdefault('sync_status', 'unknown')
     return render_template('network_health.html', health=health_data)
 
 @app.route('/api/health')
 def api_health():
     """API endpoint for network health"""
+    health_data = explorer.get_network_health()
+    return jsonify(health_data)
+
+@app.route('/api/connection-status')
+def api_connection_status():
+    """API endpoint for blockchain connection status"""
+    return jsonify({
+        'active_node': ACTIVE_NODE_TYPE or 'unknown',
+        'active_url': ACTIVE_NODE_URL or 'none',
+        'railway_status': CONNECTION_STATUS['railway'],
+        'local_status': CONNECTION_STATUS['local'],
+        'connected': ACTIVE_NODE_TYPE is not None,
+        'railway_url': RAILWAY_NODE_URL,
+        'local_url': LOCAL_NODE_URL
+    })
+
+@app.route('/api/network-info')
+def api_network_info():
+    """API endpoint for network information"""
+    return jsonify({
+        'network': NETWORK.upper(),
+        'address_prefix': CURRENT_NETWORK['address_prefix'],
+        'block_reward': CURRENT_NETWORK['block_reward'],
+        'block_time': CURRENT_NETWORK['block_time'],
+        'difficulty': CURRENT_NETWORK['difficulty'],
+        'is_testnet': NETWORK == 'testnet',
+        'is_mainnet': NETWORK == 'mainnet',
+        'database_path': DATABASE_PATH
+    })
+
+@app.route('/healthz')
+@app.route('/healthcheck')
+def health_check():
+    """Simple health check endpoint for deployment monitoring"""
+    try:
+        # Quick database check
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT 1')
+        conn.close()
+        
+        # Quick RPC check (non-blocking)
+        info = rpc_call('getblockchaininfo', timeout=3, retry=False, show_errors=False)
+        
+        return jsonify({
+            'status': 'healthy',
+            'database': 'ok',
+            'blockchain_connected': info is not None,
+            'active_node': ACTIVE_NODE_TYPE or 'unknown',
+            'node_url': ACTIVE_NODE_URL if ACTIVE_NODE_URL else 'none',
+            'timestamp': time.time()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e)[:100],
+            'timestamp': time.time()
+        }), 503
     health_data = explorer.get_network_health()
     return jsonify(health_data)
 
@@ -3332,8 +4144,14 @@ def api_filter_transactions():
 @app.route('/gold')
 def gold_token_explorer():
     """Gold Token (GXC-G) Explorer page"""
-    stats = explorer.get_gold_token_stats()
-    reserves = explorer.get_gold_reserves()
+    stats = explorer.get_gold_token_stats() or {}
+    reserves = explorer.get_gold_reserves() or []
+    # Ensure all required keys exist
+    stats.setdefault('total_supply', 0.0)
+    stats.setdefault('total_reserves', 0.0)
+    stats.setdefault('reserve_ratio', 0.0)
+    stats.setdefault('unique_addresses', 0)
+    stats.setdefault('top_holders', [])
     return render_template('gold_token.html', stats=stats, reserves=reserves)
 
 @app.route('/api/gold/stats')
@@ -3769,7 +4587,12 @@ def api_alerts():
 @app.route('/simulator')
 def transaction_simulator():
     """Transaction Simulator page"""
-    gas_stats = explorer.get_gas_stats()
+    gas_stats = explorer.get_gas_stats() or {}
+    gas_stats.setdefault('slow', 0.0001)
+    gas_stats.setdefault('standard', 0.0002)
+    gas_stats.setdefault('fast', 0.0005)
+    gas_stats.setdefault('average', 0.0002)
+    gas_stats.setdefault('median', 0.0002)
     return render_template('transaction_simulator.html', gas_stats=gas_stats)
 
 @app.route('/api/simulator/estimate')

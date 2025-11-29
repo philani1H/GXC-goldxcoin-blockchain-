@@ -44,11 +44,11 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Gas Price (GXC)</label>
-                                <input type="number" class="form-control" id="gasPrice" value="{{ gas_stats.standard }}" step="0.00000001">
+                                <input type="number" class="form-control" id="gasPrice" value="{{ gas_stats.standard|default(0.0002) }}" step="0.00000001">
                                 <small class="text-muted">
-                                    Slow: {{ "%.8f" % gas_stats.slow }} | 
-                                    Standard: {{ "%.8f" % gas_stats.standard }} | 
-                                    Fast: {{ "%.8f" % gas_stats.fast }}
+                                    Slow: {{ "%.8f"|format(gas_stats.slow|default(0.0001)) }} | 
+                                    Standard: {{ "%.8f"|format(gas_stats.standard|default(0.0002)) }} | 
+                                    Fast: {{ "%.8f"|format(gas_stats.fast|default(0.0005)) }}
                                 </small>
                             </div>
                             <div class="mb-3">

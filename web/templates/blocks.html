@@ -239,32 +239,36 @@
                             {% for block in blocks %}
                             <tr>
                                 <td>
-                                    <a href="/block/{{ block.number }}"
+                                    <a href="/block/{{ block.number|default(0) }}"
                                         class="text-decoration-none fw-bold text-primary">
-                                        #{{ block.number }}
+                                        #{{ block.number|default(0) }}
                                     </a>
                                 </td>
                                 <td class="text-muted small">
                                     <script>
-                                        document.write(timeAgo('{{ block.timestamp }}'));
+                                        document.write(timeAgo('{{ block.timestamp|default("") }}'));
                                     </script>
                                 </td>
                                 <td>
                                     <span class="badge badge-modern bg-secondary">
-                                        {{ block.tx_count }}
+                                        {{ block.tx_count|default(0) }}
                                     </span>
                                 </td>
                                 <td>
+                                    {% if block.miner %}
                                     <a href="/address/{{ block.miner }}" class="address-link text-decoration-none">
                                         {{ block.miner[:10] }}...
                                     </a>
+                                    {% else %}
+                                    <span class="text-muted">Unknown</span>
+                                    {% endif %}
                                 </td>
                                 <td class="small">
-                                    {{ "%.2f"|format(block.reward) }}
+                                    {{ "%.2f"|format(block.difficulty|default(0.1)) }}
                                 </td>
                                 <td>
                                     <span class="text-success fw-bold">
-                                        {{ "%.2f"|format(block.reward) }} GXC
+                                        {{ "%.2f"|format(block.reward|default(12.5)) }} GXC
                                     </span>
                                 </td>
                                 <td>

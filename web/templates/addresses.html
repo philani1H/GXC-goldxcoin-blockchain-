@@ -232,28 +232,32 @@
                                         </div>
                                     </td>
                                     <td>
+                                        {% if addr.address %}
                                         <a href="/address/{{ addr.address }}" class="address-link text-decoration-none">
                                             {{ addr.address[:10] }}...{{ addr.address[-8:] }}
                                         </a>
-                                        {% if addr.type == 'contract' %}
+                                        {% else %}
+                                        <span class="text-muted">Unknown</span>
+                                        {% endif %}
+                                        {% if (addr.type|default('user')) == 'contract' %}
                                         <span class="badge bg-info ms-2" style="font-size: 0.7rem">Contract</span>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <span class="fw-bold text-dark">{{ "{:,.2f}".format(addr.balance or 0) }} GXC</span>
+                                        <span class="fw-bold text-dark">{{ "{:,.2f}".format(addr.balance|default(0.0)) }} GXC</span>
                                     </td>
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <div class="progress-bar-custom me-2">
                                                 <div class="progress-fill"
-                                                    style="width: {{ ((addr.balance or 0) / (total_supply or 31000000) * 100)|round(2) }}%">
+                                                    style="width: {{ ((addr.balance|default(0.0)) / (total_supply|default(31000000)) * 100)|round(2) }}%">
                                                 </div>
                                             </div>
-                                            <small class="text-muted">{{ "%.2f"|format((addr.balance or 0) / (total_supply or 31000000) * 100)
+                                            <small class="text-muted">{{ "%.2f"|format((addr.balance|default(0.0)) / (total_supply|default(31000000)) * 100)
                                                 }}%</small>
                                         </div>
                                     </td>
-                                    <td>{{ "{:,}".format(addr.tx_count or 0) }}</td>
+                                    <td>{{ "{:,}".format(addr.tx_count|default(0)) }}</td>
                                 </tr>
                                 {% endfor %}
                             {% else %}

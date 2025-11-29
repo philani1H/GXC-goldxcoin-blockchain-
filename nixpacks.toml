@@ -2,10 +2,10 @@
 nixPkgs = ["python311", "cmake", "gcc"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = ["python3 -m pip install --no-cache-dir -r requirements.txt"]
 
 [phases.build]
-cmds = ["chmod +x start_complete_ecosystem.sh"]
+cmds = ["echo 'Build complete'"]
 
 [start]
-cmd = "./start_complete_ecosystem.sh"
+cmd = "python3 testnet_blockchain_node.py"

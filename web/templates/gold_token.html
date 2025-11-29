@@ -42,25 +42,25 @@
         <div class="row g-3 mb-4">
             <div class="col-md-3">
                 <div class="stat-card">
-                    <div class="stat-value">{{ "%.2f" % stats.total_supply }}</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.total_supply|default(0.0)) }}</div>
                     <div class="stat-label">Total Supply (GXC-G)</div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="stat-card">
-                    <div class="stat-value">{{ "%.2f" % stats.total_reserves }}</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.total_reserves|default(0.0)) }}</div>
                     <div class="stat-label">Gold Reserves (grams)</div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="stat-card">
-                    <div class="stat-value">{{ "%.1f" % stats.reserve_ratio }}%</div>
+                    <div class="stat-value">{{ "%.1f"|format(stats.reserve_ratio|default(0.0)) }}%</div>
                     <div class="stat-label">Reserve Ratio</div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="stat-card">
-                    <div class="stat-value">{{ "{:,}".format(stats.unique_addresses) }}</div>
+                    <div class="stat-value">{{ "{:,}".format(stats.unique_addresses|default(0)) }}</div>
                     <div class="stat-label">Unique Addresses</div>
                 </div>
             </div>
@@ -87,17 +87,17 @@
                         <tbody>
                             {% for reserve in reserves %}
                             <tr>
-                                <td>{{ reserve.vault_id }}</td>
-                                <td><code>{{ reserve.vault_address[:20] }}...</code></td>
-                                <td><strong>{{ "%.2f" % reserve.gold_grams }}</strong></td>
+                                <td>{{ reserve.vault_id|default("N/A") }}</td>
+                                <td><code>{{ (reserve.vault_address|default(""))[:20] }}...</code></td>
+                                <td><strong>{{ "%.2f"|format(reserve.gold_grams|default(0.0)) }}</strong></td>
                                 <td>
-                                    {% if reserve.is_active %}
+                                    {% if reserve.is_active|default(False) %}
                                     <span class="badge bg-success">Active</span>
                                     {% else %}
                                     <span class="badge bg-secondary">Inactive</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ reserve.last_audit_time or 'N/A' }}</td>
+                                <td>{{ reserve.last_audit_time|default('N/A') }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -141,8 +141,14 @@
                             {% for holder in stats.top_holders %}
                             <tr>
                                 <td>{{ loop.index }}</td>
-                                <td><a href="/address/{{ holder.address }}">{{ holder.address[:20] }}...</a></td>
-                                <td><strong>{{ "%.8f" % holder.balance }}</strong></td>
+                                <td>
+                                    {% if holder.address %}
+                                    <a href="/address/{{ holder.address }}">{{ holder.address[:20] }}...</a>
+                                    {% else %}
+                                    <span class="text-muted">Unknown</span>
+                                    {% endif %}
+                                </td>
+                                <td><strong>{{ "%.8f"|format(holder.balance|default(0.0)) }}</strong></td>
                             </tr>
                             {% endfor %}
                         </tbody>

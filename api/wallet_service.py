@@ -30,41 +30,31 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, template_folder='templates')
 CORS(app)
 
+# Import centralized network configuration
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from config.railway_config import (
+    get_network_info, get_rpc_url, get_rest_url, get_wallet_database_path,
+    get_network, get_network_config, CURRENT_NETWORK
+)
+
 # Configuration
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_hex(32))
-DATABASE_PATH = 'gxc_wallets.db'
+
+# Network-aware database path
+DATABASE_PATH = get_wallet_database_path()
 BACKUP_STORAGE_PATH = 'wallet_backups/'
 
-# Railway Node URL (Testnet)
-RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
-
-# Network/Chain Configuration
-# Supports both testnet and mainnet via environment variables
-NETWORK_INFO = {
-    'network_name': 'GXC Mainnet',
-    'chain_id': 'GXC',
-    'rpc_url': os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL)),
-    'rest_url': os.environ.get('BLOCKCHAIN_REST_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL)),
+# Network/Chain Configuration - Uses centralized config
+NETWORK_INFO = get_network_info()
+# Add additional fields for wallet service
+NETWORK_INFO.update({
     'explorer_url': os.environ.get('EXPLORER_URL', 'http://localhost:3000'),
     'api_url': os.environ.get('WALLET_API_URL', 'http://localhost:5000'),
-    'currency': 'GXC',
-    'block_time': '2 seconds',
-    'consensus': 'Hybrid PoW/PoS'
-}
-
-# Testnet-specific configuration (if needed)
-TESTNET_NETWORK_INFO = {
-    'network_name': 'GXC Testnet',
-    'chain_id': 'GXC_TESTNET',
-    'rpc_url': os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL)),
-    'rest_url': os.environ.get('BLOCKCHAIN_REST_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL)),
-    'explorer_url': os.environ.get('EXPLORER_URL', 'http://localhost:3000'),
-    'api_url': os.environ.get('WALLET_API_URL', 'http://localhost:5000'),
-    'currency': 'tGXC',
-    'block_time': '60 seconds',
-    'consensus': 'Hybrid PoW/PoS'
-}
+    'consensus': 'Hybrid PoW/PoS',
+    'block_time': f"{CURRENT_NETWORK['block_time']} seconds",
+})
 
 class BlockchainClient:
     """Client to interact with GXC blockchain for real data"""
@@ -270,13 +260,13 @@ class BlockchainClient:
             }
 
 class WalletService:
-    def __init__(self, testnet=False):
-        self.testnet = testnet
-        self.db_path = 'gxc_wallets_testnet.db' if testnet else DATABASE_PATH
+    def __init__(self, network=None):
+        # Use current network or specified network - network-aware
+        self.network = network or get_network()
+        self.db_path = get_wallet_database_path()
         self.init_database()
-        # Use appropriate network info for testnet vs mainnet
-        network_info = TESTNET_NETWORK_INFO if testnet else NETWORK_INFO
-        self.blockchain = BlockchainClient(rest_url=network_info['rest_url'])
+        # Use current network configuration
+        self.blockchain = BlockchainClient(rest_url=NETWORK_INFO['rest_url'])
         
     def get_db_connection(self):
         """Get database connection (testnet or mainnet)"""
