@@ -18,7 +18,8 @@ from pool_config import (
     GENERAL_POOL_HOST,
     GENERAL_POOL_STRATUM_PORT,
     GENERAL_POOL_DASHBOARD_PORT,
-    BLOCKCHAIN_NODE_URL
+    BLOCKCHAIN_NODE_URL,
+    RAILWAY_NODE_URL
 )
 
 # Create pool instance (for Vercel deployment)

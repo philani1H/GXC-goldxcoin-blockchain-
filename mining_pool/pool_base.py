@@ -24,7 +24,9 @@ class MiningPool:
         self.pool_name = pool_name
         self.algorithm = algorithm
         self.port = port
-        self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
+        # Use RAILWAY_NODE_URL from environment, fallback to Railway URL
+        railway_url = os.environ.get('RAILWAY_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
+        self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_NODE_URL', railway_url)
         
         # Public endpoints for third-party miners
         self.stratum_url = os.environ.get(
@@ -680,7 +682,8 @@ class MiningPool:
                 # Use actual Vercel URL that works now
                 docs_url = 'https://gxc-docs.vercel.app'
             else:
-                docs_url = 'http://localhost:5003'
+                # Use environment variable or default public URL
+                docs_url = os.environ.get('DOCS_URL', 'https://gxc-docs.vercel.app')
             return render_template('pool_dashboard.html',
                                  pool_name=self.pool_name,
                                  algorithm=self.algorithm,

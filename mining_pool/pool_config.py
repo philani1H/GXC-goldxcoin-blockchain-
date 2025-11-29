@@ -48,10 +48,16 @@ ASIC_POOL_HOST = os.environ.get('ASIC_POOL_HOST', '0.0.0.0')
 ASIC_POOL_STRATUM_PORT = int(os.environ.get('ASIC_POOL_STRATUM_PORT', 3335))
 ASIC_POOL_DASHBOARD_PORT = int(os.environ.get('ASIC_POOL_DASHBOARD_PORT', 6002))
 
-# Blockchain Node (Railway Testnet)
+# Railway Node URL (Testnet) - Default for all services
+RAILWAY_NODE_URL = os.environ.get(
+    'RAILWAY_NODE_URL',
+    'https://gxc-chain112-blockchain-node-production.up.railway.app'
+)
+
+# Blockchain Node (Railway Testnet) - Use RAILWAY_NODE_URL
 BLOCKCHAIN_NODE_URL = os.environ.get(
     'BLOCKCHAIN_NODE_URL',
-    'https://gxc-chain112-blockchain-node-production.up.railway.app'
+    os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL)
 )
 
 def get_pool_stratum_url(pool_type='general'):
@@ -95,6 +101,7 @@ def print_pool_config(pool_type='general'):
         print(f"Dashboard Port: {GENERAL_POOL_DASHBOARD_PORT}")
     
     print(f"Blockchain Node: {BLOCKCHAIN_NODE_URL}")
+    print(f"Railway Node URL: {RAILWAY_NODE_URL}")
     print(f"Host: {GENERAL_POOL_HOST} (0.0.0.0 = public access)")
     print("=" * 60)
 
