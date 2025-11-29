@@ -910,7 +910,6 @@ class MiningPool:
                 'rejected_shares': miner[4] or 0,
                 'hash_rate': miner[5] or 0.0,
                 'last_seen': miner[6] or 'Never',
-                'total_payouts': total_payouts,
                 'total_shares': shares_count,
                 'total_payouts': earnings['total_paid'],
                 'pending_balance': earnings['pending_balance'],
