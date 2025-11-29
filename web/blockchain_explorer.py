@@ -2767,7 +2767,44 @@ def mining_page():
 @app.route('/mining/guide')
 def mining_guide():
     """Mining guide page with instructions and downloads"""
-    return render_template('mining_guide.html')
+    # Get Stratum URLs from environment or use defaults
+    import sys
+    import os
+    pool_config_path = os.path.join(os.path.dirname(__file__), '..', 'mining_pool', 'pool_config.py')
+    
+    # Try to import pool config for Stratum URLs
+    stratum_urls = {
+        'general_pool': os.environ.get('GENERAL_POOL_STRATUM_URL', 'stratum+tcp://pool.gxc.network:3333'),
+        'gpu_pool': os.environ.get('GPU_POOL_STRATUM_URL', 'stratum+tcp://gpu-pool.gxc.network:3334'),
+        'asic_pool': os.environ.get('ASIC_POOL_STRATUM_URL', 'stratum+tcp://asic-pool.gxc.network:3335'),
+        'general_dashboard': os.environ.get('GENERAL_POOL_DASHBOARD_URL', 'https://pool.gxc.network'),
+        'gpu_dashboard': os.environ.get('GPU_POOL_DASHBOARD_URL', 'https://gpu-pool.gxc.network'),
+        'asic_dashboard': os.environ.get('ASIC_POOL_DASHBOARD_URL', 'https://asic-pool.gxc.network')
+    }
+    
+    # Try to get from pool_config if available
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'mining_pool'))
+        from pool_config import (
+            GENERAL_POOL_STRATUM_URL,
+            GPU_POOL_STRATUM_URL,
+            ASIC_POOL_STRATUM_URL,
+            GENERAL_POOL_DASHBOARD_URL,
+            GPU_POOL_DASHBOARD_URL,
+            ASIC_POOL_DASHBOARD_URL
+        )
+        stratum_urls = {
+            'general_pool': GENERAL_POOL_STRATUM_URL,
+            'gpu_pool': GPU_POOL_STRATUM_URL,
+            'asic_pool': ASIC_POOL_STRATUM_URL,
+            'general_dashboard': GENERAL_POOL_DASHBOARD_URL,
+            'gpu_dashboard': GPU_POOL_DASHBOARD_URL,
+            'asic_dashboard': ASIC_POOL_DASHBOARD_URL
+        }
+    except:
+        pass
+    
+    return render_template('mining_guide.html', stratum_urls=stratum_urls)
 
 @app.route('/stocks')
 def stocks_page():
@@ -3942,6 +3979,31 @@ def handle_disconnect():
 
 @app.route('/downloads')
 def downloads_page():
+    # Get Stratum URLs from environment or use defaults
+    import sys
+    import os
+    
+    stratum_urls = {
+        'general_pool': os.environ.get('GENERAL_POOL_STRATUM_URL', 'stratum+tcp://pool.gxc.network:3333'),
+        'gpu_pool': os.environ.get('GPU_POOL_STRATUM_URL', 'stratum+tcp://gpu-pool.gxc.network:3334'),
+        'asic_pool': os.environ.get('ASIC_POOL_STRATUM_URL', 'stratum+tcp://asic-pool.gxc.network:3335'),
+    }
+    
+    # Try to get from pool_config if available
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'mining_pool'))
+        from pool_config import (
+            GENERAL_POOL_STRATUM_URL,
+            GPU_POOL_STRATUM_URL,
+            ASIC_POOL_STRATUM_URL
+        )
+        stratum_urls = {
+            'general_pool': GENERAL_POOL_STRATUM_URL,
+            'gpu_pool': GPU_POOL_STRATUM_URL,
+            'asic_pool': ASIC_POOL_STRATUM_URL
+        }
+    except:
+        pass
     """Miner downloads page"""
     return render_template('downloads.html')
 

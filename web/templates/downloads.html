@@ -264,7 +264,7 @@
                     </li>
                     <li class="mb-2">Edit <code>config.json</code> to set your wallet address:
                         <pre class="bg-light p-2"><code>{
-  "pool_url": "localhost:3333",
+  "pool_url": "{% if stratum_urls %}{{ stratum_urls.general_pool }}{% else %}stratum+tcp://pool.gxc.network:3333{% endif %}",
   "wallet_address": "YOUR_GXC_ADDRESS_HERE",
   "worker_name": "worker1",
   "threads": 4
@@ -294,7 +294,7 @@
                         <pre class="bg-light p-2"><code>nano ~/.config/GXC/config.json</code></pre>
                         Add:
                         <pre class="bg-light p-2"><code>{
-  "pool_url": "localhost:3333",
+  "pool_url": "{% if stratum_urls %}{{ stratum_urls.general_pool }}{% else %}stratum+tcp://pool.gxc.network:3333{% endif %}",
   "wallet_address": "YOUR_GXC_ADDRESS_HERE",
   "worker_name": "worker1",
   "threads": 4
@@ -327,7 +327,7 @@
                     <tbody>
                         <tr>
                             <td><strong>General Pool</strong></td>
-                            <td><code>localhost:3333</code></td>
+                            <td><code>{% if stratum_urls %}{{ stratum_urls.general_pool }}{% else %}stratum+tcp://pool.gxc.network:3333{% endif %}</code></td>
                             <td>All algorithms</td>
                             <td><a href="https://gxc-pool.vercel.app" target="_blank">View</a></td>
                         </tr>

@@ -454,7 +454,7 @@ gxc-gxhash-miner.exe -c %APPDATA%\GXC\mining.conf
                                 <div class="alert alert-info mb-0">
                                     <i class="fas fa-info-circle me-2"></i>
                                     <strong>ASIC Configuration:</strong> Most ASIC miners can be configured via their web interface. 
-                                    Use pool URL: <code>stratum+tcp://asic-pool.gxc.network:3333</code>
+                                    Use pool URL: <code>{% if stratum_urls %}{{ stratum_urls.asic_pool }}{% else %}stratum+tcp://asic-pool.gxc.network:3335{% endif %}</code>
                                 </div>
                             </div>
                         </div>
@@ -543,7 +543,7 @@ intensity=85
 address=GXC1YOUR_ADDRESS
 
 # Pool configuration
-pool=stratum+tcp://gpu-pool.gxc.network:4444
+pool={% if stratum_urls %}{{ stratum_urls.gpu_pool }}{% else %}stratum+tcp://gpu-pool.gxc.network:3334{% endif %}
 username=your_worker_name.gpu
 password=x
 
@@ -560,7 +560,7 @@ fan_speed=80  # Percentage
                         <div class="code-block">
 # ASIC Configuration for GXC SHA-256 mining
 algorithm=sha256
-pool=stratum+tcp://asic-pool.gxc.network:3333
+pool={% if stratum_urls %}{{ stratum_urls.asic_pool }}{% else %}stratum+tcp://asic-pool.gxc.network:3335{% endif %}
 username=your_worker_name.asic
 password=x
 address=GXC1YOUR_ADDRESS
@@ -592,8 +592,8 @@ fan_speed=80   # Percentage
                             <div class="card-body">
                                 <h5><i class="fas fa-server me-2 text-primary"></i>CPU Pool</h5>
                                 <p class="text-muted">For GXHash CPU mining</p>
-                                <p><strong>URL:</strong> <code>stratum+tcp://pool.gxc.network:3333</code></p>
-                                <a href="https://pool.gxc.network" class="btn btn-sm btn-primary" target="_blank">
+                                <p><strong>URL:</strong> <code>{% if stratum_urls %}{{ stratum_urls.general_pool }}{% else %}stratum+tcp://pool.gxc.network:3333{% endif %}</code></p>
+                                <a href="{% if stratum_urls %}{{ stratum_urls.general_dashboard }}{% else %}https://pool.gxc.network{% endif %}" class="btn btn-sm btn-primary" target="_blank">
                                     <i class="fas fa-external-link-alt me-2"></i>View Dashboard
                                 </a>
                             </div>
@@ -604,8 +604,8 @@ fan_speed=80   # Percentage
                             <div class="card-body">
                                 <h5><i class="fas fa-desktop me-2 text-success"></i>GPU Pool</h5>
                                 <p class="text-muted">For Ethash GPU mining</p>
-                                <p><strong>URL:</strong> <code>stratum+tcp://gpu-pool.gxc.network:4444</code></p>
-                                <a href="https://gpu-pool.gxc.network" class="btn btn-sm btn-success" target="_blank">
+                                <p><strong>URL:</strong> <code>{% if stratum_urls %}{{ stratum_urls.gpu_pool }}{% else %}stratum+tcp://gpu-pool.gxc.network:3334{% endif %}</code></p>
+                                <a href="{% if stratum_urls %}{{ stratum_urls.gpu_dashboard }}{% else %}https://gpu-pool.gxc.network{% endif %}" class="btn btn-sm btn-success" target="_blank">
                                     <i class="fas fa-external-link-alt me-2"></i>View Dashboard
                                 </a>
                             </div>
@@ -616,8 +616,8 @@ fan_speed=80   # Percentage
                             <div class="card-body">
                                 <h5><i class="fas fa-server me-2 text-warning"></i>ASIC Pool</h5>
                                 <p class="text-muted">For SHA-256 ASIC mining</p>
-                                <p><strong>URL:</strong> <code>stratum+tcp://asic-pool.gxc.network:3333</code></p>
-                                <a href="https://asic-pool.gxc.network" class="btn btn-sm btn-warning" target="_blank">
+                                <p><strong>URL:</strong> <code>{% if stratum_urls %}{{ stratum_urls.asic_pool }}{% else %}stratum+tcp://asic-pool.gxc.network:3335{% endif %}</code></p>
+                                <a href="{% if stratum_urls %}{{ stratum_urls.asic_dashboard }}{% else %}https://asic-pool.gxc.network{% endif %}" class="btn btn-sm btn-warning" target="_blank">
                                     <i class="fas fa-external-link-alt me-2"></i>View Dashboard
                                 </a>
                             </div>
