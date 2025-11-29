@@ -16,8 +16,9 @@ from urllib.parse import urlparse
 import os
 
 # Testnet configuration
-TESTNET_RPC_PORT = int(os.environ.get('PORT', 18332))  # Railway compatibility
-TESTNET_DATA_DIR = "./gxc_testnet_data"
+# Railway provides PORT env var dynamically, default to 18332 for local
+TESTNET_RPC_PORT = 18332  # Default port (Railway will override via PORT env var)
+TESTNET_DATA_DIR = os.environ.get('GXC_DATA_DIR', "./gxc_testnet_data")
 BLOCK_TIME = 60  # 60 seconds for testnet (vs 150 for mainnet)
 INITIAL_DIFFICULTY = 0.1  # Lower difficulty for testnet
 BLOCK_REWARD = 12.5
@@ -291,37 +292,53 @@ def main():
     print("=" * 60)
     print("GXC Testnet Blockchain Node")
     print("=" * 60)
-    print(f"RPC Port: {TESTNET_RPC_PORT}")
+    
+    # Railway provides PORT env var, use it if available
+    port = int(os.environ.get('PORT', TESTNET_RPC_PORT))
+    print(f"RPC Port: {port}")
     print(f"Data Directory: {TESTNET_DATA_DIR}")
     print(f"Block Time: {BLOCK_TIME} seconds")
     print(f"Initial Difficulty: {INITIAL_DIFFICULTY}")
+    print(f"Environment: {'Railway' if os.environ.get('RAILWAY_ENVIRONMENT') else 'Local'}")
     print("=" * 60)
     print()
     
-    # Initialize blockchain
-    blockchain = Blockchain(TESTNET_DATA_DIR)
-    RPCHandler.blockchain = blockchain
-    
-    # Start RPC server
-    # Use 0.0.0.0 for Railway/cloud deployment, 127.0.0.1 for local
-    host = '0.0.0.0' if os.environ.get('RAILWAY_ENVIRONMENT') else '127.0.0.1'
-    server_address = (host, TESTNET_RPC_PORT)
-    httpd = HTTPServer(server_address, RPCHandler)
-    
-    print(f"[BLOCKCHAIN] RPC server started on http://{host}:{TESTNET_RPC_PORT}")
-    print(f"[BLOCKCHAIN] Current height: {blockchain.current_height}")
-    print(f"[BLOCKCHAIN] Current difficulty: {blockchain.current_difficulty}")
-    print()
-    print("Ready to accept RPC requests from mining pools!")
-    print("Press Ctrl+C to stop")
-    print()
-    
     try:
+        # Initialize blockchain
+        blockchain = Blockchain(TESTNET_DATA_DIR)
+        RPCHandler.blockchain = blockchain
+        
+        # Start RPC server
+        # Use 0.0.0.0 for Railway/cloud deployment, 127.0.0.1 for local
+        host = '0.0.0.0' if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('PORT') else '127.0.0.1'
+        server_address = (host, port)
+        httpd = HTTPServer(server_address, RPCHandler)
+        
+        print(f"[BLOCKCHAIN] RPC server started on http://{host}:{port}")
+        print(f"[BLOCKCHAIN] Current height: {blockchain.current_height}")
+        print(f"[BLOCKCHAIN] Current difficulty: {blockchain.current_difficulty}")
+        print()
+        print("Ready to accept RPC requests from mining pools!")
+        print("Press Ctrl+C to stop")
+        print()
+        
         httpd.serve_forever()
+    except OSError as e:
+        if "Address already in use" in str(e):
+            print(f"[ERROR] Port {port} is already in use. Please use a different port.")
+        else:
+            print(f"[ERROR] Failed to start server: {e}")
+        raise
     except KeyboardInterrupt:
         print("\n[BLOCKCHAIN] Shutting down...")
-        httpd.shutdown()
+        if 'httpd' in locals():
+            httpd.shutdown()
         print("[BLOCKCHAIN] Node stopped")
+    except Exception as e:
+        print(f"[ERROR] Fatal error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 if __name__ == '__main__':
     main()

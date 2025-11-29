@@ -19,7 +19,7 @@ try:
         pool_name='gpu-pool',
         algorithm='ethash',
         port=4444,
-        rpc_url=os.environ.get('BLOCKCHAIN_NODE_URL', 'http://localhost:8545')
+        rpc_url=os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')
     )
     # Expose Flask app for Vercel
     app = pool.app

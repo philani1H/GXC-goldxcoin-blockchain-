@@ -22,9 +22,11 @@ import os
 class BlockchainClient:
     """Client for connecting to GXC blockchain node"""
     
-    def __init__(self, rpc_url: str = "https://gxc-chain112-blockchain-node-production.up.railway.app", rest_url: str = "https://gxc-chain112-blockchain-node-production.up.railway.app"):
-        self.rpc_url = rpc_url
-        self.rest_url = rest_url
+    def __init__(self, rpc_url: str = None, rest_url: str = None):
+        # Use Railway URL from environment, fallback to Railway URL for production
+        RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+        self.rpc_url = rpc_url or os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL))
+        self.rest_url = rest_url or os.environ.get('BLOCKCHAIN_REST_URL', self.rpc_url)
         self.session = requests.Session()
         self.session.timeout = 10
         

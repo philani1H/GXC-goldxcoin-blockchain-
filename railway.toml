@@ -12,3 +12,5 @@ restartPolicyMaxRetries = 10
 RAILWAY_ENVIRONMENT = "1"
 GXC_NETWORK = "testnet"
 GXC_LOG_LEVEL = "info"
+# PORT is automatically provided by Railway - don't set it here
+# GXC_DATA_DIR will use default if not set

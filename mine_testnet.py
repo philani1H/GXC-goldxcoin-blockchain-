@@ -3,13 +3,15 @@
 Simple testnet miner - mines blocks to your address
 """
 
+import os
 import requests
 import hashlib
 import time
 import json
 
 MINER_ADDRESS = "tGXC9fab7317231b966af85ac453e168c0932"
-RPC_URL = "http://localhost:18332"
+# Use Railway URL from environment, fallback to localhost for local development
+RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', 'http://localhost:18332'))
 
 def rpc_call(method, params=None):
     """Make RPC call to blockchain node"""
