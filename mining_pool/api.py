@@ -8,6 +8,11 @@ import os
 # Set Vercel environment
 os.environ['VERCEL'] = '1'
 
+# Set Railway URL environment variables if not set (for Vercel deployment)
+if not os.environ.get('BLOCKCHAIN_NODE_URL') and not os.environ.get('RAILWAY_NODE_URL'):
+    os.environ['RAILWAY_NODE_URL'] = 'https://gxc-chain112-blockchain-node-production.up.railway.app'
+    os.environ['BLOCKCHAIN_NODE_URL'] = 'https://gxc-chain112-blockchain-node-production.up.railway.app'
+
 # Add mining_pool directory to path
 pool_path = os.path.dirname(__file__)
 sys.path.insert(0, pool_path)

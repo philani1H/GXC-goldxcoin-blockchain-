@@ -18,7 +18,9 @@
   "env": {
     "VERCEL": "1",
     "POOL_TYPE": "general",
-    "DATABASE_PATH": "/tmp/pool.db"
+    "DATABASE_PATH": "/tmp/pool.db",
+    "BLOCKCHAIN_NODE_URL": "https://gxc-chain112-blockchain-node-production.up.railway.app",
+    "RAILWAY_NODE_URL": "https://gxc-chain112-blockchain-node-production.up.railway.app"
   }
 }
 
