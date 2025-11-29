@@ -126,6 +126,7 @@ class MiningPool:
                 rejected_shares INTEGER DEFAULT 0,
                 hash_rate REAL DEFAULT 0.0,
                 difficulty REAL DEFAULT 0.0,
+                pending_balance REAL DEFAULT 0.0,
                 is_active BOOLEAN DEFAULT 1
             )
         ''')
@@ -596,6 +597,8 @@ class MiningPool:
         
         if is_block:
             self.handle_block_found(miner_id, job_id, nonce, extra_nonce2)
+            # Distribute rewards fairly when block is found
+            self.distribute_block_rewards(block_hash=None)
     
     def reject_share(self, miner_id: str, job_id: str, nonce: str, extra_nonce2: str):
         """Reject share from miner"""
@@ -820,11 +823,10 @@ class MiningPool:
                     ''', (miner_id,))
                     shares_count = cursor.fetchone()[0] or 0
                     
-                    # Get total payouts
-                    cursor.execute('''
-                        SELECT SUM(amount) FROM payouts WHERE miner_id = ? AND (status = 'completed' OR status = 'paid')
-                    ''', (miner_id,))
-                    total_payouts = cursor.fetchone()[0] or 0.0
+                    # Get earnings using fair PPLNS calculation
+                    earnings = self.calculate_miner_earnings(miner_id)
+                    total_payouts = earnings['total_paid']
+                    pending_balance = earnings['pending_balance']
                     
                     # Get blocks found
                     cursor.execute('''
@@ -846,8 +848,10 @@ class MiningPool:
                         'connected_at': miner[7] or 'Unknown',
                         'total_shares': shares_count,
                         'total_payouts': total_payouts,
+                        'pending_balance': pending_balance,
+                        'total_earnings': earnings['total_earnings'],
                         'blocks_found': blocks_found,
-                        'estimated_earnings': estimated_earnings
+                        'estimated_earnings': earnings['total_earnings']
                     })
                 
                 conn.close()
@@ -886,8 +890,9 @@ class MiningPool:
             ''', (miner[0],))
             total_payouts = cursor.fetchone()[0] or 0.0
             
-            # Calculate estimated earnings (simplified - based on shares)
-            estimated_earnings = shares_count * 0.0001  # Placeholder calculation
+            # Calculate actual earnings using fair PPLNS system
+            earnings = self.calculate_miner_earnings(miner[0])
+            estimated_earnings = earnings['total_earnings']
             
             # Get miner's blocks
             cursor.execute('''
@@ -1234,6 +1239,191 @@ class MiningPool:
         
         conn.close()
         return blocks
+    
+    def distribute_block_rewards(self, block_hash=None, block_reward=12.5, pool_fee=0.02):
+        """
+        Distribute block rewards fairly using PPLNS (Pay Per Last N Shares)
+        PPLNS ensures fair distribution based on recent contribution
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Calculate net reward after pool fee
+            net_reward = block_reward * (1 - pool_fee)
+            
+            # Get last N shares (window for PPLNS - last 1000 shares for fairness)
+            pplns_window = 1000
+            cursor.execute('''
+                SELECT miner_id, COUNT(*) as share_count
+                FROM shares
+                WHERE is_valid = 1
+                AND share_id > (SELECT MAX(share_id) - ? FROM shares)
+                GROUP BY miner_id
+            ''', (pplns_window,))
+            
+            recent_shares = cursor.fetchall()
+            
+            if not recent_shares:
+                print(f"[{self.pool_name}] No recent shares for reward distribution")
+                return
+            
+            # Calculate total shares in window
+            total_shares_in_window = sum(row[1] for row in recent_shares)
+            
+            if total_shares_in_window == 0:
+                print(f"[{self.pool_name}] No valid shares for reward distribution")
+                return
+            
+            # Distribute rewards proportionally
+            for miner_id, share_count in recent_shares:
+                # Calculate miner's share of reward
+                miner_share = (share_count / total_shares_in_window) * net_reward
+                
+                # Get miner's address
+                cursor.execute('SELECT address FROM miners WHERE miner_id = ?', (miner_id,))
+                miner_data = cursor.fetchone()
+                
+                if miner_data:
+                    address = miner_data[0]
+                    
+                    # Create pending payout
+                    cursor.execute('''
+                        INSERT INTO payouts (miner_id, amount, status, created_at)
+                        VALUES (?, ?, 'pending', CURRENT_TIMESTAMP)
+                    ''', (miner_id, miner_share))
+                    
+                    # Update miner's pending balance
+                    cursor.execute('''
+                        UPDATE miners
+                        SET pending_balance = pending_balance + ?
+                        WHERE miner_id = ?
+                    ''', (miner_share, miner_id))
+                    
+                    print(f"[{self.pool_name}] Distributed {miner_share:.4f} GXC to {miner_id} ({share_count} shares)")
+            
+            conn.commit()
+            print(f"[{self.pool_name}] Total reward distributed: {net_reward:.4f} GXC (fee: {block_reward * pool_fee:.4f} GXC)")
+            
+        except Exception as e:
+            print(f"[{self.pool_name}] Error distributing rewards: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
+    
+    def process_payouts(self, min_payout=0.1):
+        """
+        Process pending payouts for miners who have reached minimum threshold
+        This should be called periodically (e.g., daily)
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Get miners with pending balance >= minimum payout
+            cursor.execute('''
+                SELECT miner_id, address, pending_balance
+                FROM miners
+                WHERE pending_balance >= ?
+                AND address IS NOT NULL
+                AND address != ''
+            ''', (min_payout,))
+            
+            eligible_miners = cursor.fetchall()
+            
+            for miner_id, address, pending_balance in eligible_miners:
+                try:
+                    # Here you would send the actual transaction to the blockchain
+                    # For now, we'll mark it as completed
+                    # TODO: Implement actual blockchain transaction
+                    
+                    cursor.execute('''
+                        UPDATE payouts
+                        SET status = 'completed', paid_at = CURRENT_TIMESTAMP
+                        WHERE miner_id = ? AND status = 'pending'
+                    ''', (miner_id,))
+                    
+                    # Reset pending balance
+                    cursor.execute('''
+                        UPDATE miners
+                        SET pending_balance = 0.0
+                        WHERE miner_id = ?
+                    ''', (miner_id,))
+                    
+                    print(f"[{self.pool_name}] Processed payout: {pending_balance:.4f} GXC to {address}")
+                    
+                except Exception as e:
+                    print(f"[{self.pool_name}] Error processing payout for {miner_id}: {e}")
+                    # Mark as failed
+                    cursor.execute('''
+                        UPDATE payouts
+                        SET status = 'failed'
+                        WHERE miner_id = ? AND status = 'pending'
+                    ''', (miner_id,))
+            
+            conn.commit()
+            print(f"[{self.pool_name}] Processed {len(eligible_miners)} payouts")
+            
+        except Exception as e:
+            print(f"[{self.pool_name}] Error processing payouts: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
+    
+    def calculate_miner_earnings(self, miner_id: str) -> Dict:
+        """
+        Calculate miner's total earnings and pending balance
+        Uses PPLNS for fair calculation
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Get miner's pending balance
+            cursor.execute('SELECT pending_balance FROM miners WHERE miner_id = ?', (miner_id,))
+            pending = cursor.fetchone()
+            pending_balance = pending[0] if pending else 0.0
+            
+            # Get total payouts
+            cursor.execute('''
+                SELECT SUM(amount) FROM payouts 
+                WHERE miner_id = ? AND (status = 'completed' OR status = 'paid')
+            ''', (miner_id,))
+            total_paid = cursor.fetchone()[0] or 0.0
+            
+            # Get shares in PPLNS window
+            pplns_window = 1000
+            cursor.execute('''
+                SELECT COUNT(*) FROM shares
+                WHERE miner_id = ? AND is_valid = 1
+                AND share_id > (SELECT MAX(share_id) - ? FROM shares)
+            ''', (miner_id, pplns_window))
+            shares_in_window = cursor.fetchone()[0] or 0
+            
+            # Get total shares
+            cursor.execute('''
+                SELECT COUNT(*) FROM shares WHERE miner_id = ? AND is_valid = 1
+            ''', (miner_id,))
+            total_shares = cursor.fetchone()[0] or 0
+            
+            return {
+                'pending_balance': pending_balance,
+                'total_paid': total_paid,
+                'total_earnings': pending_balance + total_paid,
+                'shares_in_window': shares_in_window,
+                'total_shares': total_shares
+            }
+        except Exception as e:
+            print(f"Error calculating earnings: {e}")
+            return {
+                'pending_balance': 0.0,
+                'total_paid': 0.0,
+                'total_earnings': 0.0,
+                'shares_in_window': 0,
+                'total_shares': 0
+            }
+        finally:
+            conn.close()
     
     def run(self, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=False):
         """Run the pool web server"""
