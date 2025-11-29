@@ -912,7 +912,9 @@ class MiningPool:
                 'last_seen': miner[6] or 'Never',
                 'total_payouts': total_payouts,
                 'total_shares': shares_count,
-                'total_earnings': estimated_earnings,
+                'total_payouts': earnings['total_paid'],
+                'pending_balance': earnings['pending_balance'],
+                'total_earnings': earnings['total_earnings'],
                 'blocks': [{'hash': b[0], 'reward': b[1] or 0.0, 'timestamp': b[2]} for b in blocks]
             }
             
