@@ -27,12 +27,33 @@ def rpc_call(method, params=None):
     }
     
     try:
-        response = requests.post(RPC_URL, json=payload, timeout=5)
+        # Try Railway URL first
+        response = requests.post(RPC_URL, json=payload, timeout=10)
         result = response.json()
         return result.get('result')
+    except requests.exceptions.Timeout:
+        print(f"⚠️  Railway node timeout - trying localhost fallback...")
+        # Fallback to local testnet node
+        local_url = "http://localhost:18332"
+        try:
+            response = requests.post(local_url, json=payload, timeout=5)
+            result = response.json()
+            print(f"✅ Connected to local testnet node!")
+            return result.get('result')
+        except Exception as e:
+            print(f"❌ Local node also unavailable: {e}")
+            return None
     except Exception as e:
         print(f"RPC Error: {e}")
-        return None
+        # Try localhost fallback
+        local_url = "http://localhost:18332"
+        try:
+            response = requests.post(local_url, json=payload, timeout=5)
+            result = response.json()
+            print(f"✅ Connected to local testnet node!")
+            return result.get('result')
+        except:
+            return None
 
 def mine_block():
     """Mine a single block"""
@@ -158,8 +179,13 @@ def main():
         print(f"✅ Connected! Current height: {height}")
     else:
         print("❌ Cannot connect to blockchain node")
-        print(f"\nMake sure testnet node is running:")
-        print(f"python3 testnet_blockchain_node.py")
+        print(f"\n🔧 Solutions:")
+        print(f"   1. Start local testnet node:")
+        print(f"      python testnet_blockchain_node.py")
+        print(f"   2. Check Railway node status:")
+        print(f"      https://railway.app")
+        print(f"   3. Wait for Railway deployment to complete")
+        print(f"\n💡 Tip: Local node is faster and more reliable for testing!")
         return
     
     # Start mining
