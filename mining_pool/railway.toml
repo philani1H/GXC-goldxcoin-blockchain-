@@ -1,0 +1,33 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "pip install -r requirements.txt"
+
+[deploy]
+startCommand = "python3 general_pool.py"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# Environment variables
+[deploy.env]
+RAILWAY_ENVIRONMENT = "1"
+GXC_NETWORK = "testnet"
+GXC_LOG_LEVEL = "info"
+# PORT is automatically provided by Railway - don't set it here
+# GXC_DATA_DIR will use default if not set
+
+# Railway Node URL (Testnet)
+RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+BLOCKCHAIN_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+
+# Pool Configuration
+POOL_TYPE = "general"
+DATABASE_PATH = "/tmp/pool.db"
+
+# Stratum Server Configuration
+GENERAL_POOL_STRATUM_PORT = "3333"
+GENERAL_POOL_DASHBOARD_PORT = "6000"
+GENERAL_POOL_HOST = "0.0.0.0"
+
+# Public URLs (set these to your Railway pool URLs after deployment)
+# GENERAL_POOL_STRATUM_URL = "stratum+tcp://your-pool.up.railway.app:3333"
+# GENERAL_POOL_DASHBOARD_URL = "https://your-pool-dashboard.up.railway.app"
