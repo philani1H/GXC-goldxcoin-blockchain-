@@ -18,8 +18,12 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'gxc_explorer_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+# Railway Node URL (Testnet)
+RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+
 # Configuration
-BLOCKCHAIN_NODE_URL = os.environ.get('BLOCKCHAIN_NODE_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app')  # GXC node RPC endpoint
+# Use Railway URL from environment, fallback to Railway URL for production
+BLOCKCHAIN_NODE_URL = os.environ.get('BLOCKCHAIN_NODE_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL))  # GXC node RPC endpoint
 # Use /tmp for Vercel (writable), otherwise use local path
 DATABASE_PATH = os.environ.get('DATABASE_PATH', '/tmp/gxc_explorer.db' if os.path.exists('/tmp') else 'gxc_explorer.db')
 

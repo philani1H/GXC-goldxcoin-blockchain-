@@ -36,16 +36,33 @@ JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_hex(32))
 DATABASE_PATH = 'gxc_wallets.db'
 BACKUP_STORAGE_PATH = 'wallet_backups/'
 
+# Railway Node URL (Testnet)
+RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+
 # Network/Chain Configuration
+# Supports both testnet and mainnet via environment variables
 NETWORK_INFO = {
     'network_name': 'GXC Mainnet',
     'chain_id': 'GXC',
-    'rpc_url': os.environ.get('BLOCKCHAIN_RPC_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app'),
-    'rest_url': os.environ.get('BLOCKCHAIN_REST_URL', 'https://gxc-chain112-blockchain-node-production.up.railway.app'),
+    'rpc_url': os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL)),
+    'rest_url': os.environ.get('BLOCKCHAIN_REST_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL)),
     'explorer_url': os.environ.get('EXPLORER_URL', 'http://localhost:3000'),
     'api_url': os.environ.get('WALLET_API_URL', 'http://localhost:5000'),
     'currency': 'GXC',
     'block_time': '2 seconds',
+    'consensus': 'Hybrid PoW/PoS'
+}
+
+# Testnet-specific configuration (if needed)
+TESTNET_NETWORK_INFO = {
+    'network_name': 'GXC Testnet',
+    'chain_id': 'GXC_TESTNET',
+    'rpc_url': os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL)),
+    'rest_url': os.environ.get('BLOCKCHAIN_REST_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL)),
+    'explorer_url': os.environ.get('EXPLORER_URL', 'http://localhost:3000'),
+    'api_url': os.environ.get('WALLET_API_URL', 'http://localhost:5000'),
+    'currency': 'tGXC',
+    'block_time': '60 seconds',
     'consensus': 'Hybrid PoW/PoS'
 }
 
@@ -257,7 +274,9 @@ class WalletService:
         self.testnet = testnet
         self.db_path = 'gxc_wallets_testnet.db' if testnet else DATABASE_PATH
         self.init_database()
-        self.blockchain = BlockchainClient()
+        # Use appropriate network info for testnet vs mainnet
+        network_info = TESTNET_NETWORK_INFO if testnet else NETWORK_INFO
+        self.blockchain = BlockchainClient(rest_url=network_info['rest_url'])
         
     def get_db_connection(self):
         """Get database connection (testnet or mainnet)"""

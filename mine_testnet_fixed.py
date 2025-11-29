@@ -3,13 +3,16 @@
 Fixed testnet miner - properly submits blocks
 """
 
+import os
 import requests
 import hashlib
 import time
 import json
 
 MINER_ADDRESS = "tGXC9fab7317231b966af85ac453e168c0932"
-RPC_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+# Use Railway URL from environment, fallback to Railway URL for production
+RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL))
 
 def rpc_call(method, params=None):
     """Make RPC call to blockchain node"""
