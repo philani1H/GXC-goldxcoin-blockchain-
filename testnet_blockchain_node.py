@@ -250,9 +250,65 @@ class RPCHandler(BaseHTTPRequestHandler):
             elif method == 'getdifficulty':
                 result = self.blockchain.current_difficulty
             elif method == 'getblock':
-                # Simplified block retrieval
+                # Get block by hash or height
+                if params and len(params) > 0:
+                    block_param = params[0]
+                    if isinstance(block_param, int) or (isinstance(block_param, str) and block_param.isdigit()):
+                        # Get block by height
+                        height = int(block_param)
+                        latest = self.blockchain.get_latest_block()
+                        if latest and latest['height'] == height:
+                            result = latest
+                        else:
+                            result = None
+                    else:
+                        # Get block by hash - simplified, return latest if hash matches
+                        latest = self.blockchain.get_latest_block()
+                        if latest and latest['hash'] == block_param:
+                            result = latest
+                        else:
+                            result = None
+                else:
+                    # No params, return latest
+                    latest = self.blockchain.get_latest_block()
+                    result = latest if latest else None
+            elif method == 'gxc_getLatestBlock' or method == 'getlatestblock':
+                # Get latest block (for explorer)
                 latest = self.blockchain.get_latest_block()
-                result = latest if latest else None
+                if latest:
+                    result = {
+                        'height': latest['height'],
+                        'hash': latest['hash'],
+                        'prev_hash': latest['prev_hash'],
+                        'timestamp': latest['timestamp'],
+                        'difficulty': latest['difficulty'],
+                        'nonce': latest['nonce'],
+                        'miner': latest['miner'],
+                        'transaction_count': 0
+                    }
+                else:
+                    result = None
+            elif method == 'gxc_getBlockByNumber' or method == 'getblockbynumber':
+                # Get block by number (for explorer)
+                block_number = params[0] if params and len(params) > 0 else None
+                if block_number is not None:
+                    latest = self.blockchain.get_latest_block()
+                    if latest and latest['height'] == int(block_number):
+                        result = {
+                            'height': latest['height'],
+                            'hash': latest['hash'],
+                            'prev_hash': latest['prev_hash'],
+                            'timestamp': latest['timestamp'],
+                            'difficulty': latest['difficulty'],
+                            'nonce': latest['nonce'],
+                            'miner': latest['miner'],
+                            'transaction_count': 0,
+                            'transactions': []
+                        }
+                    else:
+                        result = None
+                else:
+                    result = None
             else:
                 error = {'code': -32601, 'message': f'Method not found: {method}'}
             

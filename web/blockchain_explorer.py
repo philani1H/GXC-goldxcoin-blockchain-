@@ -580,80 +580,168 @@ class BlockchainExplorer:
     def get_latest_block(self):
         """Get latest block from the node"""
         try:
-            response = requests.post(BLOCKCHAIN_NODE_URL, json={
-                'method': 'gxc_getLatestBlock',
-                'params': [],
-                'id': 1
-            }, timeout=10)
+            # Try gxc_getLatestBlock first, then fallback to getblock
+            methods = ['gxc_getLatestBlock', 'getlatestblock', 'getblock']
             
-            if response.status_code == 200:
-                return response.json().get('result')
+            for method in methods:
+                try:
+                    if method == 'getblock':
+                        # getblock with no params returns latest
+                        payload = {
+                            'jsonrpc': '2.0',
+                            'method': method,
+                            'params': [],
+                            'id': 1
+                        }
+                    else:
+                        payload = {
+                            'jsonrpc': '2.0',
+                            'method': method,
+                            'params': [],
+                            'id': 1
+                        }
+                    
+                    response = requests.post(BLOCKCHAIN_NODE_URL, json=payload, timeout=10)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if 'result' in result and result['result']:
+                            return result['result']
+                except:
+                    continue
+            
             return None
-        except:
+        except Exception as e:
+            print(f"Error getting latest block: {e}")
             return None
     
     def get_block_by_number(self, block_number):
         """Get block by number from the node"""
         try:
-            response = requests.post(BLOCKCHAIN_NODE_URL, json={
-                'method': 'gxc_getBlockByNumber',
-                'params': [block_number, True],  # True to include transactions
-                'id': 1
-            }, timeout=10)
+            # Try multiple methods for compatibility
+            methods = [
+                ('gxc_getBlockByNumber', [block_number, True]),
+                ('getblockbynumber', [block_number, True]),
+                ('getblock', [int(block_number)])
+            ]
             
-            if response.status_code == 200:
-                return response.json().get('result')
+            for method, params in methods:
+                try:
+                    payload = {
+                        'jsonrpc': '2.0',
+                        'method': method,
+                        'params': params,
+                        'id': 1
+                    }
+                    
+                    response = requests.post(BLOCKCHAIN_NODE_URL, json=payload, timeout=10)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if 'result' in result and result['result']:
+                            return result['result']
+                except:
+                    continue
+            
             return None
-        except:
+        except Exception as e:
+            print(f"Error getting block by number: {e}")
             return None
     
     def store_block(self, block_data):
         """Store block data in database"""
+        if not block_data:
+            return
+        
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         try:
+            # Handle testnet node format (height, hash, prev_hash, timestamp, difficulty, nonce, miner)
+            # Also handle explorer format with more fields
+            block_number = block_data.get('height') or block_data.get('block_number') or block_data.get('number') or 0
+            block_hash = block_data.get('hash') or block_data.get('block_hash') or ''
+            parent_hash = block_data.get('prev_hash') or block_data.get('parent_hash') or block_data.get('previousblockhash') or ''
+            timestamp = block_data.get('timestamp') or int(time.time())
+            miner_address = block_data.get('miner') or block_data.get('miner_address') or ''
+            difficulty = block_data.get('difficulty') or 0.1
+            nonce = block_data.get('nonce') or 0
+            transaction_count = block_data.get('transaction_count') or block_data.get('tx_count') or 0
+            
             # Determine block type
             block_type_map = {'pow_sha256': 0, 'pow_ethash': 1, 'pos': 2}
-            consensus = block_data.get('consensusType', 'pow')
+            consensus = block_data.get('consensusType') or block_data.get('consensus_type') or 'pow'
             block_type = block_type_map.get(consensus.lower(), 0)
             
-            cursor.execute('''
-                INSERT OR REPLACE INTO blocks (
-                    block_number, block_hash, parent_hash, merkle_root, timestamp,
-                    miner_address, difficulty, total_difficulty, nonce, size,
-                    gas_used, gas_limit, transaction_count, reward,
-                    consensus_type, block_type, validator_signature,
-                    pow_hash, pos_hash, fee_burn_rate, pop_reference
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            # Check if block already exists
+            cursor.execute('SELECT block_number FROM blocks WHERE block_number = ?', (block_number,))
+            if cursor.fetchone():
+                # Block exists, update it
+                cursor.execute('''
+                    UPDATE blocks SET
+                        block_hash = ?, parent_hash = ?, timestamp = ?,
+                        miner_address = ?, difficulty = ?, nonce = ?,
+                        transaction_count = ?
+                    WHERE block_number = ?
+                ''', (block_hash, parent_hash, timestamp, miner_address, difficulty, nonce, transaction_count, block_number))
+            else:
+                # New block, insert it
+                # Handle both testnet format and full format
+                merkle_root = block_data.get('merkleRoot') or block_data.get('merkle_root') or ''
+                total_difficulty = block_data.get('totalDifficulty') or block_data.get('total_difficulty') or difficulty
+                block_size = block_data.get('size') or 0
+                gas_used = block_data.get('gasUsed') or block_data.get('gas_used') or 0
+                gas_limit = block_data.get('gasLimit') or block_data.get('gas_limit') or 0
+                reward = block_data.get('reward') or 12.5  # Default testnet reward
+                
+                # Convert timestamp to datetime if needed
+                if isinstance(timestamp, (int, float)):
+                    from datetime import datetime
+                    timestamp_dt = datetime.fromtimestamp(timestamp)
+                elif isinstance(timestamp, str):
+                    try:
+                        timestamp_dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    except:
+                        timestamp_dt = datetime.fromtimestamp(int(time.time()))
+                else:
+                    timestamp_dt = timestamp
+                
+                cursor.execute('''
+                    INSERT INTO blocks (
+                        block_number, block_hash, parent_hash, merkle_root, timestamp,
+                        miner_address, difficulty, total_difficulty, nonce, size,
+                        gas_used, gas_limit, transaction_count, reward,
+                        consensus_type, block_type, validator_signature,
+                        pow_hash, pos_hash, fee_burn_rate, pop_reference
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                block_data['number'],
-                block_data['hash'],
-                block_data['parentHash'],
-                block_data.get('merkleRoot'),
-                datetime.fromisoformat(block_data['timestamp']),
-                block_data['miner'],
-                float(block_data['difficulty']),
-                float(block_data['totalDifficulty']),
-                int(block_data.get('nonce', 0)),
-                int(block_data['size']),
-                int(block_data.get('gasUsed', 0)),
-                int(block_data.get('gasLimit', 0)),
-                len(block_data.get('transactions', [])),
-                float(block_data.get('reward', 0.0)),
+                block_number,
+                block_hash,
+                parent_hash,
+                merkle_root,
+                timestamp_dt,
+                miner_address,
+                float(difficulty),
+                float(total_difficulty),
+                int(nonce),
+                int(block_size),
+                int(gas_used),
+                int(gas_limit),
+                int(transaction_count),
+                float(reward),
                 consensus,
                 block_type,
-                block_data.get('validatorSignature'),
-                block_data.get('powHash'),
-                block_data.get('posHash'),
-                float(block_data.get('feeBurnRate', 0.0)),
-                block_data.get('popReference')
+                block_data.get('validatorSignature') or block_data.get('validator_signature') or '',
+                block_data.get('powHash') or block_data.get('pow_hash') or '',
+                block_data.get('posHash') or block_data.get('pos_hash') or '',
+                float(block_data.get('feeBurnRate') or block_data.get('fee_burn_rate') or 0.0),
+                block_data.get('popReference') or block_data.get('pop_reference') or ''
             ))
             
             # Store transactions
-            if 'transactions' in block_data:
+            if 'transactions' in block_data and block_data['transactions']:
                 for i, tx in enumerate(block_data['transactions']):
-                    self.store_transaction(tx, block_data['number'], i)
+                    self.store_transaction(tx, block_number, i)
             
             conn.commit()
             
@@ -2191,22 +2279,62 @@ class BlockchainExplorer:
     def start_block_monitor(self):
         """Start monitoring for new blocks"""
         def monitor():
+            last_height = -1
             while True:
                 try:
+                    # Get latest block from node
                     latest_block = self.get_latest_block()
+                    
                     if latest_block:
-                        self.store_block(latest_block)
+                        current_height = latest_block.get('height') or latest_block.get('block_number') or latest_block.get('number') or 0
                         
-                        # Emit to connected clients
-                        socketio.emit('new_block', latest_block)
-                        
-                        # Update network stats
-                        self.update_network_stats()
+                        # Only store if it's a new block
+                        if current_height > last_height:
+                            print(f"[EXPLORER] New block detected: #{current_height}")
+                            self.store_block(latest_block)
+                            last_height = current_height
+                            
+                            # Emit to connected clients
+                            try:
+                                socketio.emit('new_block', latest_block)
+                            except:
+                                pass  # SocketIO might not be initialized
+                            
+                            # Update network stats periodically
+                            if current_height % 10 == 0:
+                                self.update_network_stats()
+                        elif current_height == last_height:
+                            # Same block, just update stats occasionally
+                            pass
+                    else:
+                        # No block data, try to get blockchain info
+                        try:
+                            response = requests.post(BLOCKCHAIN_NODE_URL, json={
+                                'jsonrpc': '2.0',
+                                'method': 'getblockchaininfo',
+                                'params': [],
+                                'id': 1
+                            }, timeout=5)
+                            if response.status_code == 200:
+                                info = response.json().get('result', {})
+                                height = info.get('blocks', 0)
+                                if height > last_height:
+                                    print(f"[EXPLORER] Blockchain height: {height}, fetching blocks...")
+                                    # Try to fetch missing blocks
+                                    for h in range(max(0, last_height + 1), height + 1):
+                                        block = self.get_block_by_number(h)
+                                        if block:
+                                            self.store_block(block)
+                                    last_height = height
+                        except:
+                            pass
                     
                     time.sleep(5)  # Check every 5 seconds
                     
                 except Exception as e:
-                    print(f"Block monitor error: {e}")
+                    print(f"[EXPLORER] Block monitor error: {e}")
+                    import traceback
+                    traceback.print_exc()
                     time.sleep(10)  # Wait longer on error
         
         thread = threading.Thread(target=monitor)
@@ -2268,14 +2396,46 @@ explorer = BlockchainExplorer()
 @app.route('/')
 def index():
     """Main explorer page"""
+    # Try to sync latest block first
+    try:
+        latest_block = explorer.get_latest_block()
+        if latest_block:
+            explorer.store_block(latest_block)
+    except Exception as e:
+        print(f"Error syncing latest block: {e}")
+    
     recent_blocks = explorer.get_recent_blocks(10)
     recent_transactions = explorer.get_recent_transactions(15)
     network_stats = explorer.get_network_stats()
     
+    # If no blocks, try to get blockchain info and show connection status
+    if not recent_blocks:
+        try:
+            response = requests.post(BLOCKCHAIN_NODE_URL, json={
+                'jsonrpc': '2.0',
+                'method': 'getblockchaininfo',
+                'params': [],
+                'id': 1
+            }, timeout=5)
+            if response.status_code == 200:
+                info = response.json().get('result', {})
+                height = info.get('blocks', 0)
+                if height > 0:
+                    # Try to fetch and store blocks
+                    for h in range(max(0, height - 9), height + 1):
+                        block = explorer.get_block_by_number(h)
+                        if block:
+                            explorer.store_block(block)
+                    # Refresh data
+                    recent_blocks = explorer.get_recent_blocks(10)
+        except Exception as e:
+            print(f"Error fetching blockchain info: {e}")
+    
     return render_template('explorer_index.html', 
                          blocks=recent_blocks,
                          transactions=recent_transactions,
-                         stats=network_stats)
+                         stats=network_stats,
+                         blockchain_node_url=BLOCKCHAIN_NODE_URL)
 
 @app.route('/block/<block_number>')
 def block_detail(block_number):
