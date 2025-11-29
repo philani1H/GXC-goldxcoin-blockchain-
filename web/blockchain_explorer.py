@@ -2610,13 +2610,51 @@ def search():
 
 @app.route('/blocks')
 def blocks_list():
-    # Placeholder: fetch recent blocks
+    """Blocks list page"""
+    # Try to sync latest blocks first
+    try:
+        latest_block = explorer.get_latest_block()
+        if latest_block:
+            explorer.store_block(latest_block)
+        
+        # Also try to get blockchain info and sync missing blocks
+        response = requests.post(BLOCKCHAIN_NODE_URL, json={
+            'jsonrpc': '2.0',
+            'method': 'getblockchaininfo',
+            'params': [],
+            'id': 1
+        }, timeout=5)
+        if response.status_code == 200:
+            info = response.json().get('result', {})
+            height = info.get('blocks', 0)
+            if height > 0:
+                # Get recent blocks from database to see what we have
+                recent = explorer.get_recent_blocks(1)
+                last_stored = recent[0]['number'] if recent else -1
+                
+                # Sync missing blocks (last 20)
+                for h in range(max(0, height - 19), height + 1):
+                    if h > last_stored:
+                        block = explorer.get_block_by_number(h)
+                        if block:
+                            explorer.store_block(block)
+    except Exception as e:
+        print(f"Error syncing blocks: {e}")
+    
     blocks = explorer.get_recent_blocks(50)
-    return render_template('blocks.html', blocks=blocks)
+    return render_template('blocks.html', blocks=blocks, blockchain_node_url=BLOCKCHAIN_NODE_URL)
 
 @app.route('/transactions')
 def transactions_list():
     """Transactions list page with traceability info - Permanent fix"""
+    # Try to sync latest data first
+    try:
+        latest_block = explorer.get_latest_block()
+        if latest_block:
+            explorer.store_block(latest_block)
+    except:
+        pass
+    
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
