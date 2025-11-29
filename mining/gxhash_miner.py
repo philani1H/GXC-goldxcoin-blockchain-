@@ -132,8 +132,9 @@ class GXCMiner:
         
         # Blockchain client - auto-detect endpoints
         self.client = None
-        self.rpc_url = "http://localhost:8545"
-        self.rest_url = "http://localhost:8080"
+        RAILWAY_NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+        self.rpc_url = os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', RAILWAY_NODE_URL))
+        self.rest_url = os.environ.get('BLOCKCHAIN_REST_URL', self.rpc_url)
         self.explorer_url = "https://gxc-blockchain.vercel.app"
         
         # Mining parameters
