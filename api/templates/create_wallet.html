@@ -96,10 +96,25 @@
                 <div class="mb-3">
                     <label class="form-label">Network</label>
                     <select class="form-control" name="network" id="networkSelect" required>
-                        <option value="mainnet">Mainnet (Real GXC - Permanent)</option>
-                        <option value="testnet">Testnet (Test GXC - For Testing)</option>
+                        <option value="mainnet" {% if network_info.network == 'mainnet' %}selected{% endif %}>Mainnet (Real GXC - Production)</option>
+                        <option value="testnet" {% if network_info.network == 'testnet' %}selected{% endif %}>Testnet (Test GXC - For Testing)</option>
                     </select>
-                    <small class="form-text text-muted">
+                    <div class="mt-2">
+                        {% if network_info.network == 'testnet' or network_info.network_name|lower == 'testnet' %}
+                        <div class="alert alert-warning mb-0">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Current Network: TESTNET</strong><br>
+                            <small>Address prefix: <strong>{{ network_info.address_prefix|default('tGXC') }}</strong> | Test coins only, no real value</small>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Current Network: MAINNET</strong><br>
+                            <small>Address prefix: <strong>{{ network_info.address_prefix|default('GXC') }}</strong> | Real GXC coins with value</small>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <small class="form-text text-muted mt-2">
                         <strong>Mainnet:</strong> Real coins with value. <strong>Testnet:</strong> Test coins for practice.
                     </small>
                 </div>

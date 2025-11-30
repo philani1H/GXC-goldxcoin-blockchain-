@@ -120,11 +120,20 @@
                 
                 {% if wallet_data.network %}
                 <div class="alert {% if wallet_data.network == 'testnet' %}alert-warning{% else %}alert-info{% endif %} mt-3">
-                    <strong>Network:</strong> {{ wallet_data.network_name }}
+                    <strong>Network:</strong> 
                     {% if wallet_data.network == 'testnet' %}
-                    <br><small>⚠️ This is a TESTNET wallet. Coins have no real value.</small>
+                    <span class="badge bg-warning text-dark">⚠️ TESTNET</span>
                     {% else %}
-                    <br><small>✅ This is a MAINNET wallet. Coins have real value.</small>
+                    <span class="badge bg-success">✅ MAINNET</span>
+                    {% endif %}
+                    <br>
+                    <strong>Network Name:</strong> {{ wallet_data.network_name }}
+                    <br>
+                    <strong>Address Prefix:</strong> {{ network_info.address_prefix|default('GXC') }}
+                    {% if wallet_data.network == 'testnet' %}
+                    <br><small class="text-warning">⚠️ This is a TESTNET wallet. Coins have no real value.</small>
+                    {% else %}
+                    <br><small class="text-success">✅ This is a MAINNET wallet. Real GXC coins with value.</small>
                     {% endif %}
                 </div>
                 {% endif %}

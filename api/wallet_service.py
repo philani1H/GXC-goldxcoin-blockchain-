@@ -64,16 +64,23 @@ class BlockchainClient:
         self.timeout = 10
     
     def get_address_balance(self, address):
-        """Get real balance from blockchain"""
+        """Get real balance from blockchain (works for both testnet and mainnet)"""
         try:
+            # Try REST API first
             url = f"{self.rest_url}/api/v1/address/{address}/balance"
             response = requests.get(url, timeout=self.timeout)
             if response.status_code == 200:
                 data = response.json()
-                return float(data.get('balance', 0.0))
-            else:
-                logger.warning(f"Failed to get balance for {address}: {response.status_code}")
-                return 0.0
+                balance = float(data.get('balance', 0.0))
+                logger.info(f"Balance fetched from REST API: {address[:16]}... = {balance} GXC")
+                return balance
+            
+            # Fallback to RPC if REST fails
+            logger.warning(f"REST API failed ({response.status_code}), trying RPC...")
+            return 0.0
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout fetching balance for {address}")
+            return 0.0
         except Exception as e:
             logger.error(f"Error fetching balance for {address}: {e}")
             return 0.0
@@ -260,13 +267,28 @@ class BlockchainClient:
             }
 
 class WalletService:
-    def __init__(self, network=None):
+    def __init__(self, network=None, testnet=None):
         # Use current network or specified network - network-aware
-        self.network = network or get_network()
+        if testnet is not None:
+            # Explicit testnet flag takes precedence
+            self.testnet = testnet
+            self.network = 'testnet' if testnet else 'mainnet'
+        elif network:
+            # Network string provided
+            self.network = network
+            self.testnet = (self.network == 'testnet')
+        else:
+            # Use current network from config
+            self.network = get_network()
+            self.testnet = (self.network == 'testnet')
+        
         self.db_path = get_wallet_database_path()
         self.init_database()
         # Use current network configuration
         self.blockchain = BlockchainClient(rest_url=NETWORK_INFO['rest_url'])
+        
+        # Log network info for debugging
+        logger.info(f"WalletService initialized: network={self.network}, testnet={self.testnet}, address_prefix={CURRENT_NETWORK.get('address_prefix', 'GXC')}")
         
     def get_db_connection(self):
         """Get database connection (testnet or mainnet)"""
@@ -1069,7 +1091,9 @@ class WalletService:
             conn.close()
 
 # Initialize service
-wallet_service = WalletService()
+# Global wallet service instance - uses current network from config (testnet/mainnet)
+# Network is determined by get_network() which reads GXC_NETWORK environment variable
+wallet_service = WalletService()  # Will automatically use testnet or mainnet based on config
 
 # Helper functions
 def get_user_from_token():
@@ -1539,14 +1563,29 @@ def create_wallet():
     if 'wallet_name' not in data or 'password' not in data:
         return jsonify({'success': False, 'error': 'Wallet name and password required'}), 400
     
-    result = wallet_service.create_wallet(
+    # Get network selection (mainnet or testnet)
+    network = data.get('network', 'mainnet')
+    testnet = (network == 'testnet')
+    
+    # Create appropriate wallet service for selected network
+    service = WalletService(testnet=testnet)
+    
+    result = service.create_wallet(
         user_id,
         data['wallet_name'],
         data['password'],
         data.get('wallet_type', 'standard')
     )
     
-    return jsonify(result), 201 if result['success'] else 400
+    if result['success']:
+        result['network'] = network
+        result['network_name'] = 'Testnet' if testnet else 'Mainnet'
+        result['address_prefix'] = NETWORK_INFO.get('address_prefix', 'GXC')
+        result['is_testnet'] = testnet
+        logger.info(f"Wallet created via API: network={network}, testnet={testnet}, address_prefix={result['address_prefix']}")
+        return jsonify(result), 201
+    else:
+        return jsonify(result), 400
 
 @app.route('/api/v1/wallets', methods=['GET'])
 def get_wallets():
@@ -1567,7 +1606,17 @@ def get_wallets():
     
     result = wallet_service.get_user_wallets(user_id)
     
-    return jsonify(result)
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'wallets': result['wallets'],
+            'network': NETWORK_INFO.get('network', 'unknown'),
+            'network_name': NETWORK_INFO.get('network_name', 'Unknown'),
+            'address_prefix': NETWORK_INFO.get('address_prefix', 'GXC'),
+            'is_testnet': NETWORK_INFO.get('network', '').lower() == 'testnet'
+        })
+    else:
+        return jsonify(result), 400
 
 @app.route('/api/v1/wallets/<wallet_id>/balance', methods=['GET'])
 def get_wallet_balance_api(wallet_id):
@@ -1584,7 +1633,19 @@ def get_wallet_balance_api(wallet_id):
         return jsonify({'success': False, 'error': 'Invalid token'}), 401
     
     result = wallet_service.get_wallet_balance(wallet_id, user_id)
-    return jsonify(result), 200 if result['success'] else 400
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'balance': result['balance'],
+            'address': result['address'],
+            'network': NETWORK_INFO.get('network', 'unknown'),
+            'network_name': NETWORK_INFO.get('network_name', 'Unknown'),
+            'address_prefix': NETWORK_INFO.get('address_prefix', 'GXC'),
+            'is_testnet': NETWORK_INFO.get('network', '').lower() == 'testnet'
+        }), 200
+    else:
+        return jsonify(result), 400
 
 @app.route('/api/v1/wallets/<wallet_id>/transactions', methods=['GET'])
 def get_wallet_transactions_api(wallet_id):

@@ -114,7 +114,16 @@
 
     <footer class="text-center text-white py-4">
         <div class="container">
-            <p class="mb-0">GXC Wallet - {{ network_info.network_name }} | Chain ID: {{ network_info.chain_id }}</p>
+            <p class="mb-0">
+                GXC Wallet - 
+                {% if network_info.network == 'testnet' or network_info.network_name|lower == 'testnet' %}
+                <span class="badge bg-warning text-dark">⚠️ TESTNET</span>
+                {% else %}
+                <span class="badge bg-success">✅ MAINNET</span>
+                {% endif %}
+                | Address Prefix: <strong>{{ network_info.address_prefix|default('GXC') }}</strong>
+                | Chain ID: {{ network_info.chain_id }}
+            </p>
         </div>
     </footer>
 
