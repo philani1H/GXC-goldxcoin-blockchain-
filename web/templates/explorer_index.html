@@ -663,30 +663,35 @@
                                         {% for tx in transactions %}
                                         <tr>
                                             <td>
-                                                <a href="/tx/{{ tx.hash|default('') }}" class="hash-text text-decoration-none">
-                                                    {{ (tx.hash|default('Unknown'))[:12] }}...
+                                                <a href="/tx/{{ tx.hash|default(tx.tx_hash|default('')) }}" class="hash-text text-decoration-none" title="{{ tx.hash|default(tx.tx_hash|default('Full hash')) }}">
+                                                    {{ (tx.hash|default(tx.tx_hash|default('Unknown')))[:12] }}...
                                                 </a>
                                             </td>
                                             <td>
-                                                {% if tx.from %}
-                                                <a href="/address/{{ tx.from }}" class="address-link text-decoration-none">
-                                                    {{ tx.from[:8] }}...
+                                                {% if tx.from or tx.from_address %}
+                                                <a href="/address/{{ tx.from|default(tx.from_address|default('')) }}" class="address-link text-decoration-none">
+                                                    {{ (tx.from|default(tx.from_address|default('Unknown')))[:8] }}...
                                                 </a>
                                                 {% else %}
                                                 <span class="text-muted">Coinbase</span>
                                                 {% endif %}
                                             </td>
                                             <td>
-                                                {% if tx.to %}
-                                                <a href="/address/{{ tx.to }}" class="address-link text-decoration-none">
-                                                    {{ tx.to[:8] }}...
+                                                {% if tx.to or tx.to_address %}
+                                                <a href="/address/{{ tx.to|default(tx.to_address|default('')) }}" class="address-link text-decoration-none">
+                                                    {{ (tx.to|default(tx.to_address|default('Unknown')))[:8] }}...
                                                 </a>
                                                 {% else %}
                                                 <span class="text-muted">Contract Creation</span>
                                                 {% endif %}
                                             </td>
                                             <td>
-                                                <span class="value-highlight">{{ "%.4f"|format(tx.value|default(0.0)) }} GXC</span>
+                                                <span class="value-highlight" title="Value: {{ tx.value|default(0.0) }} GXC{% if tx.referenced_amount %} (Ref: {{ tx.referenced_amount }} GXC){% endif %}">
+                                                    {{ "%.4f"|format(tx.value|default(0.0)) }} GXC
+                                                </span>
+                                                {% if tx.is_coinbase %}
+                                                <span class="badge bg-warning ms-1" title="Coinbase transaction">CB</span>
+                                                {% endif %}
                                             </td>
                                             <td class="text-muted small">
                                                 <script>

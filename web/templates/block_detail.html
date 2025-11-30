@@ -260,9 +260,17 @@
             <div class="card-body">
                 <div class="info-row">
                     <div class="row">
+                        <div class="col-md-3 info-label">Block Number</div>
+                        <div class="col-md-9 info-value">
+                            <span class="fw-bold text-primary">#{{ block[0]|default(0) }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div class="row">
                         <div class="col-md-3 info-label">Block Hash</div>
                         <div class="col-md-9 info-value">
-                            <div class="hash-text">{{ block[1]|default("N/A") }}</div>
+                            <div class="hash-text" title="Full hash: {{ block[1]|default('N/A') }}">{{ block[1]|default("N/A") }}</div>
                         </div>
                     </div>
                 </div>
@@ -270,7 +278,15 @@
                     <div class="row">
                         <div class="col-md-3 info-label">Parent Hash</div>
                         <div class="col-md-9 info-value">
-                            <div class="hash-text">{{ block[2]|default("N/A") }}</div>
+                            <div class="hash-text" title="Previous block hash: {{ block[2]|default('N/A') }}">
+                                {% if block[2] %}
+                                <a href="/block/{{ block[0]|default(0) - 1 }}" class="text-decoration-none">
+                                    {{ block[2] }}
+                                </a>
+                                {% else %}
+                                {{ block[2]|default("N/A") }}
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -325,12 +341,12 @@
                     </div>
                 </div>
                 {% endif %}
-                {% if block|length > 3 and block[3] and block[3] != block[2] %}  <!-- merkle_root (check it's not parent_hash) -->
+                {% if block|length > 17 and block[17] %}  <!-- merkle_root -->
                 <div class="info-row">
                     <div class="row">
                         <div class="col-md-3 info-label">Merkle Root</div>
                         <div class="col-md-9 info-value">
-                            <div class="hash-text">{{ block[3]|default("N/A") }}</div>
+                            <div class="hash-text" title="Merkle root of all transactions">{{ block[17]|default("N/A") }}</div>
                         </div>
                     </div>
                 </div>

@@ -326,23 +326,33 @@
                                     <span class="badge bg-secondary">No Link</span>
                                     {% endif %}
                                 </td>
-                                <td class="text-muted small">
-                                    {{ "%.6f"|format(tx.fee) }}
+                                <td class="text-muted small" title="Fee: {{ tx.fee|default(0.0) }} GXC{% if tx.gas_price and tx.gas_used %} | Gas: {{ tx.gas_price }} x {{ tx.gas_used }}{% endif %}">
+                                    {{ "%.6f"|format(tx.fee|default(0.0)) }}
+                                    {% if tx.gas_price and tx.gas_used %}
+                                    <small class="d-block text-muted" title="Gas Price: {{ tx.gas_price }}, Gas Used: {{ tx.gas_used }}">
+                                        Gas: {{ tx.gas_used|default(0) }}
+                                    </small>
+                                    {% endif %}
                                 </td>
                                 <td>
-                                    {% if tx.status == 'success' %}
-                                    <span class="status-badge status-success">
+                                    {% if (tx.status|default('success')) == 'success' %}
+                                    <span class="status-badge status-success" title="Transaction status: Success">
                                         <i class="fas fa-check me-1"></i>Success
                                     </span>
                                     {% else %}
-                                    <span class="status-badge status-failed">
+                                    <span class="status-badge status-failed" title="Transaction status: Failed">
                                         <i class="fas fa-times me-1"></i>Failed
                                     </span>
                                     {% endif %}
+                                    {% if tx.type or tx.tx_type %}
+                                    <small class="d-block text-muted mt-1" title="Transaction type: {{ tx.type|default(tx.tx_type|default('transfer')) }}">
+                                        {{ (tx.type|default(tx.tx_type|default('transfer')))|title }}
+                                    </small>
+                                    {% endif %}
                                 </td>
-                                <td class="text-muted small">
+                                <td class="text-muted small" title="{{ tx.timestamp|default('') }}">
                                     <script>
-                                        document.write(timeAgo('{{ tx.timestamp }}'));
+                                        document.write(timeAgo('{{ tx.timestamp|default("") }}'));
                                     </script>
                                 </td>
                             </tr>

@@ -250,47 +250,53 @@
                             {% for block in blocks %}
                             <tr>
                                 <td>
-                                    <a href="/block/{{ block.number|default(0) }}"
-                                        class="text-decoration-none fw-bold text-primary">
-                                        #{{ block.number|default(0) }}
+                                    <a href="/block/{{ block.number|default(block.block_number|default(0)) }}"
+                                        class="text-decoration-none fw-bold text-primary"
+                                        title="Block #{{ block.number|default(block.block_number|default(0)) }}{% if block.hash %} - Hash: {{ block.hash[:16] }}...{% endif %}">
+                                        #{{ block.number|default(block.block_number|default(0)) }}
                                     </a>
                                 </td>
-                                <td class="text-muted small">
+                                <td class="text-muted small" title="{{ block.timestamp|default('') }}">
                                     <script>
                                         document.write(timeAgo('{{ block.timestamp|default("") }}'));
                                     </script>
                                 </td>
                                 <td>
-                                    <span class="badge badge-modern bg-secondary">
-                                        {{ block.tx_count|default(0) }}
+                                    <span class="badge badge-modern bg-secondary" title="Transaction count: {{ block.tx_count|default(block.transaction_count|default(0)) }}">
+                                        {{ block.tx_count|default(block.transaction_count|default(0)) }}
                                     </span>
                                 </td>
                                 <td>
-                                    {% if block.miner %}
-                                    <a href="/address/{{ block.miner }}" class="address-link text-decoration-none">
-                                        {{ block.miner[:10] }}...
+                                    {% if block.miner or block.miner_address %}
+                                    <a href="/address/{{ block.miner|default(block.miner_address|default('')) }}" 
+                                       class="address-link text-decoration-none"
+                                       title="Miner: {{ block.miner|default(block.miner_address|default('')) }}">
+                                        {{ (block.miner|default(block.miner_address|default('Unknown')))[:10] }}...
                                     </a>
                                     {% else %}
                                     <span class="text-muted">Unknown</span>
                                     {% endif %}
                                 </td>
-                                <td class="small">
+                                <td class="small" title="Difficulty: {{ block.difficulty|default(0.1) }}{% if block.total_difficulty %} | Total: {{ block.total_difficulty }}{% endif %}">
                                     {{ "%.2f"|format(block.difficulty|default(0.1)) }}
                                 </td>
                                 <td>
-                                    <span class="text-success fw-bold">
+                                    <span class="text-success fw-bold" title="Block reward: {{ block.reward|default(12.5) }} GXC">
                                         {{ "%.2f"|format(block.reward|default(12.5)) }} GXC
                                     </span>
                                 </td>
                                 <td>
-                                    {% if block.consensus_type == 'pow' %}
-                                    <span class="badge-modern badge-pow">
+                                    {% if (block.consensus_type|default('pow')) == 'pow' %}
+                                    <span class="badge-modern badge-pow" title="Proof of Work block">
                                         <i class="fas fa-hammer me-1"></i>PoW
                                     </span>
                                     {% else %}
-                                    <span class="badge-modern badge-pos">
+                                    <span class="badge-modern badge-pos" title="Proof of Stake block">
                                         <i class="fas fa-shield-alt me-1"></i>PoS
                                     </span>
+                                    {% endif %}
+                                    {% if block.size %}
+                                    <small class="text-muted d-block" title="Block size: {{ block.size }} bytes">{{ block.size|filesizeformat }}</small>
                                     {% endif %}
                                 </td>
                             </tr>
