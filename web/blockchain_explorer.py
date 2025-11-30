@@ -1166,7 +1166,8 @@ class BlockchainExplorer:
             for i, tx in enumerate(transactions):
                 if tx:  # Only store if transaction data exists
                     try:
-                        self.store_transaction(tx, block_number, i)
+                        # Pass block_data context for coinbase transactions
+                        self.store_transaction(tx, block_number, i, block_data)
                     except Exception as e:
                         print(f"Error storing transaction {i} in block {block_number}: {e}")
                         import traceback
@@ -1181,7 +1182,7 @@ class BlockchainExplorer:
         finally:
             conn.close()
     
-    def store_transaction(self, tx_data, block_number, tx_index):
+    def store_transaction(self, tx_data, block_number, tx_index, block_data=None):
         """Store transaction data with robust field handling"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
@@ -1189,14 +1190,44 @@ class BlockchainExplorer:
         try:
             # Normalize transaction data - handle various field name formats
             tx_hash = tx_data.get('hash') or tx_data.get('tx_hash') or tx_data.get('transactionHash') or ''
+            if not tx_hash:
+                # Generate hash if missing (for coinbase transactions)
+                import hashlib
+                tx_hash = hashlib.sha256(str(tx_data).encode()).hexdigest()
+            
+            # Handle coinbase transactions (mining rewards) - they may not have 'from' address
+            is_coinbase = tx_data.get('is_coinbase') or tx_data.get('isCoinbase') or tx_data.get('coinbase') or False
+            
+            # Auto-detect coinbase: first transaction (index 0) in block, or no 'from' address but has miner
+            if not is_coinbase and tx_index == 0 and block_data:
+                # First transaction in block is likely coinbase
+                is_coinbase = True
+            elif not is_coinbase:
+                # Check if transaction has no 'from' but goes to miner
+                from_addr_check = tx_data.get('from') or tx_data.get('from_address') or tx_data.get('fromAddress') or ''
+                miner_addr_check = (block_data.get('miner_address') if block_data else '') or (block_data.get('miner') if block_data else '')
+                to_addr_check = tx_data.get('to') or tx_data.get('to_address') or tx_data.get('toAddress') or None
+                if not from_addr_check and to_addr_check == miner_addr_check and miner_addr_check:
+                    is_coinbase = True
+            
             from_addr = tx_data.get('from') or tx_data.get('from_address') or tx_data.get('fromAddress') or ''
+            if is_coinbase and not from_addr:
+                from_addr = 'coinbase'  # Use 'coinbase' as from address for mining rewards
+            
             to_addr = tx_data.get('to') or tx_data.get('to_address') or tx_data.get('toAddress') or None
+            # For coinbase, use miner address as recipient
+            if is_coinbase and not to_addr:
+                miner_addr = (tx_data.get('miner') or tx_data.get('miner_address') or 
+                             (block_data.get('miner_address') if block_data else '') or
+                             (block_data.get('miner') if block_data else ''))
+                to_addr = miner_addr if miner_addr else ''
+            
             value = tx_data.get('value') or tx_data.get('amount') or 0.0
             fee = tx_data.get('fee') or tx_data.get('gasPrice', 0.0) * tx_data.get('gasUsed', 0) or 0.0
             gas_price = tx_data.get('gasPrice') or tx_data.get('gas_price') or 0.0
             gas_used = tx_data.get('gasUsed') or tx_data.get('gas_used') or 0
             status = tx_data.get('status') or 'success'
-            tx_type = tx_data.get('type') or tx_data.get('tx_type') or 'transfer'
+            tx_type = 'coinbase' if is_coinbase else (tx_data.get('type') or tx_data.get('tx_type') or 'transfer')
             input_data = tx_data.get('input') or tx_data.get('input_data') or tx_data.get('data') or ''
             nonce = tx_data.get('nonce') or 0
             contract_addr = tx_data.get('contractAddress') or tx_data.get('contract_address') or None
@@ -1220,8 +1251,8 @@ class BlockchainExplorer:
                     tx_hash, block_number, tx_index, from_address,
                     to_address, value, fee, gas_price, gas_used,
                     status, timestamp, input_data, nonce, tx_type,
-                    contract_address
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    contract_address, is_coinbase
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 tx_hash,
                 block_number,
@@ -1237,15 +1268,19 @@ class BlockchainExplorer:
                 input_data,
                 int(nonce),
                 tx_type,
-                contract_addr
+                contract_addr,
+                1 if is_coinbase else 0
             ))
             
-            # Update address balances and activity
-            self.update_address_activity(tx_data['from'], tx_data.get('to'))
+            # Update address balances and activity (handle coinbase transactions)
+            from_addr_for_update = tx_data.get('from') or tx_data.get('from_address') or from_addr
+            to_addr_for_update = tx_data.get('to') or tx_data.get('to_address') or to_addr
+            if from_addr_for_update or to_addr_for_update:
+                self.update_address_activity(from_addr_for_update, to_addr_for_update)
             
-            # Update address relationships for graph
-            if tx_data.get('to'):
-                self.update_address_relationships(tx_data['from'], tx_data.get('to'), float(tx_data['value']))
+            # Update address relationships for graph (skip for coinbase)
+            if to_addr_for_update and not is_coinbase:
+                self.update_address_relationships(from_addr_for_update, to_addr_for_update, float(value))
             
             # Track gold token transfers
             if tx_data.get('isGoldBacked') or tx_data.get('is_gold_backed'):
@@ -3206,7 +3241,7 @@ def block_detail(block_number):
             if block_data and block_data.get('transactions'):
                 # Store transactions
                 for i, tx in enumerate(block_data['transactions']):
-                    explorer.store_transaction(tx, block_number, i)
+                    explorer.store_transaction(tx, block_number, i, block_data)
                 # Re-fetch transactions
                 cursor.execute('''
                     SELECT * FROM transactions WHERE block_number = ?
@@ -3298,10 +3333,10 @@ def transaction_detail(tx_hash):
                             for tx in block_txs
                         )
                         if not tx_found_in_block:
-                            explorer.store_transaction(tx_data, block_number, tx_data.get('index', 0))
+                            explorer.store_transaction(tx_data, block_number, tx_data.get('index', 0), block_data)
                 else:
                     # Transaction not in a block yet (pending), store with block 0
-                    explorer.store_transaction(tx_data, 0, tx_data.get('index', 0))
+                    explorer.store_transaction(tx_data, 0, tx_data.get('index', 0), None)
                 
                 # Re-fetch from database
                 cursor.execute('''
@@ -3357,7 +3392,7 @@ def transaction_detail(tx_hash):
                 
                 if tx_node_data:
                     block_num = tx_node_data.get('blockNumber') or tx_node_data.get('block_number') or 0
-                    explorer.store_transaction(tx_node_data, block_num, tx_node_data.get('index', 0))
+                    explorer.store_transaction(tx_node_data, block_num, tx_node_data.get('index', 0), None)
                     # Re-fetch from DB
                     cursor.execute('''
                         SELECT prev_tx_hash, referenced_amount, traceability_valid, block_number, value
@@ -3390,7 +3425,7 @@ def transaction_detail(tx_hash):
                 
                 if prev_tx_node_data:
                     prev_block_num = prev_tx_node_data.get('blockNumber') or prev_tx_node_data.get('block_number') or 0
-                    explorer.store_transaction(prev_tx_node_data, prev_block_num, prev_tx_node_data.get('index', 0))
+                    explorer.store_transaction(prev_tx_node_data, prev_block_num, prev_tx_node_data.get('index', 0), None)
                     # Re-fetch from DB
                     cursor.execute('''
                         SELECT value, block_number
@@ -3492,7 +3527,7 @@ def address_detail(address):
                             
                             if tx_data:
                                 block_num = tx_data.get('blockNumber') or tx_data.get('block_number') or 0
-                                explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0))
+                                explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0), None)
                         except Exception as e:
                             print(f"Error fetching transaction {tx_hash}: {e}")
                             pass
@@ -3553,7 +3588,8 @@ def address_detail(address):
                                         explorer.store_block(block_data)
                                 
                                 # Store transaction with ALL fields
-                                explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0))
+                                block_data_for_tx = explorer.get_block_by_number(block_num) if block_num > 0 else None
+                                explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0), block_data_for_tx)
                         except Exception as e:
                             print(f"Error fetching transaction {tx_hash}: {e}")
                             continue
