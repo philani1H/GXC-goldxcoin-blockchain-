@@ -65,7 +65,8 @@ class TestnetMinerGUI:
         self.log(f"🚀 GXC {NETWORK.upper()} Miner initialized", "INFO")
         self.log(f"📍 Network: {NETWORK.upper()}", "INFO")
         self.log(f"📍 Address prefix: {CURRENT_NETWORK['address_prefix']}", "INFO")
-        self.log(f"📍 Block reward: {CURRENT_NETWORK['block_reward']} GXC", "INFO")
+        # Get actual block reward from blockchain (will be fetched after connection)
+        self.log(f"📍 Block reward: Will fetch from blockchain...", "INFO")
         
         # Auto-connect to blockchain in background (wait 2 seconds for node to be ready)
         self.root.after(2000, self.auto_connect)
@@ -111,11 +112,24 @@ class TestnetMinerGUI:
                     
                     if 'error' not in result and result.get('result') is not None:
                         height = result.get('result')
+                        # Get blockchain info for block reward
+                        try:
+                            info_response = requests.post(url, json={
+                                "jsonrpc": "2.0",
+                                "method": "getblockchaininfo",
+                                "params": [],
+                                "id": 1
+                            }, timeout=3)
+                            info_result = info_response.json().get('result', {})
+                            block_reward = info_result.get('block_reward') or info_result.get('reward', 50.0)
+                        except:
+                            block_reward = 50.0
                     self.node_connected = True
                     RPC_URL = url
                     ACTIVE_NODE_TYPE = "local"
-                    self.root.after(0, lambda h=height: self.log(f"✅ Connected to local node", "SUCCESS"))
-                    self.root.after(0, lambda h=height: self.log(f"📊 Current height: {h}", "INFO"))
+                    self.root.after(0, lambda h=height, r=block_reward: self.log(f"✅ Connected to local node", "SUCCESS"))
+                    self.root.after(0, lambda h=height, r=block_reward: self.log(f"📊 Current height: {h}", "INFO"))
+                    self.root.after(0, lambda r=block_reward: self.log(f"💰 Block reward: {r} GXC", "INFO"))
                     self.root.after(0, lambda: self.status_label.config(text="● Connected (Local)", fg="#86efac"))
                     
                     # Auto-refresh balance if wallet address is set
@@ -140,11 +154,24 @@ class TestnetMinerGUI:
                 
                 if 'error' not in result and result.get('result') is not None:
                     height = result.get('result')
+                    # Get blockchain info for block reward
+                    try:
+                        info_response = requests.post(RAILWAY_NODE_URL, json={
+                            "jsonrpc": "2.0",
+                            "method": "getblockchaininfo",
+                            "params": [],
+                            "id": 1
+                        }, timeout=10)
+                        info_result = info_response.json().get('result', {})
+                        block_reward = info_result.get('block_reward') or info_result.get('reward', 50.0)
+                    except:
+                        block_reward = 50.0
                     self.node_connected = True
                     RPC_URL = RAILWAY_NODE_URL
                     ACTIVE_NODE_TYPE = "railway"
                     self.root.after(0, lambda: self.log(f"✅ Connected to Railway node", "SUCCESS"))
-                    self.root.after(0, lambda: self.log(f"📊 Current height: {height}", "INFO"))
+                    self.root.after(0, lambda h=height: self.log(f"📊 Current height: {h}", "INFO"))
+                    self.root.after(0, lambda r=block_reward: self.log(f"💰 Block reward: {r} GXC", "INFO"))
                     self.root.after(0, lambda: self.status_label.config(text="● Connected (Railway)", fg="#86efac"))
                     
                     # Auto-refresh balance if wallet address is set
