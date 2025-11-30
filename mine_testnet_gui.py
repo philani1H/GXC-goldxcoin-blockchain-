@@ -52,8 +52,8 @@ class TestnetMinerGUI:
         self.total_hashes = 0
         self.blocks_found = 0
         self.blocks_attempted = 0
-        self.total_earned = 0.0
-        self.current_balance = 0.0
+        # NO LOCAL EARNINGS TRACKING - Get from blockchain only
+        self.last_balance_check = 0.0  # Track last known balance for comparison only
         self.start_time = None
         self.shutdown = False
         
@@ -442,17 +442,26 @@ class TestnetMinerGUI:
                 elapsed = time.time() - start_time
                 
                 if result is None or (isinstance(result, dict) and result.get('success')):
-                    reward = CURRENT_NETWORK['block_reward']
-                    self.blocks_found += 1
-                    self.total_earned += reward
-                    self.current_balance += reward
+                    # Get reward from blockchain - NO HARDCODED VALUES
+                    reward = None
+                    try:
+                        # Try to get from blockchain info
+                        blockchain_info = self.rpc_call("getblockchaininfo", show_errors=False)
+                        if blockchain_info:
+                            reward = blockchain_info.get('block_reward') or blockchain_info.get('reward') or CURRENT_NETWORK.get('block_reward')
+                    except:
+                        pass
                     
-                    # Update balance display immediately
-                    self.root.after(0, lambda: self.update_balance_display())
+                    if not reward:
+                        reward = CURRENT_NETWORK.get('block_reward', 0.0)  # Use network config as last resort
+                    
+                    self.blocks_found += 1
+                    # DO NOT increment total_earned locally - get from blockchain
                     
                     self.log(f"🎉 BLOCK MINED! Height: {height}", "SUCCESS")
-                    self.log(f"💰 Reward: {reward} GXC", "SUCCESS")
-                    self.log(f"💵 New Balance: {self.current_balance:.8f} GXC", "SUCCESS")
+                    if reward > 0:
+                        self.log(f"💰 Expected reward: {reward} GXC (will verify from blockchain)", "SUCCESS")
+                    self.log(f"⏳ Waiting for blockchain confirmation...", "INFO")
                     self.log(f"⏱️  Time: {elapsed:.2f} seconds", "INFO")
                     
                     # Show explorer URLs (but don't auto-open browser)
@@ -461,23 +470,10 @@ class TestnetMinerGUI:
                     self.log(f"🔗 Block Explorer: {explorer_url}", "INFO")
                     self.log(f"🔗 Transaction Explorer: {tx_url}", "INFO")
                     
-                    # Add transaction to list if transactions tab exists
-                    if hasattr(self, 'add_transaction_to_list'):
-                        tx_data = {
-                            'type': 'coinbase',
-                            'hash': block_hash,
-                            'amount': reward,
-                            'timestamp': int(time.time()),
-                            'confirmations': 0,
-                            'status': 'confirmed',
-                            'explorer_url': tx_url,
-                            'block_url': explorer_url,
-                            'height': height
-                        }
-                        self.root.after(0, lambda tx=tx_data: self.add_transaction_to_list(tx))
-                    
-                    # Refresh balance from blockchain after delay
-                    self.root.after(3000, self.refresh_balance_from_blockchain)
+                    # Refresh balance and transactions from blockchain to get REAL data
+                    # Wait a bit for block to be processed, then verify from blockchain
+                    self.root.after(5000, self.refresh_balance_from_blockchain)  # Wait 5 seconds for block processing
+                    self.root.after(15000, self.refresh_balance_from_blockchain)  # Refresh again after 15 seconds to get confirmed data
                     
                     return True
                 else:
@@ -539,7 +535,9 @@ class TestnetMinerGUI:
         self.log(f"   Blocks attempted: {self.blocks_attempted}", "INFO")
         self.log(f"   Blocks mined: {self.blocks_found}", "INFO")
         self.log(f"   Success rate: {success_rate:.1f}%", "INFO")
-        self.log(f"   Total earned: {self.total_earned:.8f} GXC", "INFO")
+        # Refresh from blockchain to get real earnings
+        if self.wallet_address.get():
+            self.refresh_balance_from_blockchain()
         self.log(f"   Total hashes: {self.total_hashes:,}", "INFO")
     
     def update_stats_timer(self):
@@ -554,9 +552,8 @@ class TestnetMinerGUI:
                 hr = f"{self.hash_rate:.0f} H/s"
             
             self.hash_rate_label.config(text=hr)
-            self.balance_label.config(text=f"{self.current_balance:.8f} GXC")
+            # Balance and earnings will be updated from blockchain refresh, not here
             self.blocks_label.config(text=f"{self.blocks_found}")
-            self.earned_label.config(text=f"{self.total_earned:.8f} GXC")
             
             # Update detailed stats
             if hasattr(self, 'total_hashes_label'):
@@ -570,10 +567,7 @@ class TestnetMinerGUI:
             if hasattr(self, 'success_rate_label'):
                 self.success_rate_label.config(text=f"{success_rate:.1f}%")
             
-            if hasattr(self, 'total_earned_label'):
-                self.total_earned_label.config(text=f"{self.total_earned:.8f} GXC")
-            if hasattr(self, 'current_balance_label'):
-                self.current_balance_label.config(text=f"{self.current_balance:.8f} GXC")
+            # Earnings and balance updated from blockchain only
             
             # Update mining time
             if self.start_time and hasattr(self, 'mining_time_label'):
@@ -698,9 +692,28 @@ class TestnetMinerGUI:
         if tx_type == 'coinbase':
             self.tx_tree.set(item, "Type", "💰 Mining Reward")
     
-    def update_balance_display(self):
-        """Update balance displays"""
-        balance_str = f"{self.current_balance:.8f} GXC"
+    def calculate_total_earned_from_blockchain(self, transactions: List[Dict]) -> float:
+        """Calculate total earned from actual blockchain coinbase transactions"""
+        total = 0.0
+        for tx in transactions:
+            # Only count confirmed coinbase transactions (mining rewards)
+            if tx.get('type') == 'coinbase' or tx.get('is_coinbase') or tx.get('isCoinbase'):
+                confirmations = tx.get('confirmations', 0)
+                # Only count if confirmed (1+ confirmations)
+                if confirmations >= 1:
+                    amount = tx.get('amount') or tx.get('value') or 0.0
+                    if amount > 0:
+                        total += amount
+        return total
+    
+    def update_balance_display(self, balance: float = None):
+        """Update balance displays with REAL blockchain data"""
+        if balance is None:
+            balance = self.last_balance_check
+        
+        # Store for comparison only, don't modify locally
+        self.last_balance_check = balance
+        balance_str = f"{balance:.8f} GXC"
         
         # Update main balance label
         if hasattr(self, 'balance_label'):
@@ -714,8 +727,37 @@ class TestnetMinerGUI:
         if hasattr(self, 'current_balance_label'):
             self.current_balance_label.config(text=balance_str)
     
+    def update_earnings_display(self, total_earned: float):
+        """Update earnings display with REAL blockchain data"""
+        if hasattr(self, 'earned_label'):
+            self.earned_label.config(text=f"{total_earned:.8f} GXC")
+        
+        if hasattr(self, 'total_earned_label'):
+            self.total_earned_label.config(text=f"{total_earned:.8f} GXC")
+    
+    def get_address_transactions(self, address: str, limit: int = 100) -> List[Dict]:
+        """Get transactions for an address from blockchain"""
+        try:
+            # Try multiple RPC methods
+            methods = [
+                ("getaddresstransactions", [address, limit]),
+                ("listtransactions", [address, limit]),
+                ("gettransactions", [address, limit]),
+            ]
+            
+            for method, params in methods:
+                result = self.rpc_call(method, params, show_errors=False)
+                if result:
+                    if isinstance(result, list):
+                        return result
+                    elif isinstance(result, dict) and 'transactions' in result:
+                        return result['transactions']
+            return []
+        except:
+            return []
+    
     def refresh_balance_from_blockchain(self):
-        """Refresh balance from blockchain"""
+        """Refresh balance and transactions from blockchain - REAL DATA ONLY"""
         if not self.wallet_address.get() or not self.node_connected:
             return
         
@@ -723,25 +765,39 @@ class TestnetMinerGUI:
         if not address:
             return
         
-        self.log("🔄 Refreshing balance from blockchain...", "INFO")
+        self.log("🔄 Refreshing balance and transactions from blockchain...", "INFO")
         
         def fetch():
             try:
-                # Get balance using getbalance RPC
+                # Get balance using getbalance RPC - REAL DATA ONLY
                 result = self.rpc_call("getbalance", [address], show_errors=False)
+                balance = 0.0
                 if result is not None:
                     if isinstance(result, dict):
                         balance = float(result.get('balance', 0.0))
                     else:
                         balance = float(result) if result else 0.0
-                    
-                    self.current_balance = balance
-                    self.root.after(0, lambda: self.update_balance_display())
-                    self.root.after(0, lambda: self.log(f"💵 Balance from blockchain: {balance:.8f} GXC", "INFO"))
-                else:
-                    self.root.after(0, lambda: self.log("⚠️ Could not fetch balance from blockchain", "WARNING"))
+                
+                # Update balance display with REAL blockchain data
+                self.root.after(0, lambda: self.update_balance_display(balance))
+                self.root.after(0, lambda: self.log(f"💵 Balance from blockchain: {balance:.8f} GXC", "INFO"))
+                
+                # Get transactions from blockchain - REAL DATA ONLY
+                transactions = self.get_address_transactions(address, limit=100)
+                
+                # Calculate total earned from ACTUAL blockchain transactions
+                total_earned = self.calculate_total_earned_from_blockchain(transactions)
+                
+                # Update UI with REAL earnings from blockchain
+                self.root.after(0, lambda: self.update_earnings_display(total_earned))
+                self.root.after(0, lambda: self.log(f"💰 Total earned (from blockchain): {total_earned:.8f} GXC", "INFO"))
+                
+                # Update transactions display if method exists
+                if hasattr(self, 'update_transactions_display'):
+                    self.root.after(0, lambda: self.update_transactions_display(transactions))
+                
             except Exception as e:
-                self.root.after(0, lambda: self.log(f"❌ Failed to fetch balance: {e}", "ERROR"))
+                self.root.after(0, lambda: self.log(f"❌ Failed to fetch from blockchain: {e}", "ERROR"))
         
         threading.Thread(target=fetch, daemon=True).start()
     

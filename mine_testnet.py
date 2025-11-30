@@ -84,10 +84,20 @@ def mine_block():
                 if isinstance(result, dict):
                     print(f"   Height: {result.get('height', 'unknown')}")
                     print(f"   Hash: {str(result.get('hash', 'unknown'))[:32]}...")
-                    print(f"   Reward: {result.get('reward', 12.5)} GXC")
+                    # Get reward from blockchain, not hardcoded
+                    reward = result.get('reward')
+                    if not reward:
+                        # Try to get from blockchain info
+                        blockchain_info = rpc_call("getblockchaininfo")
+                        if blockchain_info:
+                            reward = blockchain_info.get('block_reward') or blockchain_info.get('reward')
+                    if reward:
+                        print(f"   Reward: {reward} GXC (from blockchain)")
+                    else:
+                        print(f"   Reward: Will be verified from blockchain")
                 else:
                     print(f"   Result: {result}")
-                    print(f"   Reward: 12.5 GXC (testnet)")
+                    print(f"   Reward: Will be verified from blockchain")
                 
                 print(f"   Time: {elapsed:.2f} seconds")
                 print(f"   Miner: {MINER_ADDRESS}")
@@ -143,8 +153,9 @@ def main():
         print("="*70)
         print(f"\n📊 Statistics:")
         print(f"   Blocks mined: {blocks_mined}")
-        print(f"   Total rewards: {blocks_mined * 12.5} GXC")
+        print(f"   Total rewards: Check blockchain for actual rewards")
         print(f"   Miner address: {MINER_ADDRESS}")
+        print(f"   Use 'getbalance' RPC to check actual balance")
         print("\n" + "="*70 + "\n")
 
 if __name__ == "__main__":

@@ -180,7 +180,16 @@ def mine_block():
                 print(f"{'='*70}")
                 print(f"   Height: {result.get('height', height)}")
                 print(f"   Hash: {block_hash[:32]}...")
-                print(f"   Reward: {result.get('reward', 12.5)} GXC")
+                # Get reward from blockchain, not hardcoded
+                reward = result.get('reward')
+                if not reward:
+                    blockchain_info = rpc_call("getblockchaininfo", show_errors=False)
+                    if blockchain_info:
+                        reward = blockchain_info.get('block_reward') or blockchain_info.get('reward')
+                if reward:
+                    print(f"   Reward: {reward} GXC (from blockchain)")
+                else:
+                    print(f"   Reward: Will be verified from blockchain")
                 print(f"   Time: {elapsed:.2f} seconds")
                 print(f"   Nonce: {nonce}")
                 print(f"   Miner: {MINER_ADDRESS}")
@@ -198,7 +207,15 @@ def mine_block():
                 print(f"{'='*70}")
                 print(f"   Height: {height}")
                 print(f"   Hash: {block_hash[:32]}...")
-                print(f"   Reward: 12.5 GXC (testnet)")
+                # Get reward from blockchain, not hardcoded
+                reward = None
+                blockchain_info = rpc_call("getblockchaininfo", show_errors=False)
+                if blockchain_info:
+                    reward = blockchain_info.get('block_reward') or blockchain_info.get('reward')
+                if reward:
+                    print(f"   Reward: {reward} GXC (from blockchain)")
+                else:
+                    print(f"   Reward: Will be verified from blockchain")
                 print(f"   Time: {elapsed:.2f} seconds")
                 print(f"   Nonce: {nonce}")
                 print(f"   Miner: {MINER_ADDRESS}")
@@ -303,12 +320,15 @@ def test_connection():
     return False, None
 
 def check_balance():
-    """Check balance at miner address"""
-    # This would need a getbalance RPC method
-    # For now, just count blocks
-    height = rpc_call("getblockcount")
-    if height:
-        print(f"\n💰 Estimated balance: {height * 12.5} GXC (if all blocks mined by you)")
+    """Check balance at miner address from blockchain"""
+    # Get REAL balance from blockchain
+    balance = rpc_call("getbalance", [MINER_ADDRESS], show_errors=False)
+    if balance is not None:
+        if isinstance(balance, dict):
+            balance = balance.get('balance', 0.0)
+        print(f"\n💰 Balance from blockchain: {balance} GXC")
+    else:
+        print(f"\n💰 Use 'getbalance' RPC to check actual balance from blockchain")
 
 def main():
     print("\n" + "="*70)
@@ -364,7 +384,8 @@ def main():
         print(f"   Blocks attempted: {blocks_attempted}")
         print(f"   Blocks mined: {blocks_mined}")
         print(f"   Success rate: {(blocks_mined/blocks_attempted*100) if blocks_attempted > 0 else 0:.1f}%")
-        print(f"   Total rewards: {blocks_mined * 12.5} GXC")
+        print(f"   Total rewards: Check blockchain for actual rewards")
+        check_balance()  # Show real balance from blockchain
         print(f"   Miner address: {MINER_ADDRESS}")
         print("\n" + "="*70 + "\n")
 
