@@ -149,8 +149,8 @@ class GXCMiner:
         self.blocks_found = 0
         self.shares_accepted = 0
         self.shares_rejected = 0
-        self.total_earned = 0.0
-        self.current_balance = 0.0
+        # NO LOCAL EARNINGS TRACKING - Get from blockchain only
+        self.last_balance_check = 0.0  # Track last known balance for comparison
         self.current_job = None
         self.job_lock = threading.Lock()
         self.shutdown = False
@@ -480,6 +480,12 @@ class GXCMiner:
         def fetch():
             try:
                 transactions = self.client.get_address_transactions(address, limit=100)
+                
+                # Calculate total earned from ACTUAL blockchain transactions
+                total_earned = self.calculate_total_earned_from_blockchain(transactions)
+                
+                # Update UI with REAL earnings from blockchain
+                self.root.after(0, lambda: self.update_earnings_display(total_earned))
                 balance = self.client.get_address_balance(address)
                 
                 self.root.after(0, lambda: self.update_transactions_display(transactions))
@@ -551,11 +557,34 @@ class GXCMiner:
     
     def update_balance_display(self, balance: float):
         """Update balance displays"""
-        self.current_balance = balance
+        # Store for comparison only, don't modify locally
+        self.last_balance_check = balance
         balance_str = f"{balance:.8f} GXC"
         self.balance_label.config(text=balance_str)
         if hasattr(self, 'current_balance_stats_label'):
             self.current_balance_stats_label.config(text=balance_str)
+    
+    def calculate_total_earned_from_blockchain(self, transactions: List[Dict]) -> float:
+        """Calculate total earned from actual blockchain coinbase transactions"""
+        total = 0.0
+        for tx in transactions:
+            # Only count confirmed coinbase transactions (mining rewards)
+            if tx.get('type') == 'coinbase' or tx.get('is_coinbase') or tx.get('isCoinbase'):
+                confirmations = tx.get('confirmations', 0)
+                # Only count if confirmed (6+ confirmations) or at least 1 confirmation for recent
+                if confirmations >= 1:
+                    amount = tx.get('amount') or tx.get('value') or 0.0
+                    if amount > 0:
+                        total += amount
+        return total
+    
+    def update_earnings_display(self, total_earned: float):
+        """Update earnings display with REAL blockchain data"""
+        if hasattr(self, 'earned_label'):
+            self.earned_label.config(text=f"{total_earned:.8f} GXC")
+        
+        if hasattr(self, 'total_earned_stats_label'):
+            self.total_earned_stats_label.config(text=f"{total_earned:.8f} GXC")
     
     def open_transaction_in_explorer(self, event):
         """Open transaction in blockchain explorer"""
@@ -589,7 +618,7 @@ class GXCMiner:
             'difficulty': template.get('difficulty', 1),
             'height': template.get('height', 0),
             'transactions': template.get('transactions', []),
-            'coinbase_value': template.get('coinbasevalue') or template.get('coinbaseValue', 12.5)
+            'coinbase_value': template.get('coinbasevalue') or template.get('coinbaseValue')  # Get from blockchain, no fallback
         }
         
         return work
@@ -658,7 +687,21 @@ class GXCMiner:
             self.total_hashes += 1
             
             if self.check_difficulty(hash_result, work['bits']):
-                reward_amount = work.get('coinbase_value', 12.5)
+                # Get reward from blockchain template - NO HARDCODED VALUES
+                reward_amount = work.get('coinbase_value') or work.get('coinbaseValue')
+                if not reward_amount:
+                    # Try to get from blockchain info
+                    try:
+                        blockchain_info = self.client.get_blockchain_info()
+                        if blockchain_info:
+                            reward_amount = blockchain_info.get('block_reward') or blockchain_info.get('reward')
+                    except:
+                        pass
+                
+                # If still no reward, log warning but continue
+                if not reward_amount:
+                    self.root.after(0, lambda: self.log(f"⚠️ Warning: Could not get reward amount from blockchain", "WARNING"))
+                    reward_amount = 0.0  # Don't assume, let blockchain determine
                 
                 self.root.after(0, lambda: self.log(f"🎉 Block found by thread {thread_id}!", "SUCCESS"))
                 self.root.after(0, lambda: self.log(f"   Hash: {hash_result[:32]}...", "INFO"))
@@ -694,17 +737,21 @@ class GXCMiner:
                 if tx_hash:
                     self.blocks_found += 1
                     self.shares_accepted += 1
-                    self.total_earned += reward_amount
+                    # DO NOT increment total_earned locally - get from blockchain
                     
                     self.root.after(0, lambda: self.log("✅ Block submitted and accepted!", "SUCCESS"))
-                    self.root.after(0, lambda: self.log(f"💰 +{reward_amount} GXC credited to your wallet", "SUCCESS"))
+                    self.root.after(0, lambda: self.log(f"⏳ Waiting for blockchain confirmation...", "INFO"))
+                    if reward_amount > 0:
+                        self.root.after(0, lambda: self.log(f"💰 Expected reward: {reward_amount} GXC (will verify from blockchain)", "INFO"))
                     
                     # Show explorer link
                     explorer_url = f"{self.explorer_url}/transactions?hash={tx_hash}"
                     self.root.after(0, lambda: self.show_explorer_link(tx_hash, explorer_url, reward_amount))
                     
-                    # Refresh transactions after a delay
-                    self.root.after(3000, self.refresh_transactions)
+                    # Refresh balance and transactions from blockchain to get REAL data
+                    # Wait a bit for block to be processed, then verify from blockchain
+                    self.root.after(5000, self.refresh_transactions)  # Wait 5 seconds for block processing
+                    self.root.after(15000, self.refresh_transactions)  # Refresh again after 15 seconds to get confirmed data
                 else:
                     self.shares_rejected += 1
                     self.root.after(0, lambda: self.log("❌ Block rejected", "ERROR"))
@@ -743,7 +790,7 @@ class GXCMiner:
             
         self.hashrate_label.config(text=hr)
         self.blocks_label.config(text=f"{self.blocks_found}")
-        self.earned_label.config(text=f"{self.total_earned:.8f} GXC")
+        # Earnings will be updated from blockchain refresh, not here
         
         # Update stats tab
         try:
@@ -751,10 +798,7 @@ class GXCMiner:
             self.total_blocks_label.config(text=f"{self.blocks_found}")
             self.total_accepted_label.config(text=f"{self.shares_accepted}")
             self.total_rejected_label.config(text=f"{self.shares_rejected}")
-            self.total_earned_stats_label.config(text=f"{self.total_earned:.8f} GXC")
-            self.balance_label.config(text=f"{self.current_balance:.8f} GXC")
-            if hasattr(self, 'current_balance_stats_label'):
-                self.current_balance_stats_label.config(text=f"{self.current_balance:.8f} GXC")
+            # Earnings and balance updated from blockchain only
         except:
             pass
         
@@ -815,7 +859,9 @@ class GXCMiner:
         self.log("⏸️ Mining stopped", "WARNING")
         self.log(f"📊 {self.total_hashes:,} hashes, {self.blocks_found} blocks", "INFO")
         self.log(f"📊 Accepted: {self.shares_accepted}, Rejected: {self.shares_rejected}", "INFO")
-        self.log(f"💰 Total Earned: {self.total_earned:.8f} GXC", "INFO")
+        # Refresh from blockchain to get real earnings
+        if self.wallet_address.get():
+            self.refresh_transactions()
 
 
 def main():
