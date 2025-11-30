@@ -60,15 +60,31 @@ class BlockchainClient:
         }
         
         try:
-            response = self.session.post(self.rpc_url, json=payload)
+            response = self.session.post(self.rpc_url, json=payload, timeout=30)
             response.raise_for_status()
             result = response.json()
             
+            # Check for errors
             if 'error' in result:
+                error = result['error']
+                error_msg = error.get('message', 'Unknown error') if isinstance(error, dict) else str(error)
+                error_code = error.get('code', -1) if isinstance(error, dict) else -1
+                print(f"[RPC ERROR] {method}: {error_msg} (code: {error_code})")
+                
+                # Return error info for debugging
+                if error_code == -32602:  # Invalid params
+                    print(f"[RPC] Invalid params for {method}: {params}")
+                elif error_code == -32603:  # Internal error
+                    print(f"[RPC] Internal error for {method}")
+                
                 return None
                 
             return result.get('result')
+        except requests.exceptions.Timeout:
+            print(f"[RPC TIMEOUT] {method} timed out after 30s")
+            return None
         except Exception as e:
+            print(f"[RPC EXCEPTION] {method}: {e}")
             return None
     
     def rest_call(self, endpoint: str) -> Optional[Dict]:
@@ -98,13 +114,36 @@ class BlockchainClient:
     
     def submit_block(self, block_data: Dict) -> Optional[str]:
         """Submit mined block to blockchain, returns transaction hash"""
-        result = self.rpc_call("submitblock", [json.dumps(block_data)])
-        if result is None:
-            result = self.rpc_call("gxc_submitBlock", [block_data])
+        # Try multiple submission methods for compatibility
+        methods = [
+            ("gxc_submitBlock", [block_data]),  # GXC-specific method
+            ("submitblock", [json.dumps(block_data)]),  # Standard JSON-RPC
+            ("submitblock", [block_data]),  # Direct object
+        ]
         
-        if result is not False:
-            # Return block hash as transaction ID
-            return block_data.get('hash') or block_data.get('blockHash')
+        for method, params in methods:
+            try:
+                result = self.rpc_call(method, params)
+                
+                # Check if submission was successful
+                if result is not None and result is not False:
+                    # If result is True or a hash, block was accepted
+                    if result is True or isinstance(result, str):
+                        return block_data.get('hash') or block_data.get('blockHash')
+                    # If result is a dict with success status
+                    if isinstance(result, dict):
+                        if result.get('accepted', False) or result.get('success', False):
+                            return block_data.get('hash') or block_data.get('blockHash')
+                        # Check for error message
+                        if 'error' in result:
+                            error_msg = result.get('error', 'Unknown error')
+                            print(f"[WARNING] Block submission error: {error_msg}")
+                            return None
+            except Exception as e:
+                # Continue to next method on error
+                continue
+        
+        # All methods failed
         return None
     
     def get_difficulty(self) -> Optional[float]:
@@ -681,6 +720,7 @@ class GXCMiner:
                 self.root.after(0, lambda: self.log(f"   Hash: {hash_result[:32]}...", "INFO"))
                 self.root.after(0, lambda: self.log(f"   Reward: {reward_amount} GXC", "SUCCESS"))
                 
+                # Build complete block with all required fields for testnet validation
                 block = {
                     'version': work['version'],
                     'previousblockhash': work['prev_hash'],
@@ -689,24 +729,48 @@ class GXCMiner:
                     'bits': work['bits'],
                     'nonce': nonce - 1,
                     'hash': hash_result,
+                    'blockHash': hash_result,  # Alternative field name
                     'height': work['height'],
-                    'transactions': work.get('transactions', [])
+                    'blockNumber': work['height'],
+                    'transactions': work.get('transactions', []),
+                    'transactionCount': len(work.get('transactions', [])),
+                    'difficulty': work.get('difficulty', 1),
+                    'algorithm': 'gxhash',
+                    'network': self.client.network if hasattr(self.client, 'network') else 'testnet'
                 }
                 
+                # Add coinbase transaction if wallet address is set
                 if self.wallet_address.get():
                     coinbase = {
                         'type': 'coinbase',
                         'hash': hash_result,  # Use block hash as transaction ID
+                        'txHash': hash_result,
                         'inputs': [],
                         'outputs': [{
                             'address': self.wallet_address.get(),
                             'amount': reward_amount
                         }],
-                        'timestamp': int(time.time())
+                        'timestamp': int(time.time()),
+                        'value': reward_amount,
+                        'isCoinbase': True
                     }
                     block['transactions'].insert(0, coinbase)
+                    block['transactionCount'] = len(block['transactions'])
                 
-                tx_hash = self.client.submit_block(block)
+                # Ensure merkle root is calculated if not provided
+                if not block.get('merkleroot') or block['merkleroot'] == '':
+                    # Calculate merkle root from transactions
+                    tx_hashes = [tx.get('hash', tx.get('txHash', '')) for tx in block['transactions']]
+                    if tx_hashes:
+                        merkle_data = ''.join(tx_hashes)
+                        block['merkleroot'] = hashlib.sha256(merkle_data.encode()).hexdigest()
+                
+                # Submit block with proper error handling
+                try:
+                    tx_hash = self.client.submit_block(block)
+                except Exception as e:
+                    self.root.after(0, lambda: self.log(f"❌ Block submission error: {e}", "ERROR"))
+                    tx_hash = None
                 
                 if tx_hash:
                     self.blocks_found += 1
