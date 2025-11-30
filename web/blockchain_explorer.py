@@ -4026,7 +4026,15 @@ def charts_page():
 @app.route('/wallet')
 def wallet_page():
     """Wallet page with wallet service information"""
-    return render_template('wallet.html')
+    network_info = {
+        'network': NETWORK.upper(),
+        'address_prefix': CURRENT_NETWORK['address_prefix'],
+        'block_reward': CURRENT_NETWORK['block_reward'],
+        'block_time': CURRENT_NETWORK['block_time'],
+        'is_testnet': NETWORK == 'testnet',
+        'is_mainnet': NETWORK == 'mainnet'
+    }
+    return render_template('wallet.html', network_info=network_info)
 
 @app.route('/api')
 def api_docs():
