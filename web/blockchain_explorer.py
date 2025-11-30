@@ -833,14 +833,15 @@ class BlockchainExplorer:
         conn.close()
     
     def get_latest_block(self):
-        """Get latest block from the node"""
+        """Get latest block from the node - ensures all data is fetched including transactions"""
         try:
             # First try to get blockchain info to get latest height
-            info = rpc_call('getblockchaininfo', timeout=10, show_errors=False)
+            # Use longer timeout for testnet nodes
+            info = rpc_call('getblockchaininfo', timeout=15, show_errors=False)
             if info:
                 height = info.get('blocks') or info.get('height') or 0
                 if height > 0:
-                    # Get the latest block by number
+                    # Get the latest block by number (which will fetch all transactions)
                     block = self.get_block_by_number(height)
                     if block:
                         return block
@@ -854,10 +855,26 @@ class BlockchainExplorer:
             ]
             
             for method, params in methods:
-                result = rpc_call(method, params=params, timeout=10, show_errors=False)
+                # Use longer timeout to ensure all data is fetched
+                result = rpc_call(method, params=params, timeout=15, show_errors=False)
                 if result:
                     # Normalize the block data to ensure consistent field names
                     normalized = self._normalize_block_data(result)
+                    # Ensure transactions are included
+                    if not normalized.get('transactions') or len(normalized['transactions']) == 0:
+                        # Try to fetch transactions separately
+                        block_num = normalized.get('number') or normalized.get('height') or 0
+                        if block_num > 0:
+                            tx_methods = [
+                                ('getblocktransactions', [block_num]),
+                                ('getblocktxs', [block_num]),
+                                ('gxc_getBlockTransactions', [block_num])
+                            ]
+                            for tx_method, tx_params in tx_methods:
+                                tx_result = rpc_call(tx_method, params=tx_params, timeout=15, show_errors=False)
+                                if tx_result:
+                                    normalized['transactions'] = tx_result if isinstance(tx_result, list) else [tx_result]
+                                    break
                     return normalized
             
             return None
@@ -924,9 +941,10 @@ class BlockchainExplorer:
         return normalized
     
     def get_block_by_number(self, block_number):
-        """Get block by number from the node with full transaction data"""
+        """Get block by number from the node with full transaction data - ensures all data is fetched"""
         try:
             # Try multiple methods for compatibility, with verbose flag to get transactions
+            # Use longer timeout for testnet nodes to ensure all data is fetched
             methods = [
                 ('gxc_getBlockByNumber', [block_number, True]),  # True = verbose, include transactions
                 ('getblockbynumber', [block_number, True]),
@@ -937,17 +955,26 @@ class BlockchainExplorer:
             ]
             
             for method, params in methods:
-                result = rpc_call(method, params=params, timeout=10, show_errors=False)
+                # Use longer timeout (15s) to ensure testnet nodes can return all data
+                result = rpc_call(method, params=params, timeout=15, show_errors=False)
                 if result:
                     # Normalize the block data to ensure consistent field names
                     normalized = self._normalize_block_data(result)
                     
                     # If transactions are not included, try to fetch them separately
                     if not normalized.get('transactions') or len(normalized['transactions']) == 0:
-                        # Try to get transactions for this block
-                        tx_result = rpc_call('getblocktransactions', [block_number], timeout=10, show_errors=False)
-                        if tx_result:
-                            normalized['transactions'] = tx_result if isinstance(tx_result, list) else [tx_result]
+                        # Try multiple methods to get transactions for this block
+                        tx_methods = [
+                            ('getblocktransactions', [block_number]),
+                            ('getblocktxs', [block_number]),
+                            ('gettransactions', [block_number]),
+                            ('gxc_getBlockTransactions', [block_number])
+                        ]
+                        for tx_method, tx_params in tx_methods:
+                            tx_result = rpc_call(tx_method, params=tx_params, timeout=15, show_errors=False)
+                            if tx_result:
+                                normalized['transactions'] = tx_result if isinstance(tx_result, list) else [tx_result]
+                                break
                     
                     return normalized
             
@@ -3585,7 +3612,15 @@ def mining_page():
     """Mining statistics page"""
     stats = explorer.get_network_stats()
     top_miners = explorer.get_mining_stats()
-    return render_template('mining.html', stats=stats, top_miners=top_miners)
+    network_info = {
+        'network': NETWORK.upper(),
+        'address_prefix': CURRENT_NETWORK['address_prefix'],
+        'block_reward': CURRENT_NETWORK['block_reward'],
+        'block_time': CURRENT_NETWORK['block_time'],
+        'is_testnet': NETWORK == 'testnet',
+        'is_mainnet': NETWORK == 'mainnet'
+    }
+    return render_template('mining.html', stats=stats, top_miners=top_miners, network_info=network_info)
 
 @app.route('/mining/guide')
 def mining_guide():
