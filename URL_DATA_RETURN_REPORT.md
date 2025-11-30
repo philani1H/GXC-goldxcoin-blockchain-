@@ -1,0 +1,239 @@
+# URL Data Return Verification Report
+
+## Summary
+
+- Total Endpoints: 107
+- Endpoints with Data: 104
+- Endpoints Missing Data: 2
+- API Endpoints: 57
+- Wallet Endpoints: 16
+
+## Data Sources
+
+- Database Queries: 33
+- RPC Calls: 6
+- JSON Responses: 56
+- Template Renders: 46
+
+## Endpoints with Data
+
+- `/` -> `index()`
+  - Data sources: template, data_passed, rpc
+- `/block/<block_number>` -> `block_detail()`
+  - Data sources: template, data_passed, database
+- `/tx/<tx_hash>` -> `transaction_detail()`
+  - Data sources: template, data_passed, database, rpc
+- `/address/<address>` -> `address_detail()`
+  - Data sources: template, data_passed, database, rpc
+- `/blocks` -> `blocks_list()`
+  - Data sources: template, data_passed, rpc
+- `/transactions` -> `transactions_list()`
+  - Data sources: template, data_passed, data_passed, data_passed, database
+- `/validators` -> `validators_list()`
+  - Data sources: template, data_passed
+- `/addresses` -> `addresses_list()`
+  - Data sources: template, data_passed
+- `/mining` -> `mining_page()`
+  - Data sources: template, data_passed
+- `/mining/guide` -> `mining_guide()`
+  - Data sources: template
+- `/stocks` -> `stocks_page()`
+  - Data sources: template, database
+- `/stocks/guide` -> `stocks_guide()`
+  - Data sources: template
+- `/stocks/<ticker>` -> `stock_detail()`
+  - Data sources: template, database
+- `/charts` -> `charts_page()`
+  - Data sources: template
+- `/gas` -> `gas_tracker()`
+  - Data sources: template
+- `/price` -> `price_page()`
+  - Data sources: template
+- `/portfolio` -> `portfolio_page()`
+  - Data sources: template
+- `/health` -> `network_health()`
+  - Data sources: template
+- `/healthz` -> `health_check()`
+  - Data sources: jsonify, database, rpc
+- `/healthcheck` -> `health_check()`
+  - Data sources: jsonify, database, rpc
+- `/decoder` -> `transaction_decoder()`
+  - Data sources: template
+- `/analytics` -> `analytics_page()`
+  - Data sources: template
+- `/pending` -> `pending_transactions()`
+  - Data sources: template
+- `/gold` -> `gold_token_explorer()`
+  - Data sources: template
+- `/governance` -> `governance_dashboard()`
+  - Data sources: template
+- `/bridge` -> `bridge_explorer()`
+  - Data sources: template, database
+- `/staking` -> `staking_dashboard()`
+  - Data sources: template
+- `/graph` -> `transaction_graph()`
+  - Data sources: template
+- `/alerts` -> `price_alerts()`
+  - Data sources: template
+- `/simulator` -> `transaction_simulator()`
+  - Data sources: template
+- `/webhooks` -> `webhooks_page()`
+  - Data sources: template
+- `/downloads` -> `downloads_page()`
+  - Data sources: template
+
+## API Endpoints
+
+- ✅ `/api` -> `api_docs()`
+  - Data sources: template
+- ✅ `/api/blocks` -> `api_blocks()`
+  - Data sources: jsonify
+- ✅ `/api/transactions` -> `api_transactions()`
+  - Data sources: jsonify
+- ✅ `/api/stats` -> `api_stats()`
+  - Data sources: jsonify
+- ✅ `/api/charts` -> `api_charts()`
+  - Data sources: jsonify
+- ✅ `/api/hashrate` -> `api_hashrate()`
+  - Data sources: jsonify
+- ✅ `/api/gas` -> `api_gas()`
+  - Data sources: jsonify
+- ✅ `/api/price` -> `api_price()`
+  - Data sources: jsonify
+- ✅ `/api/portfolio` -> `api_portfolio()`
+  - Data sources: jsonify
+- ✅ `/api/health` -> `api_health()`
+  - Data sources: jsonify
+- ✅ `/api/connection-status` -> `api_connection_status()`
+  - Data sources: jsonify
+- ✅ `/api/network-info` -> `api_network_info()`
+  - Data sources: jsonify
+- ✅ `/api/decode` -> `api_decode()`
+  - Data sources: jsonify
+- ✅ `/api/analytics` -> `api_analytics()`
+  - Data sources: jsonify
+- ✅ `/api/pending` -> `api_pending()`
+  - Data sources: jsonify
+- ✅ `/api/export/transactions` -> `export_transactions()`
+  - Data sources: jsonify, database
+- ✅ `/api/export/blocks` -> `export_blocks()`
+  - Data sources: jsonify, database
+- ✅ `/api/export/utxo` -> `export_utxo()`
+  - Data sources: jsonify, database
+- ✅ `/api/export/all` -> `export_all()`
+  - Data sources: database
+- ✅ `/api/filter/transactions` -> `api_filter_transactions()`
+  - Data sources: jsonify
+- ✅ `/api/gold/stats` -> `api_gold_stats()`
+  - Data sources: jsonify
+- ✅ `/api/gold/reserves` -> `api_gold_reserves()`
+  - Data sources: jsonify
+- ✅ `/api/gold/transfers` -> `api_gold_transfers()`
+  - Data sources: jsonify, database
+- ✅ `/api/gold/address/<address>` -> `api_gold_address()`
+  - Data sources: jsonify, database
+- ✅ `/api/governance/proposals` -> `api_governance_proposals()`
+  - Data sources: jsonify
+- ✅ `/api/governance/proposal/<proposal_id>` -> `api_governance_proposal()`
+  - Data sources: jsonify, database
+- ✅ `/api/governance/proposal/<proposal_id>/votes` -> `api_proposal_votes()`
+  - Data sources: jsonify
+- ✅ `/api/bridge/transfers` -> `api_bridge_transfers()`
+  - Data sources: jsonify
+- ✅ `/api/bridge/validators` -> `api_bridge_validators()`
+  - Data sources: jsonify
+- ✅ `/api/bridge/stats` -> `api_bridge_stats()`
+  - Data sources: jsonify, database
+- ✅ `/api/staking/validators` -> `api_staking_validators()`
+  - Data sources: jsonify
+- ✅ `/api/staking/validator/<address>` -> `api_staking_validator()`
+  - Data sources: jsonify, database
+- ✅ `/api/staking/stats` -> `api_staking_stats()`
+  - Data sources: jsonify
+- ✅ `/api/graph/address/<address>` -> `api_address_graph()`
+  - Data sources: jsonify
+- ✅ `/api/graph/transaction/<tx_hash>` -> `api_transaction_graph()`
+  - Data sources: jsonify, database
+- ✅ `/api/alerts` -> `api_alerts()`
+  - Data sources: jsonify
+- ✅ `/api/simulator/estimate` -> `api_simulator_estimate()`
+  - Data sources: jsonify, database
+- ✅ `/api/keys` -> `api_keys_page()`
+  - Data sources: template
+- ✅ `/api/keys/generate` -> `api_generate_key()`
+  - Data sources: jsonify, database
+- ✅ `/api/keys/validate` -> `api_validate_key()`
+  - Data sources: jsonify, database
+- ✅ `/api/webhooks` -> `api_list_webhooks()`
+  - Data sources: jsonify, database
+- ✅ `/api/webhooks` -> `api_list_webhooks()`
+  - Data sources: jsonify, database
+- ✅ `/api/webhooks/<int:webhook_id>` -> `api_delete_webhook()`
+  - Data sources: jsonify, database
+- ✅ `/api/downloads/<platform>/<algorithm>` -> `download_miner()`
+  - Data sources: jsonify
+- ✅ `/api/v1/register` -> `register()`
+  - Data sources: jsonify
+- ✅ `/api/v1/login` -> `login()`
+  - Data sources: jsonify
+- ✅ `/api/v1/wallets/create` -> `create_wallet()`
+  - Data sources: database
+- ✅ `/api/v1/wallets` -> `get_wallets()`
+  - Data sources: jsonify
+- ✅ `/api/v1/wallets/<wallet_id>/balance` -> `get_wallet_balance_api()`
+  - Data sources: jsonify
+- ✅ `/api/v1/wallets/<wallet_id>/transactions` -> `get_wallet_transactions_api()`
+  - Data sources: jsonify
+- ✅ `/api/v1/wallets/<wallet_id>/become-validator` -> `become_validator_api()`
+  - Data sources: jsonify
+- ✅ `/api/v1/wallets/<wallet_id>/validator-status` -> `get_validator_status_api()`
+  - Data sources: jsonify
+- ✅ `/api/v1/wallets/<wallet_id>/send` -> `send_transaction_api()`
+  - Data sources: jsonify
+- ✅ `/api/v1/wallets/<wallet_id>/backup` -> `store_wallet_backup()`
+  - Data sources: jsonify
+- ✅ `/api/v1/health` -> `health_check()`
+  - Data sources: jsonify
+- ✅ `/api/v1/docs` -> `api_docs()`
+  - Data sources: jsonify
+- ✅ `/api` -> `api_index()`
+  - Data sources: jsonify, database/rpc
+
+## Wallet Endpoints
+
+- ✅ `/wallet` -> `wallet_page()`
+  - Data sources: template, data_passed
+- ✅ `/` -> `index()`
+  - Data sources: template, data_passed
+- ✅ `/register` -> `register_page()`
+  - Data sources: template, data_passed
+- ✅ `/login` -> `login_page()`
+  - Data sources: template, data_passed
+- ⚠️ `/logout` -> `logout()`
+- ✅ `/create-wallet` -> `create_wallet_page()`
+  - Data sources: template, data_passed, database
+- ✅ `/wallet-success` -> `wallet_success()`
+  - Data sources: template, data_passed
+- ✅ `/dashboard` -> `dashboard()`
+  - Data sources: template, data_passed
+- ✅ `/wallet/<wallet_id>/send` -> `send_page()`
+  - Data sources: template, data_passed, database
+- ✅ `/wallet/<wallet_id>/receive` -> `receive_page()`
+  - Data sources: template, data_passed, database
+- ✅ `/wallet/<wallet_id>/history` -> `wallet_history()`
+  - Data sources: template, data_passed, database
+- ✅ `/wallet/<wallet_id>/settings` -> `wallet_settings()`
+  - Data sources: template, data_passed, database
+- ✅ `/wallet/<wallet_id>/staking` -> `staking_page()`
+  - Data sources: template, data_passed, database
+- ✅ `/wallet/<wallet_id>/become-validator` -> `become_validator_page()`
+  - Data sources: template, data_passed, database
+- ✅ `/recovery` -> `recovery_page()`
+  - Data sources: template, data_passed
+- ✅ `/docs` -> `api_docs()`
+  - Data sources: jsonify
+
+## Endpoints Missing Data
+
+- `/search` -> `search()`
+- `/forum` -> `forum_redirect()`
