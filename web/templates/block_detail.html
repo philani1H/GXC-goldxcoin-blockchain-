@@ -511,10 +511,34 @@
         </div>
     </div>
     
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/static/realtime.js"></script>
     <script>
         function exportBlockData() {
             window.location.href = `/api/export/blocks?format=csv&limit=1`;
         }
+
+        // Real-time updates for block detail
+        const blockNumber = {{ block[0]|default(0) }};
+        const realtime = new GXCRealtime({
+            onBlock: function(block) {
+                // Update confirmations if this is the block being viewed
+                if ((block.number || block.block_number || block.height) === blockNumber) {
+                    // Refresh page to show updated confirmations
+                    fetch(`/api/v1/stats`)
+                        .then(r => r.json())
+                        .then(stats => {
+                            const currentHeight = stats.current_height || stats.height || 0;
+                            const confirmations = Math.max(0, currentHeight - blockNumber + 1);
+                            const confirmationsEl = document.getElementById('block-confirmations');
+                            if (confirmationsEl) {
+                                confirmationsEl.textContent = confirmations;
+                            }
+                        });
+                }
+            }
+        });
     </script>
 </body>
 

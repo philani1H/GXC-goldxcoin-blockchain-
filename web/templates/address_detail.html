@@ -484,6 +484,8 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/static/realtime.js"></script>
     <script>
         function timeAgo(timestamp) {
             const now = new Date();
@@ -646,6 +648,41 @@
         }
         
         loadUTXO();
+
+        // Real-time updates for address
+        const address = '{{ address_info[0] }}';
+        const transactionsTable = document.querySelector('tbody');
+        const realtime = new GXCRealtime({
+            onTransaction: function(tx) {
+                // Only update if transaction involves this address
+                if (tx.from_address === address || tx.to_address === address) {
+                    if (transactionsTable) {
+                        RealtimeUI.updateTransactionRow(tx, transactionsTable);
+                    }
+                    // Refresh balance
+                    fetch(`/api/v1/address/${address}/balance`)
+                        .then(r => r.json())
+                        .then(data => {
+                            const balanceEl = document.getElementById('address-balance');
+                            if (balanceEl && data.balance !== undefined) {
+                                balanceEl.textContent = `${data.balance.toFixed(8)} GXC`;
+                            }
+                        });
+                    RealtimeUI.showNotification(`New transaction for this address: ${(tx.value || 0).toFixed(4)} GXC`, 'info');
+                }
+            },
+            onAddressUpdate: function(addrData) {
+                if (addrData.address === address) {
+                    // Update balance if provided
+                    if (addrData.balance !== undefined) {
+                        const balanceEl = document.getElementById('address-balance');
+                        if (balanceEl) {
+                            balanceEl.textContent = `${addrData.balance.toFixed(8)} GXC`;
+                        }
+                    }
+                }
+            }
+        });
     </script>
 </body>
 

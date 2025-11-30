@@ -403,6 +403,8 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/static/realtime.js"></script>
     <script>
         // Time formatting function
         function timeAgo(timestamp) {
@@ -426,6 +428,21 @@
                 }
             }
             return 'just now';
+        }
+
+        // Real-time updates
+        const transactionsTable = document.getElementById('transactions-table') || document.querySelector('tbody');
+        if (transactionsTable) {
+            const realtime = new GXCRealtime({
+                onTransaction: function(tx) {
+                    RealtimeUI.updateTransactionRow(tx, transactionsTable);
+                    const value = tx.value || 0;
+                    RealtimeUI.showNotification(`New transaction: ${value.toFixed(4)} GXC`, 'info');
+                },
+                onStatsUpdate: function(stats) {
+                    RealtimeUI.updateStats(stats);
+                }
+            });
         }
     </script>
 </body>

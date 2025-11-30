@@ -14,7 +14,7 @@ from flask_socketio import SocketIO, emit
 import threading
 import time
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = 'gxc_explorer_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
@@ -1272,6 +1272,27 @@ class BlockchainExplorer:
                 1 if is_coinbase else 0
             ))
             
+            # Emit WebSocket event for new transaction
+            try:
+                if socketio:
+                    emit_tx = {
+                        'hash': tx_hash,
+                        'tx_hash': tx_hash,
+                        'block_number': block_number,
+                        'from_address': from_addr,
+                        'to_address': to_addr,
+                        'value': float(value),
+                        'fee': float(fee),
+                        'status': status,
+                        'timestamp': tx_timestamp.isoformat() if hasattr(tx_timestamp, 'isoformat') else str(tx_timestamp),
+                        'is_coinbase': is_coinbase,
+                        'tx_type': tx_type
+                    }
+                    socketio.emit('new_transaction', emit_tx)
+            except Exception as e:
+                print(f"[EXPLORER] Error emitting transaction: {e}")
+                pass  # SocketIO might not be initialized
+            
             # Update address balances and activity (handle coinbase transactions)
             from_addr_for_update = tx_data.get('from') or tx_data.get('from_address') or from_addr
             to_addr_for_update = tx_data.get('to') or tx_data.get('to_address') or to_addr
@@ -1307,6 +1328,11 @@ class BlockchainExplorer:
                             address, first_seen, last_activity
                         ) VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     ''', (addr,))
+                    
+                    # Get current balance for address update event
+                    cursor.execute('SELECT balance FROM addresses WHERE address = ?', (addr,))
+                    balance_row = cursor.fetchone()
+                    current_balance = balance_row[0] if balance_row else 0.0
                     
                     cursor.execute('''
                         UPDATE addresses 
@@ -4161,6 +4187,7 @@ def api_transactions():
     transactions = explorer.get_recent_transactions(limit)
     return jsonify(transactions)
 
+@app.route('/api/v1/stats')
 @app.route('/api/stats')
 def api_stats():
     """API endpoint for network statistics"""

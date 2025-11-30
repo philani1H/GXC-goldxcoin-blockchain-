@@ -825,6 +825,47 @@
             return labels[address] || null;
         }
         
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/static/realtime.js"></script>
+    <script>
+        // Real-time updates for transaction detail
+        const txHash = '{{ transaction[0]|default("") }}';
+        const realtime = new GXCRealtime({
+            onTransaction: function(tx) {
+                // Update confirmations if this is the transaction being viewed
+                if ((tx.hash || tx.tx_hash) === txHash) {
+                    fetch(`/api/v1/stats`)
+                        .then(r => r.json())
+                        .then(stats => {
+                            const currentHeight = stats.current_height || stats.height || 0;
+                            const txBlock = tx.block_number || 0;
+                            const confirmations = Math.max(0, currentHeight - txBlock + 1);
+                            
+                            // Update confirmations display
+                            const confirmationsEl = document.getElementById('tx-confirmations');
+                            if (confirmationsEl) {
+                                confirmationsEl.textContent = confirmations;
+                                
+                                // Update status badge
+                                const statusEl = document.getElementById('tx-status');
+                                if (statusEl) {
+                                    if (confirmations >= 6) {
+                                        statusEl.className = 'badge bg-success';
+                                        statusEl.textContent = 'Confirmed';
+                                    } else if (confirmations > 0) {
+                                        statusEl.className = 'badge bg-warning text-dark';
+                                        statusEl.textContent = `${confirmations}/6 Confirmations`;
+                                    } else {
+                                        statusEl.className = 'badge bg-danger';
+                                        statusEl.textContent = 'Unconfirmed';
+                                    }
+                                }
+                            }
+                        });
+                }
+            }
+        });
+        
         // Add label buttons to addresses
         function addLabelButtons() {
             const fromAddr = '{{ transaction[3] }}';
