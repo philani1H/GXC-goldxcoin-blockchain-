@@ -423,16 +423,49 @@ class TestnetMinerGUI:
             
             # Check if valid (testnet - easy difficulty)
             if block_hash.startswith('0'):
-                # Prepare block data
+                # Get block reward from template or blockchain info
+                block_reward = template.get('coinbasevalue') or template.get('coinbase_value') or 12.5
+                if not block_reward:
+                    try:
+                        blockchain_info = self.rpc_call("getblockchaininfo", [], show_errors=False)
+                        if blockchain_info:
+                            block_reward = blockchain_info.get('block_reward') or blockchain_info.get('reward') or CURRENT_NETWORK.get('block_reward', 12.5)
+                    except:
+                        block_reward = CURRENT_NETWORK.get('block_reward', 12.5)
+                
+                # Create coinbase transaction to pay the miner
+                coinbase_tx = {
+                    'hash': hashlib.sha256(f"coinbase_{height}_{address}_{int(time.time())}".encode()).hexdigest(),
+                    'txid': hashlib.sha256(f"coinbase_{height}_{address}_{int(time.time())}".encode()).hexdigest(),
+                    'type': 'coinbase',
+                    'is_coinbase': True,
+                    'coinbase': True,
+                    'inputs': [],
+                    'outputs': [{
+                        'address': address,
+                        'amount': block_reward,
+                        'value': block_reward
+                    }],
+                    'value': block_reward,
+                    'amount': block_reward,
+                    'timestamp': int(time.time()),
+                    'block_number': height,
+                    'from': 'coinbase',
+                    'to': address
+                }
+                
+                # Prepare block data with coinbase transaction
                 block_data = {
                     'hash': block_hash,
                     'previousblockhash': prev_hash,
                     'height': height,
                     'nonce': nonce,
                     'miner': address,
+                    'miner_address': address,
                     'timestamp': int(time.time()),
                     'difficulty': template.get('difficulty', 0.1),
-                    'transactions': []
+                    'transactions': [coinbase_tx],  # Include coinbase transaction
+                    'transaction_count': 1
                 }
                 
                 self.log(f"✅ Found valid hash: {block_hash[:16]}...", "SUCCESS")
@@ -483,18 +516,36 @@ class TestnetMinerGUI:
                                 block_full = self.rpc_call("getblock", [height, True], show_errors=False)
                                 if block_full and isinstance(block_full, dict):
                                     txs = block_full.get('transactions', block_full.get('tx', []))
+                                    reward_found = False
                                     for tx in txs:
                                         if isinstance(tx, dict):
-                                            # Check if this is coinbase to our address
-                                            outputs = tx.get('outputs', tx.get('vout', []))
-                                            for output in outputs:
-                                                if isinstance(output, dict):
-                                                    out_addr = output.get('address', '')
-                                                    if out_addr == address:
-                                                        amount = output.get('value', output.get('amount', 0.0))
+                                            # Check if this is coinbase transaction
+                                            is_coinbase = tx.get('is_coinbase') or tx.get('coinbase') or tx.get('type') == 'coinbase'
+                                            if is_coinbase:
+                                                # Check outputs for coinbase
+                                                outputs = tx.get('outputs', tx.get('vout', []))
+                                                if not outputs and isinstance(tx.get('to'), str):
+                                                    # Simple format: direct to address
+                                                    if tx.get('to') == address:
+                                                        amount = tx.get('value', tx.get('amount', 0.0))
                                                         if amount > 0:
-                                                            self.log(f"✅ Reward transaction found: {amount} GXC to {address[:20]}...", "SUCCESS")
-                                            break
+                                                            self.log(f"✅ Coinbase reward found: {amount} GXC to {address[:20]}...", "SUCCESS")
+                                                            reward_found = True
+                                                else:
+                                                    # Check each output
+                                                    for output in outputs:
+                                                        if isinstance(output, dict):
+                                                            out_addr = output.get('address', output.get('scriptPubKey', {}).get('addresses', [None])[0] if isinstance(output.get('scriptPubKey', {}).get('addresses'), list) else None)
+                                                            if out_addr == address:
+                                                                amount = output.get('value', output.get('amount', 0.0))
+                                                                if amount > 0:
+                                                                    self.log(f"✅ Coinbase reward found: {amount} GXC to {address[:20]}...", "SUCCESS")
+                                                                    reward_found = True
+                                                                    break
+                                            if reward_found:
+                                                break
+                                    if not reward_found:
+                                        self.log(f"⚠️ Coinbase transaction not found in block {height} for address {address[:20]}...", "WARNING")
                             else:
                                 self.log(f"⚠️ Block {height} not yet confirmed on chain", "WARNING")
                         except Exception as e:
