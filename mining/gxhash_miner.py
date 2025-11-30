@@ -163,6 +163,13 @@ class BlockchainClient:
             pass
         return 0.0
     
+    def get_current_block_height(self) -> int:
+        """Get current blockchain height"""
+        info = self.get_blockchain_info()
+        if info:
+            return info.get('blocks') or info.get('height') or 0
+        return 0
+    
     def get_address_transactions(self, address: str, limit: int = 50) -> List[Dict]:
         """Get transactions for an address"""
         try:
@@ -621,14 +628,22 @@ class GXCMiner:
         # Format amount
         amount_str = f"{amount:.8f}" if amount >= 0 else f"-{abs(amount):.8f}"
         
-        # Status
+        # Calculate confirmations if not provided
         confirmations = tx.get('confirmations', 0)
+        if confirmations == 0 and (tx.get('block_number') or tx.get('block')):
+            # Calculate confirmations: current_height - tx_block + 1
+            current_height = self.client.get_current_block_height()
+            tx_block = tx.get('block_number') or tx.get('block') or 0
+            if tx_block > 0:
+                confirmations = max(0, current_height - tx_block + 1)
+        
+        # Status with confirmation display
         if confirmations >= 6:
-            status = "✅ Confirmed"
+            status = f"✅ Confirmed ({confirmations})"
         elif confirmations > 0:
-            status = f"⏳ {confirmations}/6"
+            status = f"⏳ {confirmations}/6 confirmations"
         else:
-            status = "⏳ Pending"
+            status = "⏳ Pending (0 confirmations)"
         
         # Time
         timestamp = tx.get('timestamp', 0)
@@ -688,14 +703,22 @@ class GXCMiner:
             # Format amount
             amount_str = f"{amount:.8f}" if amount >= 0 else f"-{abs(amount):.8f}"
             
-            # Status
+            # Calculate confirmations if not provided
             confirmations = tx.get('confirmations', 0)
+            if confirmations == 0 and tx.get('block_number') or tx.get('block'):
+                # Calculate confirmations: current_height - tx_block + 1
+                current_height = self.client.get_current_block_height()
+                tx_block = tx.get('block_number') or tx.get('block') or 0
+                if tx_block > 0:
+                    confirmations = max(0, current_height - tx_block + 1)
+            
+            # Status with confirmation display
             if confirmations >= 6:
-                status = "✅ Confirmed"
+                status = f"✅ Confirmed ({confirmations})"
             elif confirmations > 0:
-                status = f"⏳ {confirmations}/6"
+                status = f"⏳ {confirmations}/6 confirmations"
             else:
-                status = "⏳ Pending"
+                status = "⏳ Pending (0 confirmations)"
             
             # Time
             timestamp = tx.get('timestamp', 0)

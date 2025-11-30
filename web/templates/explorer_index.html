@@ -655,6 +655,7 @@
                                         <th><i class="fas fa-paper-plane me-2"></i>From</th>
                                         <th><i class="fas fa-bullseye me-2"></i>To</th>
                                         <th><i class="fas fa-coins me-2"></i>Value</th>
+                                        <th><i class="fas fa-shield-alt me-2"></i>Confirmations</th>
                                         <th><i class="fas fa-clock me-2"></i>Age</th>
                                     </tr>
                                 </thead>
@@ -691,6 +692,22 @@
                                                 </span>
                                                 {% if tx.is_coinbase %}
                                                 <span class="badge bg-warning ms-1" title="Coinbase transaction">CB</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% set conf = tx.confirmations|default(0) %}
+                                                {% if conf >= 6 %}
+                                                <span class="badge bg-success" title="Fully confirmed">
+                                                    <i class="fas fa-check-circle me-1"></i>{{ conf }}
+                                                </span>
+                                                {% elif conf > 0 %}
+                                                <span class="badge bg-warning text-dark" title="Partially confirmed">
+                                                    <i class="fas fa-clock me-1"></i>{{ conf }}/6
+                                                </span>
+                                                {% else %}
+                                                <span class="badge bg-danger" title="Unconfirmed">
+                                                    <i class="fas fa-exclamation-triangle me-1"></i>0
+                                                </span>
                                                 {% endif %}
                                             </td>
                                             <td class="text-muted small">

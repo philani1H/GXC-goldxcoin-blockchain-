@@ -1424,11 +1424,14 @@ class BlockchainExplorer:
             conn.close()
     
     def get_recent_transactions(self, limit=20):
-        """Get recent transactions from database with all fields"""
+        """Get recent transactions from database with all fields including confirmations"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         try:
+            # Get current height for confirmations
+            current_height = self.get_current_block_height()
+            
             # Get all available fields from transactions table
             cursor.execute('''
                 SELECT tx_hash, block_number, from_address, to_address,
@@ -1467,7 +1470,8 @@ class BlockchainExplorer:
                     'prev_tx_hash': row[14] if len(row) > 14 and row[14] else None,
                     'referenced_amount': row[15] if len(row) > 15 and row[15] is not None else 0.0,
                     'traceability_valid': row[16] if len(row) > 16 and row[16] is not None else True,
-                    'is_coinbase': row[17] if len(row) > 17 and row[17] is not None else False
+                    'is_coinbase': row[17] if len(row) > 17 and row[17] is not None else False,
+                    'confirmations': max(0, current_height - (row[1] if len(row) > 1 and row[1] else 0) + 1) if (row[1] if len(row) > 1 and row[1] else 0) > 0 else 0
                 })
             
             return transactions
@@ -2186,6 +2190,34 @@ class BlockchainExplorer:
                 'total_received': 0.0,
                 'total_sent': 0.0
             }
+        finally:
+            conn.close()
+    
+    def get_current_block_height(self):
+        """Get current blockchain height from database or node"""
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        try:
+            # Try database first
+            cursor.execute('SELECT MAX(block_number) FROM blocks')
+            result = cursor.fetchone()
+            db_height = result[0] if result and result[0] is not None else 0
+            
+            # Also try to get from node for accuracy
+            try:
+                node_info = rpc_call('getblockchaininfo', timeout=5, show_errors=False)
+                if node_info:
+                    node_height = node_info.get('blocks') or node_info.get('height') or 0
+                    # Return the higher of the two
+                    return max(db_height, node_height)
+            except:
+                pass
+            
+            return db_height
+        except Exception as e:
+            print(f"Error getting current block height: {e}")
+            return 0
         finally:
             conn.close()
     
@@ -3345,7 +3377,33 @@ def transaction_detail(tx_hash):
                 transaction = cursor.fetchone()
         
         if not transaction:
-            return "Transaction not found", 404
+            # Try to fetch from node before giving up
+            print(f"[TX] Transaction {tx_hash} not in DB, fetching from node...")
+            tx_data = rpc_call('gettransaction', [tx_hash, True], timeout=15, show_errors=False)
+            if not tx_data:
+                tx_data = rpc_call('getrawtransaction', [tx_hash, True], timeout=15, show_errors=False)
+            
+            if tx_data:
+                # Store the transaction
+                block_num = tx_data.get('blockNumber') or tx_data.get('block_number') or 0
+                if block_num > 0:
+                    # Get block data for context
+                    block_data = explorer.get_block_by_number(block_num)
+                    if block_data:
+                        explorer.store_block(block_data)
+                    explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0), block_data if block_num > 0 else None)
+                else:
+                    explorer.store_transaction(tx_data, 0, tx_data.get('index', 0), None)
+                
+                # Re-fetch from database
+                cursor.execute('SELECT * FROM transactions WHERE tx_hash = ?', (tx_hash,))
+                transaction = cursor.fetchone()
+            
+            if not transaction:
+                return render_template('error.html', 
+                    error="Transaction not found",
+                    message=f"The transaction {tx_hash} could not be found in the database or on the blockchain node.",
+                    back_url="/transactions"), 404
         
         # Get transaction inputs
         cursor.execute('''
@@ -3450,6 +3508,11 @@ def transaction_detail(tx_hash):
             
             current_tx_hash = prev_tx_hash
         
+        # Calculate confirmations (current_height - tx_block_height + 1)
+        tx_block_number = transaction[1] if transaction and len(transaction) > 1 else 0
+        current_height = explorer.get_current_block_height()
+        confirmations = max(0, current_height - tx_block_number + 1) if tx_block_number > 0 else 0
+        
         # Network information for display
         network_info = {
             'network': NETWORK.upper(),
@@ -3465,7 +3528,9 @@ def transaction_detail(tx_hash):
                              inputs=inputs,
                              outputs=outputs,
                              traceability_chain=traceability_chain,
-                             network_info=network_info)
+                             network_info=network_info,
+                             confirmations=confirmations,
+                             current_height=current_height)
         
     finally:
         conn.close()
@@ -3750,6 +3815,9 @@ def transactions_list():
         rows = cursor.fetchall()
         transactions = []
         
+        # Get current block height for confirmations
+        current_height = explorer.get_current_block_height()
+        
         # Network information for display
         network_info = {
             'network': NETWORK.upper(),
@@ -3762,7 +3830,7 @@ def transactions_list():
         
         # Handle empty result gracefully
         if not rows:
-            return render_template('transactions.html', transactions=[], network_info=network_info)
+            return render_template('transactions.html', transactions=[], network_info=network_info, current_height=current_height)
         
         for row in rows:
             # Safely unpack row - all values are guaranteed by COALESCE
@@ -3801,10 +3869,11 @@ def transactions_list():
                 'prev_tx_hash': prev_tx,
                 'referenced_amount': ref_amount,
                 'traceability_valid': bool(trace_valid) if trace_valid is not None else None,
-                'is_coinbase': bool(is_coinbase) if is_coinbase is not None else False
+                'is_coinbase': bool(is_coinbase) if is_coinbase is not None else False,
+                'confirmations': max(0, current_height - block + 1) if block > 0 else 0
             })
         
-        return render_template('transactions.html', transactions=transactions, network_info=network_info)
+        return render_template('transactions.html', transactions=transactions, network_info=network_info, current_height=current_height)
         
     except Exception as e:
         # Log error for debugging
@@ -4915,6 +4984,28 @@ def api_transaction_graph(tx_hash):
     # Get transaction
     cursor.execute('SELECT from_address, to_address, value FROM transactions WHERE tx_hash = ?', (tx_hash,))
     tx = cursor.fetchone()
+    
+    if not tx:
+        # Try to fetch from node before giving up
+        tx_data = rpc_call('gettransaction', [tx_hash, True], timeout=15, show_errors=False)
+        if not tx_data:
+            tx_data = rpc_call('getrawtransaction', [tx_hash, True], timeout=15, show_errors=False)
+        
+        if tx_data:
+            # Store the transaction
+            explorer = BlockchainExplorer()
+            block_num = tx_data.get('blockNumber') or tx_data.get('block_number') or 0
+            if block_num > 0:
+                block_data = explorer.get_block_by_number(block_num)
+                if block_data:
+                    explorer.store_block(block_data)
+                explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0), block_data if block_num > 0 else None)
+            else:
+                explorer.store_transaction(tx_data, 0, tx_data.get('index', 0), None)
+            
+            # Re-fetch from database
+            cursor.execute('SELECT from_address, to_address, value FROM transactions WHERE tx_hash = ?', (tx_hash,))
+            tx = cursor.fetchone()
     
     if not tx:
         return jsonify({'error': 'Transaction not found'}), 404
