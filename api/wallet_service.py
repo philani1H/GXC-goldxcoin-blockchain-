@@ -57,14 +57,98 @@ NETWORK_INFO.update({
 })
 
 class BlockchainClient:
-    """Client to interact with GXC blockchain for real data"""
+    """Client to interact with GXC blockchain for real data - Auto-detects network from server"""
     
-    def __init__(self, rest_url=None):
+    def __init__(self, rest_url=None, rpc_url=None, expected_network=None):
         self.rest_url = rest_url or NETWORK_INFO['rest_url']
+        self.rpc_url = rpc_url or get_rpc_url()
         self.timeout = 10
+        self.expected_network = expected_network or get_network()
+        self.detected_network = None
+        self.network_detected = False
+        
+        # Detect network from blockchain server on initialization
+        self.detect_server_network()
+    
+    def detect_server_network(self):
+        """Detect the actual network of the blockchain server"""
+        try:
+            # Try RPC getblockchaininfo first
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "getblockchaininfo",
+                "params": [],
+                "id": 1
+            }
+            
+            response = requests.post(self.rpc_url, json=payload, timeout=self.timeout)
+            if response.status_code == 200:
+                result = response.json().get('result')
+                if result:
+                    # Check for network indicators
+                    chain = result.get('chain', '').lower()
+                    network_name = result.get('network', '').lower()
+                    chain_id = result.get('chainid', '').lower()
+                    
+                    # Detect network from various fields
+                    if 'testnet' in chain or 'testnet' in network_name or 'testnet' in chain_id:
+                        self.detected_network = 'testnet'
+                    elif 'mainnet' in chain or 'mainnet' in network_name or 'main' in chain:
+                        self.detected_network = 'mainnet'
+                    else:
+                        # Check address prefix from genesis or latest block
+                        latest_block = result.get('blocks', 0)
+                        if latest_block > 0:
+                            # Try to get a block to check address format
+                            block_payload = {
+                                "jsonrpc": "2.0",
+                                "method": "getblock",
+                                "params": [latest_block, True],
+                                "id": 1
+                            }
+                            block_response = requests.post(self.rpc_url, json=block_payload, timeout=self.timeout)
+                            if block_response.status_code == 200:
+                                block_result = block_response.json().get('result')
+                                if block_result:
+                                    miner = block_result.get('miner', '') or block_result.get('miner_address', '')
+                                    if miner.startswith('tGXC'):
+                                        self.detected_network = 'testnet'
+                                    elif miner.startswith('GXC'):
+                                        self.detected_network = 'mainnet'
+                    
+                    self.network_detected = True
+                    logger.info(f"Detected blockchain server network: {self.detected_network}")
+                    
+                    # Warn if network mismatch
+                    if self.detected_network != self.expected_network:
+                        logger.warning(f"⚠️ Network mismatch! Expected {self.expected_network}, but server is {self.detected_network}")
+                        logger.warning(f"   Wallet configured for: {self.expected_network}")
+                        logger.warning(f"   Blockchain server is: {self.detected_network}")
+                        logger.warning(f"   Balance may be incorrect! Please check network configuration.")
+                    
+                    return self.detected_network
+        except Exception as e:
+            logger.warning(f"Could not detect server network: {e}")
+            # Fallback: assume network matches expected
+            self.detected_network = self.expected_network
+            return self.detected_network
+        
+        # Fallback: use expected network
+        self.detected_network = self.expected_network
+        return self.detected_network
     
     def get_address_balance(self, address):
-        """Get real balance from blockchain (works for both testnet and mainnet)"""
+        """Get real balance from blockchain - Verifies network match first"""
+        # Verify network before getting balance
+        if not self.network_detected:
+            self.detect_server_network()
+        
+        # Check if address prefix matches detected network
+        if self.detected_network == 'testnet' and not address.startswith('tGXC'):
+            logger.warning(f"⚠️ Address {address} does not match testnet prefix (tGXC)")
+        elif self.detected_network == 'mainnet' and not address.startswith('GXC'):
+            logger.warning(f"⚠️ Address {address} does not match mainnet prefix (GXC)")
+        
         try:
             # Try REST API first
             url = f"{self.rest_url}/api/v1/address/{address}/balance"
@@ -72,11 +156,30 @@ class BlockchainClient:
             if response.status_code == 200:
                 data = response.json()
                 balance = float(data.get('balance', 0.0))
-                logger.info(f"Balance fetched from REST API: {address[:16]}... = {balance} GXC")
+                logger.info(f"Balance fetched from REST API ({self.detected_network}): {address[:16]}... = {balance} GXC")
                 return balance
             
             # Fallback to RPC if REST fails
             logger.warning(f"REST API failed ({response.status_code}), trying RPC...")
+            
+            # Try RPC getbalance
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "getbalance",
+                "params": [address],
+                "id": 1
+            }
+            rpc_response = requests.post(self.rpc_url, json=payload, timeout=self.timeout)
+            if rpc_response.status_code == 200:
+                result = rpc_response.json().get('result')
+                if result is not None:
+                    if isinstance(result, dict):
+                        balance = float(result.get('balance', 0.0))
+                    else:
+                        balance = float(result) if result else 0.0
+                    logger.info(f"Balance fetched from RPC ({self.detected_network}): {address[:16]}... = {balance} GXC")
+                    return balance
+            
             return 0.0
         except requests.exceptions.Timeout:
             logger.error(f"Timeout fetching balance for {address}")
@@ -284,11 +387,22 @@ class WalletService:
         
         self.db_path = get_wallet_database_path()
         self.init_database()
-        # Use current network configuration
-        self.blockchain = BlockchainClient(rest_url=NETWORK_INFO['rest_url'])
+        # Use current network configuration - blockchain client will detect server network
+        self.blockchain = BlockchainClient(
+            rest_url=NETWORK_INFO['rest_url'],
+            rpc_url=get_rpc_url(),
+            expected_network=self.network
+        )
         
         # Log network info for debugging
         logger.info(f"WalletService initialized: network={self.network}, testnet={self.testnet}, address_prefix={CURRENT_NETWORK.get('address_prefix', 'GXC')}")
+        
+        # Log detected network from server
+        if self.blockchain.network_detected:
+            logger.info(f"Blockchain server network detected: {self.blockchain.detected_network}")
+            if self.blockchain.detected_network != self.network:
+                logger.warning(f"⚠️ NETWORK MISMATCH: Wallet configured for {self.network}, but server is {self.blockchain.detected_network}")
+                logger.warning(f"   This may cause incorrect balances. Please verify network configuration.")
         
     def get_db_connection(self):
         """Get database connection (testnet or mainnet)"""
@@ -792,7 +906,10 @@ class WalletService:
             for row in cursor.fetchall():
                 wallet_id, wallet_name, address, wallet_type, created_at, last_used, cached_balance, is_default = row
                 
-                # Get real balance from blockchain
+                # Get real balance from blockchain (network verified)
+                # Verify network detection first
+                if not self.blockchain.network_detected:
+                    self.blockchain.detect_server_network()
                 real_balance = self.blockchain.get_address_balance(address)
                 
                 # Update cached balance in database
@@ -831,6 +948,17 @@ class WalletService:
                 return {'success': False, 'error': 'Wallet not found'}
             
             address = row[0]
+            
+            # Verify network detection before getting balance
+            if not self.blockchain.network_detected:
+                self.blockchain.detect_server_network()
+            
+            # Check network mismatch
+            network_warning = None
+            if self.blockchain.detected_network != self.network:
+                network_warning = f"Network mismatch: Wallet configured for {self.network}, but server is {self.blockchain.detected_network}"
+                logger.warning(f"⚠️ {network_warning} for address {address[:16]}...")
+            
             balance = self.blockchain.get_address_balance(address)
             
             # Update cached balance
@@ -838,7 +966,18 @@ class WalletService:
                          (balance, wallet_id))
             conn.commit()
             
-            return {'success': True, 'balance': balance, 'address': address}
+            result_data = {
+                'success': True,
+                'balance': balance,
+                'address': address,
+                'network': self.blockchain.detected_network or self.network,
+                'expected_network': self.network
+            }
+            
+            if network_warning:
+                result_data['warning'] = network_warning
+            
+            return result_data
         except Exception as e:
             logger.error(f"Error getting wallet balance: {e}")
             return {'success': False, 'error': str(e)}
@@ -889,7 +1028,10 @@ class WalletService:
             
             from_address, encrypted_private_key, cached_balance = row
             
-            # Get real balance
+            # Get real balance (network verified)
+            # Verify network detection first
+            if not self.blockchain.network_detected:
+                self.blockchain.detect_server_network()
             real_balance = self.blockchain.get_address_balance(from_address)
             if real_balance < amount + (fee or 0.001):
                 return {'success': False, 'error': 'Insufficient balance'}
@@ -977,7 +1119,10 @@ class WalletService:
             if staking_days < MIN_STAKING_DAYS or staking_days > MAX_STAKING_DAYS:
                 return {'success': False, 'error': f'Staking period must be between {MIN_STAKING_DAYS} and {MAX_STAKING_DAYS} days'}
             
-            # Check balance
+            # Check balance (network verified)
+            # Verify network detection first
+            if not self.blockchain.network_detected:
+                self.blockchain.detect_server_network()
             balance = self.blockchain.get_address_balance(address)
             if balance < stake_amount:
                 return {'success': False, 'error': 'Insufficient balance'}
@@ -1613,7 +1758,10 @@ def get_wallets():
             'network': NETWORK_INFO.get('network', 'unknown'),
             'network_name': NETWORK_INFO.get('network_name', 'Unknown'),
             'address_prefix': NETWORK_INFO.get('address_prefix', 'GXC'),
-            'is_testnet': NETWORK_INFO.get('network', '').lower() == 'testnet'
+            'is_testnet': NETWORK_INFO.get('network', '').lower() == 'testnet',
+            'detected_network': wallet_service.blockchain.detected_network if wallet_service.blockchain.network_detected else None,
+            'network_match': wallet_service.blockchain.detected_network == wallet_service.network if wallet_service.blockchain.network_detected else None,
+            'network_warning': f"Network mismatch: Wallet configured for {wallet_service.network}, but server is {wallet_service.blockchain.detected_network}" if (wallet_service.blockchain.network_detected and wallet_service.blockchain.detected_network != wallet_service.network) else None
         })
     else:
         return jsonify(result), 400
@@ -1635,15 +1783,25 @@ def get_wallet_balance_api(wallet_id):
     result = wallet_service.get_wallet_balance(wallet_id, user_id)
     
     if result['success']:
-        return jsonify({
+        response_data = {
             'success': True,
             'balance': result['balance'],
             'address': result['address'],
             'network': NETWORK_INFO.get('network', 'unknown'),
             'network_name': NETWORK_INFO.get('network_name', 'Unknown'),
             'address_prefix': NETWORK_INFO.get('address_prefix', 'GXC'),
-            'is_testnet': NETWORK_INFO.get('network', '').lower() == 'testnet'
-        }), 200
+            'is_testnet': NETWORK_INFO.get('network', '').lower() == 'testnet',
+            'detected_network': wallet_service.blockchain.detected_network if wallet_service.blockchain.network_detected else None,
+            'network_match': wallet_service.blockchain.detected_network == wallet_service.network if wallet_service.blockchain.network_detected else None
+        }
+        
+        # Add network warning if mismatch
+        if 'warning' in result:
+            response_data['network_warning'] = result['warning']
+        elif wallet_service.blockchain.network_detected and wallet_service.blockchain.detected_network != wallet_service.network:
+            response_data['network_warning'] = f"Network mismatch: Wallet configured for {wallet_service.network}, but server is {wallet_service.blockchain.detected_network}"
+        
+        return jsonify(response_data), 200
     else:
         return jsonify(result), 400
 
@@ -1887,6 +2045,23 @@ def api_docs():
     
     return jsonify(docs)
 
+@app.route('/api/v1/network/status', methods=['GET'])
+def network_status():
+    """Get network status and detection info"""
+    # Ensure network is detected
+    if not wallet_service.blockchain.network_detected:
+        wallet_service.blockchain.detect_server_network()
+    
+    return jsonify({
+        'success': True,
+        'configured_network': wallet_service.network,
+        'detected_network': wallet_service.blockchain.detected_network,
+        'network_detected': wallet_service.blockchain.network_detected,
+        'network_match': wallet_service.blockchain.detected_network == wallet_service.network if wallet_service.blockchain.network_detected else None,
+        'network_info': NETWORK_INFO,
+        'warning': f"Network mismatch: Wallet configured for {wallet_service.network}, but server is {wallet_service.blockchain.detected_network}" if (wallet_service.blockchain.network_detected and wallet_service.blockchain.detected_network != wallet_service.network) else None
+    }), 200
+
 @app.route('/api', methods=['GET'])
 def api_index():
     """API homepage - returns JSON"""
@@ -1896,6 +2071,7 @@ def api_index():
         'status': 'running',
         'endpoints': {
             'register': '/api/v1/register',
+            'network_status': '/api/v1/network/status',
             'login': '/api/v1/login',
             'create_wallet': '/api/v1/wallets/create',
             'get_wallets': '/api/v1/wallets',
