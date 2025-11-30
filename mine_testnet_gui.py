@@ -72,6 +72,9 @@ class TestnetMinerGUI:
         
         # Start stats update timer
         self.root.after(1000, self.update_stats_timer)
+        
+        # Auto-refresh balance periodically if wallet address is set
+        self.root.after(10000, self.auto_refresh_balance)
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals"""
@@ -108,13 +111,17 @@ class TestnetMinerGUI:
                     
                     if 'error' not in result and result.get('result') is not None:
                         height = result.get('result')
-                        self.node_connected = True
-                        RPC_URL = url
-                        ACTIVE_NODE_TYPE = "local"
-                        self.root.after(0, lambda h=height: self.log(f"✅ Connected to local node", "SUCCESS"))
-                        self.root.after(0, lambda h=height: self.log(f"📊 Current height: {h}", "INFO"))
-                        self.root.after(0, lambda: self.status_label.config(text="● Connected (Local)", fg="#86efac"))
-                        return
+                    self.node_connected = True
+                    RPC_URL = url
+                    ACTIVE_NODE_TYPE = "local"
+                    self.root.after(0, lambda h=height: self.log(f"✅ Connected to local node", "SUCCESS"))
+                    self.root.after(0, lambda h=height: self.log(f"📊 Current height: {h}", "INFO"))
+                    self.root.after(0, lambda: self.status_label.config(text="● Connected (Local)", fg="#86efac"))
+                    
+                    # Auto-refresh balance if wallet address is set
+                    if self.wallet_address.get():
+                        self.root.after(1000, self.refresh_balance_from_blockchain)
+                    return
                 except requests.exceptions.ConnectionError:
                     continue
                 except Exception:
@@ -139,6 +146,10 @@ class TestnetMinerGUI:
                     self.root.after(0, lambda: self.log(f"✅ Connected to Railway node", "SUCCESS"))
                     self.root.after(0, lambda: self.log(f"📊 Current height: {height}", "INFO"))
                     self.root.after(0, lambda: self.status_label.config(text="● Connected (Railway)", fg="#86efac"))
+                    
+                    # Auto-refresh balance if wallet address is set
+                    if self.wallet_address.get():
+                        self.root.after(1000, self.refresh_balance_from_blockchain)
                     return
             except Exception:
                 pass
@@ -194,7 +205,12 @@ class TestnetMinerGUI:
         notebook.add(mining_tab, text="⚡ Mining")
         self.setup_mining_tab(mining_tab)
         
-        # Tab 2: Activity Log
+        # Tab 2: Transactions
+        transactions_tab = tk.Frame(notebook, bg="#1e293b")
+        notebook.add(transactions_tab, text="💰 Transactions")
+        self.setup_transactions_tab(transactions_tab)
+        
+        # Tab 3: Activity Log
         log_tab = tk.Frame(notebook, bg="#1e293b")
         notebook.add(log_tab, text="📊 Activity")
         
@@ -210,7 +226,7 @@ class TestnetMinerGUI:
         self.log_text.tag_config("WARNING", foreground="#f59e0b")
         self.log_text.tag_config("ERROR", foreground="#ef4444")
         
-        # Tab 3: Stats
+        # Tab 4: Stats
         stats_tab = tk.Frame(notebook, bg="#1e293b")
         notebook.add(stats_tab, text="📈 Stats")
         self.create_stat_display(stats_tab)
@@ -240,12 +256,26 @@ class TestnetMinerGUI:
         tk.Label(wallet_frame, text="GXC Address (for mining rewards):", font=("Arial", 8), 
                 bg="#1e293b", fg="#cbd5e1").pack(anchor="w", padx=8, pady=(8,2))
         
-        tk.Entry(wallet_frame, textvariable=self.wallet_address, font=("Arial", 9), 
+        entry_frame = tk.Frame(wallet_frame, bg="#1e293b")
+        entry_frame.pack(fill="x", padx=8, pady=(0,4))
+        
+        tk.Entry(entry_frame, textvariable=self.wallet_address, font=("Arial", 9), 
                 bg="#334155", fg="#ffffff", relief="flat", 
-                insertbackground="#ffffff").pack(fill="x", padx=8, pady=(0,4), ipady=4)
+                insertbackground="#ffffff").pack(side="left", fill="x", expand=True, ipady=4)
+        
+        refresh_btn = tk.Button(entry_frame, text="🔄", command=self.refresh_balance_from_blockchain,
+                              font=("Arial", 8), bg="#3b82f6", fg="#ffffff",
+                              relief="flat", cursor="hand2", width=3)
+        refresh_btn.pack(side="right", padx=(4,0))
+        
+        # Balance display
+        self.wallet_balance_label = tk.Label(wallet_frame, text="Balance: Loading...", 
+                                            font=("Arial", 8, "bold"), 
+                                            bg="#1e293b", fg="#10b981")
+        self.wallet_balance_label.pack(anchor="w", padx=8, pady=(4,0))
         
         tk.Label(wallet_frame, text=f"💰 Mining rewards: {CURRENT_NETWORK['block_reward']} GXC per block", 
-                font=("Arial", 7), bg="#1e293b", fg="#94a3b8").pack(anchor="w", padx=8, pady=(0,8))
+                font=("Arial", 7), bg="#1e293b", fg="#94a3b8").pack(anchor="w", padx=8, pady=(4,8))
         
         # Control buttons
         btn_frame = tk.Frame(parent, bg="#1e293b")
@@ -417,13 +447,37 @@ class TestnetMinerGUI:
                     self.total_earned += reward
                     self.current_balance += reward
                     
+                    # Update balance display immediately
+                    self.root.after(0, lambda: self.update_balance_display())
+                    
                     self.log(f"🎉 BLOCK MINED! Height: {height}", "SUCCESS")
                     self.log(f"💰 Reward: {reward} GXC", "SUCCESS")
+                    self.log(f"💵 New Balance: {self.current_balance:.8f} GXC", "SUCCESS")
                     self.log(f"⏱️  Time: {elapsed:.2f} seconds", "INFO")
                     
-                    # Open explorer to view block (optional - user can disable)
+                    # Show explorer URLs (but don't auto-open browser)
                     explorer_url = f"http://localhost:3000/block/{height}"
-                    self.root.after(2000, lambda url=explorer_url: webbrowser.open(url))
+                    tx_url = f"http://localhost:3000/tx/{block_hash}"
+                    self.log(f"🔗 Block Explorer: {explorer_url}", "INFO")
+                    self.log(f"🔗 Transaction Explorer: {tx_url}", "INFO")
+                    
+                    # Add transaction to list if transactions tab exists
+                    if hasattr(self, 'add_transaction_to_list'):
+                        tx_data = {
+                            'type': 'coinbase',
+                            'hash': block_hash,
+                            'amount': reward,
+                            'timestamp': int(time.time()),
+                            'confirmations': 0,
+                            'status': 'confirmed',
+                            'explorer_url': tx_url,
+                            'block_url': explorer_url,
+                            'height': height
+                        }
+                        self.root.after(0, lambda tx=tx_data: self.add_transaction_to_list(tx))
+                    
+                    # Refresh balance from blockchain after delay
+                    self.root.after(3000, self.refresh_balance_from_blockchain)
                     
                     return True
                 else:
@@ -530,6 +584,224 @@ class TestnetMinerGUI:
                 self.mining_time_label.config(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
         
         self.root.after(1000, self.update_stats_timer)
+    
+    def setup_transactions_tab(self, parent):
+        """Setup transactions display tab"""
+        # Header with refresh button
+        header_frame = tk.Frame(parent, bg="#1e293b")
+        header_frame.pack(fill="x", padx=8, pady=8)
+        
+        tk.Label(header_frame, text="Mining Rewards & Transactions", 
+                font=("Arial", 10, "bold"), bg="#1e293b", fg="#e2e8f0").pack(side="left")
+        
+        tk.Button(header_frame, text="🔄 Refresh", command=self.refresh_balance_from_blockchain,
+                 font=("Arial", 8), bg="#3b82f6", fg="#ffffff",
+                 relief="flat", cursor="hand2").pack(side="right", padx=4)
+        
+        # Transactions list with scrollbar
+        list_frame = tk.Frame(parent, bg="#1e293b")
+        list_frame.pack(fill="both", expand=True, padx=8, pady=(0,8))
+        
+        # Create treeview for transactions
+        columns = ("Type", "Amount", "Status", "Time", "Hash", "Explorer")
+        self.tx_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=15)
+        
+        # Configure columns
+        self.tx_tree.heading("Type", text="Type")
+        self.tx_tree.heading("Amount", text="Amount (GXC)")
+        self.tx_tree.heading("Status", text="Status")
+        self.tx_tree.heading("Time", text="Time")
+        self.tx_tree.heading("Hash", text="Transaction Hash")
+        self.tx_tree.heading("Explorer", text="Explorer Link")
+        
+        self.tx_tree.column("Type", width=120)
+        self.tx_tree.column("Amount", width=120)
+        self.tx_tree.column("Status", width=100)
+        self.tx_tree.column("Time", width=150)
+        self.tx_tree.column("Hash", width=150)
+        self.tx_tree.column("Explorer", width=200)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tx_tree.yview)
+        self.tx_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tx_tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Bind double-click to open in explorer (only when user clicks)
+        self.tx_tree.bind("<Double-1>", self.open_transaction_in_explorer)
+        
+        # Add right-click context menu for explorer link
+        self.tx_tree.bind("<Button-3>", self.show_explorer_context_menu)
+        
+        # Style treeview
+        style = ttk.Style()
+        style.theme_use('default')
+        style.configure("Treeview", background="#0f172a", foreground="#e2e8f0", 
+                       fieldbackground="#0f172a", rowheight=25)
+        style.configure("Treeview.Heading", background="#334155", foreground="#ffffff")
+        style.map("Treeview", background=[("selected", "#7c3aed")])
+    
+    def add_transaction_to_list(self, tx: Dict):
+        """Add a single transaction to the transactions list"""
+        tx_type = tx.get('type', 'unknown')
+        tx_hash = tx.get('hash', '')[:16] + '...' if tx.get('hash') else 'N/A'
+        full_hash = tx.get('hash', '')
+        
+        # Determine transaction type display
+        if tx_type == 'coinbase':
+            type_display = "💰 Mining Reward"
+            amount = tx.get('amount', 0)
+        else:
+            type_display = "⬇️ Received"
+            amount = tx.get('amount', 0)
+        
+        # Format amount
+        amount_str = f"{amount:.8f}" if amount >= 0 else f"-{abs(amount):.8f}"
+        
+        # Status
+        confirmations = tx.get('confirmations', 0)
+        if confirmations >= 6:
+            status = "✅ Confirmed"
+        elif confirmations > 0:
+            status = f"⏳ {confirmations}/6"
+        else:
+            status = "⏳ Pending"
+        
+        # Time
+        timestamp = tx.get('timestamp', 0)
+        if timestamp:
+            try:
+                dt = datetime.fromtimestamp(timestamp)
+                time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except:
+                time_str = "Unknown"
+        else:
+            time_str = "Unknown"
+        
+        # Explorer URL
+        explorer_url = tx.get('explorer_url', '')
+        if not explorer_url and full_hash:
+            explorer_url = f"http://localhost:3000/tx/{full_hash}"
+        
+        # Insert at the top (newest first)
+        item = self.tx_tree.insert("", 0, values=(
+            type_display,
+            amount_str,
+            status,
+            time_str,
+            tx_hash,
+            explorer_url  # Store URL for clicking
+        ), tags=(full_hash, explorer_url))
+        
+        # Color code by type
+        if tx_type == 'coinbase':
+            self.tx_tree.set(item, "Type", "💰 Mining Reward")
+    
+    def update_balance_display(self):
+        """Update balance displays"""
+        balance_str = f"{self.current_balance:.8f} GXC"
+        
+        # Update main balance label
+        if hasattr(self, 'balance_label'):
+            self.balance_label.config(text=balance_str)
+        
+        # Update wallet balance label if it exists
+        if hasattr(self, 'wallet_balance_label'):
+            self.wallet_balance_label.config(text=f"Balance: {balance_str}")
+        
+        # Update stats label if it exists
+        if hasattr(self, 'current_balance_label'):
+            self.current_balance_label.config(text=balance_str)
+    
+    def refresh_balance_from_blockchain(self):
+        """Refresh balance from blockchain"""
+        if not self.wallet_address.get() or not self.node_connected:
+            return
+        
+        address = self.wallet_address.get().strip()
+        if not address:
+            return
+        
+        self.log("🔄 Refreshing balance from blockchain...", "INFO")
+        
+        def fetch():
+            try:
+                # Get balance using getbalance RPC
+                result = self.rpc_call("getbalance", [address], show_errors=False)
+                if result is not None:
+                    if isinstance(result, dict):
+                        balance = float(result.get('balance', 0.0))
+                    else:
+                        balance = float(result) if result else 0.0
+                    
+                    self.current_balance = balance
+                    self.root.after(0, lambda: self.update_balance_display())
+                    self.root.after(0, lambda: self.log(f"💵 Balance from blockchain: {balance:.8f} GXC", "INFO"))
+                else:
+                    self.root.after(0, lambda: self.log("⚠️ Could not fetch balance from blockchain", "WARNING"))
+            except Exception as e:
+                self.root.after(0, lambda: self.log(f"❌ Failed to fetch balance: {e}", "ERROR"))
+        
+        threading.Thread(target=fetch, daemon=True).start()
+    
+    def auto_refresh_balance(self):
+        """Auto-refresh balance from blockchain every 30 seconds"""
+        if self.wallet_address.get() and self.node_connected:
+            self.refresh_balance_from_blockchain()
+        
+        # Schedule next refresh
+        self.root.after(30000, self.auto_refresh_balance)  # Every 30 seconds
+    
+    def open_transaction_in_explorer(self, event):
+        """Open transaction in blockchain explorer (only when user clicks)"""
+        selection = self.tx_tree.selection()
+        if selection:
+            item = self.tx_tree.item(selection[0])
+            values = item.get('values', [])
+            tags = item.get('tags', [])
+            
+            # Get explorer URL from values or tags
+            explorer_url = None
+            if len(values) > 5:
+                explorer_url = values[5]  # Explorer column
+            elif len(tags) > 1:
+                explorer_url = tags[1]  # URL in tags
+            
+            # Fallback: construct URL from hash
+            if not explorer_url and len(tags) > 0:
+                tx_hash = tags[0]
+                if tx_hash:
+                    explorer_url = f"http://localhost:3000/tx/{tx_hash}"
+            
+            if explorer_url:
+                webbrowser.open(explorer_url)
+                self.log(f"🌐 Opened transaction in explorer: {explorer_url}", "INFO")
+            else:
+                self.log("⚠️ No explorer URL available for this transaction", "WARNING")
+    
+    def show_explorer_context_menu(self, event):
+        """Show context menu for explorer link"""
+        selection = self.tx_tree.selection()
+        if selection:
+            item = self.tx_tree.item(selection[0])
+            values = item.get('values', [])
+            tags = item.get('tags', [])
+            
+            explorer_url = None
+            if len(values) > 5:
+                explorer_url = values[5]
+            elif len(tags) > 1:
+                explorer_url = tags[1]
+            
+            if explorer_url:
+                menu = tk.Menu(self.root, tearoff=0)
+                menu.add_command(label="Open in Explorer", command=lambda: webbrowser.open(explorer_url))
+                menu.add_command(label="Copy URL", command=lambda: self.root.clipboard_clear() or self.root.clipboard_append(explorer_url))
+                try:
+                    menu.tk_popup(event.x_root, event.y_root)
+                finally:
+                    menu.grab_release()
 
 
 def main():
