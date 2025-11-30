@@ -446,7 +446,7 @@ class TestnetMinerGUI:
                     reward = None
                     try:
                         # Try to get from blockchain info
-                        blockchain_info = self.rpc_call("getblockchaininfo", show_errors=False)
+                        blockchain_info = self.rpc_call("getblockchaininfo", [], show_errors=False)
                         if blockchain_info:
                             reward = blockchain_info.get('block_reward') or blockchain_info.get('reward') or CURRENT_NETWORK.get('block_reward')
                     except:
@@ -470,10 +470,44 @@ class TestnetMinerGUI:
                     self.log(f"🔗 Block Explorer: {explorer_url}", "INFO")
                     self.log(f"🔗 Transaction Explorer: {tx_url}", "INFO")
                     
+                    # Verify block was accepted by checking if it exists on chain
+                    def verify_block():
+                        try:
+                            # Wait a bit for block to be processed
+                            time.sleep(3)
+                            # Try to get the block from chain
+                            block_check = self.rpc_call("getblock", [height, False], show_errors=False)
+                            if block_check:
+                                self.log(f"✅ Block {height} confirmed on blockchain", "SUCCESS")
+                                # Check if block has our address in coinbase
+                                block_full = self.rpc_call("getblock", [height, True], show_errors=False)
+                                if block_full and isinstance(block_full, dict):
+                                    txs = block_full.get('transactions', block_full.get('tx', []))
+                                    for tx in txs:
+                                        if isinstance(tx, dict):
+                                            # Check if this is coinbase to our address
+                                            outputs = tx.get('outputs', tx.get('vout', []))
+                                            for output in outputs:
+                                                if isinstance(output, dict):
+                                                    out_addr = output.get('address', '')
+                                                    if out_addr == address:
+                                                        amount = output.get('value', output.get('amount', 0.0))
+                                                        if amount > 0:
+                                                            self.log(f"✅ Reward transaction found: {amount} GXC to {address[:20]}...", "SUCCESS")
+                                            break
+                            else:
+                                self.log(f"⚠️ Block {height} not yet confirmed on chain", "WARNING")
+                        except Exception as e:
+                            self.log(f"⚠️ Could not verify block: {e}", "WARNING")
+                    
+                    # Verify block in background
+                    threading.Thread(target=verify_block, daemon=True).start()
+                    
                     # Refresh balance and transactions from blockchain to get REAL data
                     # Wait a bit for block to be processed, then verify from blockchain
                     self.root.after(5000, self.refresh_balance_from_blockchain)  # Wait 5 seconds for block processing
                     self.root.after(15000, self.refresh_balance_from_blockchain)  # Refresh again after 15 seconds to get confirmed data
+                    self.root.after(30000, self.refresh_balance_from_blockchain)  # Refresh again after 30 seconds
                     
                     return True
                 else:
@@ -743,17 +777,33 @@ class TestnetMinerGUI:
                 ("getaddresstransactions", [address, limit]),
                 ("listtransactions", [address, limit]),
                 ("gettransactions", [address, limit]),
+                ("getaddresshistory", [address]),
+                ("searchrawtransactions", [address]),
             ]
             
             for method, params in methods:
                 result = self.rpc_call(method, params, show_errors=False)
                 if result:
                     if isinstance(result, list):
-                        return result
-                    elif isinstance(result, dict) and 'transactions' in result:
-                        return result['transactions']
+                        # Normalize transaction format
+                        normalized = []
+                        for tx in result:
+                            if isinstance(tx, dict):
+                                normalized.append(tx)
+                            else:
+                                # Try to convert if it's a different format
+                                normalized.append({'hash': str(tx), 'value': 0.0})
+                        return normalized
+                    elif isinstance(result, dict):
+                        if 'transactions' in result:
+                            return result['transactions']
+                        elif 'tx' in result:
+                            return result['tx']
+                        elif 'items' in result:
+                            return result['items']
             return []
-        except:
+        except Exception as e:
+            self.log(f"⚠️ Error getting transactions: {e}", "WARNING")
             return []
     
     def refresh_balance_from_blockchain(self):
@@ -769,14 +819,32 @@ class TestnetMinerGUI:
         
         def fetch():
             try:
-                # Get balance using getbalance RPC - REAL DATA ONLY
-                result = self.rpc_call("getbalance", [address], show_errors=False)
+                # Try multiple methods to get balance
                 balance = 0.0
-                if result is not None:
-                    if isinstance(result, dict):
-                        balance = float(result.get('balance', 0.0))
-                    else:
-                        balance = float(result) if result else 0.0
+                balance_methods = [
+                    ("getbalance", [address]),
+                    ("getaddressbalance", [address]),
+                    ("getaccountbalance", [address]),
+                ]
+                
+                for method, params in balance_methods:
+                    result = self.rpc_call(method, params, show_errors=False)
+                    if result is not None:
+                        if isinstance(result, dict):
+                            balance = float(result.get('balance', result.get('amount', 0.0)))
+                        else:
+                            balance = float(result) if result else 0.0
+                        if balance > 0:
+                            break
+                
+                # Also try to get balance from UTXOs
+                if balance == 0.0:
+                    try:
+                        utxos_result = self.rpc_call("listunspent", [0, 9999999, [address]], show_errors=False)
+                        if utxos_result and isinstance(utxos_result, list):
+                            balance = sum(float(utxo.get('amount', utxo.get('value', 0.0))) for utxo in utxos_result)
+                    except:
+                        pass
                 
                 # Update balance display with REAL blockchain data
                 self.root.after(0, lambda: self.update_balance_display(balance))
@@ -785,19 +853,77 @@ class TestnetMinerGUI:
                 # Get transactions from blockchain - REAL DATA ONLY
                 transactions = self.get_address_transactions(address, limit=100)
                 
+                # Also try to get transactions from recent blocks if direct method fails
+                if not transactions:
+                    try:
+                        # Get recent blocks and check for transactions to this address
+                        blockchain_info = self.rpc_call("getblockchaininfo", [], show_errors=False)
+                        if blockchain_info:
+                            current_height = blockchain_info.get('blocks', blockchain_info.get('height', 0))
+                            # Check last 10 blocks for transactions
+                            for height in range(max(0, current_height - 10), current_height + 1):
+                                block_data = self.rpc_call("getblock", [height, True], show_errors=False)
+                                if block_data and isinstance(block_data, dict):
+                                    block_txs = block_data.get('transactions', block_data.get('tx', []))
+                                    for tx in block_txs:
+                                        # Check if transaction involves this address
+                                        tx_to = tx.get('to', tx.get('to_address', ''))
+                                        tx_from = tx.get('from', tx.get('from_address', ''))
+                                        # Check outputs for coinbase
+                                        outputs = tx.get('outputs', tx.get('vout', []))
+                                        for output in outputs:
+                                            if isinstance(output, dict):
+                                                out_addr = output.get('address', output.get('scriptPubKey', {}).get('addresses', [None])[0] if isinstance(output.get('scriptPubKey', {}).get('addresses'), list) else None)
+                                                if out_addr == address:
+                                                    # This is a transaction to our address
+                                                    tx_data = {
+                                                        'hash': tx.get('hash', tx.get('txid', '')),
+                                                        'type': 'coinbase' if tx.get('is_coinbase') or tx.get('coinbase') else 'transfer',
+                                                        'is_coinbase': tx.get('is_coinbase') or tx.get('coinbase') or False,
+                                                        'amount': output.get('value', output.get('amount', 0.0)),
+                                                        'value': output.get('value', output.get('amount', 0.0)),
+                                                        'block_number': height,
+                                                        'confirmations': max(0, current_height - height + 1),
+                                                        'timestamp': block_data.get('time', block_data.get('timestamp', int(time.time())))
+                                                    }
+                                                    transactions.append(tx_data)
+                    except Exception as e:
+                        self.root.after(0, lambda: self.log(f"⚠️ Could not fetch transactions from blocks: {e}", "WARNING"))
+                
                 # Calculate total earned from ACTUAL blockchain transactions
                 total_earned = self.calculate_total_earned_from_blockchain(transactions)
+                
+                # If still 0, try calculating from balance (if balance > 0)
+                if total_earned == 0.0 and balance > 0:
+                    # Balance exists but no transactions found - might be coinbase rewards
+                    # Try to get block count to estimate
+                    try:
+                        blockchain_info = self.rpc_call("getblockchaininfo", [], show_errors=False)
+                        if blockchain_info:
+                            blocks = blockchain_info.get('blocks', 0)
+                            # This is just for display - actual balance is what matters
+                            total_earned = balance  # Use balance as earned if no transactions found
+                    except:
+                        pass
                 
                 # Update UI with REAL earnings from blockchain
                 self.root.after(0, lambda: self.update_earnings_display(total_earned))
                 self.root.after(0, lambda: self.log(f"💰 Total earned (from blockchain): {total_earned:.8f} GXC", "INFO"))
+                
+                # Log transaction count for debugging
+                if transactions:
+                    self.root.after(0, lambda: self.log(f"📋 Found {len(transactions)} transactions for address", "INFO"))
+                else:
+                    self.root.after(0, lambda: self.log(f"⚠️ No transactions found for address {address[:20]}...", "WARNING"))
                 
                 # Update transactions display if method exists
                 if hasattr(self, 'update_transactions_display'):
                     self.root.after(0, lambda: self.update_transactions_display(transactions))
                 
             except Exception as e:
-                self.root.after(0, lambda: self.log(f"❌ Failed to fetch from blockchain: {e}", "ERROR"))
+                import traceback
+                error_msg = f"❌ Failed to fetch from blockchain: {e}\n{traceback.format_exc()}"
+                self.root.after(0, lambda: self.log(error_msg, "ERROR"))
         
         threading.Thread(target=fetch, daemon=True).start()
     
