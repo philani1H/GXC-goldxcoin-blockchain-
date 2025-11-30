@@ -1241,14 +1241,16 @@ class BlockchainExplorer:
             conn.close()
     
     def get_recent_blocks(self, limit=10):
-        """Get recent blocks from database"""
+        """Get recent blocks from database with all fields"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         try:
+            # Get all available fields from blocks table
             cursor.execute('''
-                SELECT block_number, block_hash, timestamp, miner_address,
-                       transaction_count, reward, consensus_type, difficulty
+                SELECT block_number, block_hash, parent_hash, timestamp, miner_address,
+                       transaction_count, reward, consensus_type, difficulty, total_difficulty,
+                       size, gas_used, gas_limit, nonce, merkle_root
                 FROM blocks
                 ORDER BY block_number DESC
                 LIMIT ?
@@ -1258,32 +1260,48 @@ class BlockchainExplorer:
             for row in cursor.fetchall():
                 blocks.append({
                     'number': row[0] if row[0] is not None else 0,
+                    'block_number': row[0] if row[0] is not None else 0,
                     'hash': row[1] if row[1] else '',
-                    'timestamp': row[2] if row[2] else datetime.now(),
-                    'miner': row[3] if row[3] else '',
-                    'tx_count': row[4] if row[4] is not None else 0,
-                    'reward': row[5] if row[5] is not None else 12.5,
-                    'consensus_type': row[6] if row[6] else 'pow',
-                    'difficulty': row[7] if len(row) > 7 and row[7] is not None else 0.1
+                    'block_hash': row[1] if row[1] else '',
+                    'parent_hash': row[2] if len(row) > 2 and row[2] else '',
+                    'timestamp': row[3] if row[3] else datetime.now(),
+                    'miner': row[4] if len(row) > 4 and row[4] else '',
+                    'miner_address': row[4] if len(row) > 4 and row[4] else '',
+                    'tx_count': row[5] if len(row) > 5 and row[5] is not None else 0,
+                    'transaction_count': row[5] if len(row) > 5 and row[5] is not None else 0,
+                    'reward': row[6] if len(row) > 6 and row[6] is not None else 12.5,
+                    'consensus_type': row[7] if len(row) > 7 and row[7] else 'pow',
+                    'difficulty': row[8] if len(row) > 8 and row[8] is not None else 0.1,
+                    'total_difficulty': row[9] if len(row) > 9 and row[9] is not None else (row[8] if len(row) > 8 and row[8] is not None else 0.1),
+                    'size': row[10] if len(row) > 10 and row[10] is not None else 0,
+                    'gas_used': row[11] if len(row) > 11 and row[11] is not None else 0,
+                    'gas_limit': row[12] if len(row) > 12 and row[12] is not None else 0,
+                    'nonce': row[13] if len(row) > 13 and row[13] is not None else 0,
+                    'merkle_root': row[14] if len(row) > 14 and row[14] else ''
                 })
             
             return blocks
             
         except Exception as e:
             print(f"Error getting recent blocks: {e}")
+            import traceback
+            traceback.print_exc()
             return []
         finally:
             conn.close()
     
     def get_recent_transactions(self, limit=20):
-        """Get recent transactions from database"""
+        """Get recent transactions from database with all fields"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         try:
+            # Get all available fields from transactions table
             cursor.execute('''
                 SELECT tx_hash, block_number, from_address, to_address,
-                       value, fee, status, timestamp, tx_type
+                       value, fee, status, timestamp, tx_type, gas_price, gas_used,
+                       nonce, input_data, contract_address, prev_tx_hash, referenced_amount,
+                       traceability_valid, is_coinbase
                 FROM transactions
                 ORDER BY block_number DESC, COALESCE(tx_index, 0) DESC, timestamp DESC
                 LIMIT ?
@@ -1291,17 +1309,32 @@ class BlockchainExplorer:
             
             transactions = []
             for row in cursor.fetchall():
-                # Ensure all fields have defaults
+                # Ensure all fields have defaults and return complete data
                 transactions.append({
                     'hash': row[0] if row[0] else '',
+                    'tx_hash': row[0] if row[0] else '',
                     'block': row[1] if row[1] is not None else 0,
+                    'block_number': row[1] if row[1] is not None else 0,
                     'from': row[2] if row[2] else '',
+                    'from_address': row[2] if row[2] else '',
                     'to': row[3] if row[3] else None,
+                    'to_address': row[3] if row[3] else None,
                     'value': row[4] if row[4] is not None else 0.0,
                     'fee': row[5] if row[5] is not None else 0.0,
                     'status': row[6] if row[6] else 'success',
                     'timestamp': row[7] if row[7] else datetime.now(),
-                    'type': row[8] if row[8] else 'transfer'
+                    'type': row[8] if len(row) > 8 and row[8] else 'transfer',
+                    'tx_type': row[8] if len(row) > 8 and row[8] else 'transfer',
+                    'gas_price': row[9] if len(row) > 9 and row[9] is not None else 0.0,
+                    'gas_used': row[10] if len(row) > 10 and row[10] is not None else 0,
+                    'nonce': row[11] if len(row) > 11 and row[11] is not None else 0,
+                    'input_data': row[12] if len(row) > 12 and row[12] else '',
+                    'data': row[12] if len(row) > 12 and row[12] else '',
+                    'contract_address': row[13] if len(row) > 13 and row[13] else None,
+                    'prev_tx_hash': row[14] if len(row) > 14 and row[14] else None,
+                    'referenced_amount': row[15] if len(row) > 15 and row[15] is not None else 0.0,
+                    'traceability_valid': row[16] if len(row) > 16 and row[16] is not None else True,
+                    'is_coinbase': row[17] if len(row) > 17 and row[17] is not None else False
                 })
             
             return transactions
@@ -1315,7 +1348,7 @@ class BlockchainExplorer:
             conn.close()
     
     def get_network_stats(self):
-        """Get current network statistics"""
+        """Get current network statistics with all fields"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
@@ -1323,7 +1356,7 @@ class BlockchainExplorer:
             # Get latest stats
             cursor.execute('''
                 SELECT total_blocks, total_transactions, total_addresses,
-                       total_supply, hash_rate, difficulty, avg_block_time
+                       total_supply, hash_rate, difficulty, avg_block_time, network_health
                 FROM network_stats
                 ORDER BY timestamp DESC
                 LIMIT 1
@@ -1332,13 +1365,14 @@ class BlockchainExplorer:
             stats = cursor.fetchone()
             if stats:
                 return {
-                    'total_blocks': stats[0],
-                    'total_transactions': stats[1],
-                    'total_addresses': stats[2],
-                    'total_supply': stats[3],
-                    'hash_rate': stats[4],
-                    'difficulty': stats[5],
-                    'avg_block_time': stats[6]
+                    'total_blocks': stats[0] if stats[0] is not None else 0,
+                    'total_transactions': stats[1] if stats[1] is not None else 0,
+                    'total_addresses': stats[2] if stats[2] is not None else 0,
+                    'total_supply': stats[3] if stats[3] is not None else 31000000,
+                    'hash_rate': stats[4] if stats[4] is not None else 0.0,
+                    'difficulty': stats[5] if stats[5] is not None else 0.0,
+                    'avg_block_time': stats[6] if stats[6] is not None else 0.0,
+                    'network_health': stats[7] if len(stats) > 7 and stats[7] is not None else 100.0
                 }
             
             # Calculate stats if none exist
@@ -1346,10 +1380,10 @@ class BlockchainExplorer:
             total_blocks = cursor.fetchone()[0] or 0
             
             cursor.execute('SELECT COUNT(*) FROM transactions')
-            total_transactions = cursor.fetchone()[0]
+            total_transactions = cursor.fetchone()[0] or 0
             
             cursor.execute('SELECT COUNT(*) FROM addresses')
-            total_addresses = cursor.fetchone()[0]
+            total_addresses = cursor.fetchone()[0] or 0
             
             return {
                 'total_blocks': total_blocks,
@@ -1358,7 +1392,8 @@ class BlockchainExplorer:
                 'total_supply': 31000000,  # Max supply
                 'hash_rate': 0.0,
                 'difficulty': 0.0,
-                'avg_block_time': 0.0
+                'avg_block_time': 0.0,
+                'network_health': 100.0
             }
             
         except Exception as e:
