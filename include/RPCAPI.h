@@ -389,6 +389,10 @@ private:
     JsonValue getNetworkHashPS(const JsonValue& params);
     JsonValue submitBlock(const JsonValue& params);
     JsonValue getBlockTemplate(const JsonValue& params);
+    
+    // Helper functions
+    double calculateBlockReward(uint32_t height);
+    Transaction createTransactionFromJson(const JsonValue& txJson);
     JsonValue getPeerInfo(const JsonValue& params);
     JsonValue getConnectionCount(const JsonValue& params);
     JsonValue addNode(const JsonValue& params);

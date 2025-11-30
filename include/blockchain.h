@@ -61,6 +61,7 @@ private:
     // Private methods
     bool isValidChain() const;
     void updateUtxoSet(const Block& block);
+    double calculateBlockReward(uint32_t height) const;
     double calculateObservedInflation(uint32_t window) const;
     void processHalving(uint32_t blockNumber);
     bool validateConsensus(const Block& block) const;

@@ -6,7 +6,7 @@
 #include <numeric>
 #include <sstream>
 
-Blockchain::Blockchain() : difficulty(1000.0), lastBlock() {
+Blockchain::Blockchain() : difficulty(1000.0), lastBlock(), blockReward(50.0), lastHalvingBlock(0) {
     LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created");
 }
 
@@ -90,37 +90,128 @@ bool Blockchain::addBlock(const Block& block) {
     std::lock_guard<std::mutex> lock(chainMutex);
     
     try {
+        // Ensure block has coinbase transaction
+        Block blockToAdd = block;
+        bool hasCoinbase = false;
+        std::string minerAddress = block.getMinerAddress();
+        
+        // Check if block has coinbase transaction
+        for (const auto& tx : block.getTransactions()) {
+            if (tx.isCoinbaseTransaction()) {
+                hasCoinbase = true;
+                break;
+            }
+        }
+        
+        // If no coinbase and we have miner address, create one
+        if (!hasCoinbase && !minerAddress.empty()) {
+            // Calculate block reward with halving
+            double blockReward = calculateBlockReward(block.getIndex());
+            
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Creating coinbase transaction for miner: " + minerAddress + 
+                          ", Reward: " + std::to_string(blockReward) + " GXC");
+            
+            Transaction coinbase(minerAddress, blockReward);
+            
+            // Create new block with coinbase as first transaction
+            Block newBlock(blockToAdd.getIndex(), blockToAdd.getPreviousHash(), blockToAdd.getBlockType());
+            newBlock.setHash(blockToAdd.getHash());
+            newBlock.setNonce(blockToAdd.getNonce());
+            newBlock.setTimestamp(blockToAdd.getTimestamp());
+            newBlock.setDifficulty(blockToAdd.getDifficulty());
+            newBlock.setMinerAddress(minerAddress);
+            newBlock.setBlockReward(blockReward);
+            
+            // Add coinbase first
+            newBlock.addTransaction(coinbase);
+            
+            // Add other transactions
+            for (const auto& tx : blockToAdd.getTransactions()) {
+                if (!tx.isCoinbaseTransaction()) {
+                    newBlock.addTransaction(tx);
+                }
+            }
+            
+            newBlock.calculateMerkleRoot();
+            blockToAdd = newBlock;
+        }
+        
         // Validate block
-        if (!validateBlock(block)) {
+        if (!validateBlock(blockToAdd)) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "Block validation failed");
             return false;
         }
         
         // Validate traceability for all transactions in block
-        if (!validateBlockTraceability(block)) {
+        if (!validateBlockTraceability(blockToAdd)) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "Block traceability validation failed");
             return false;
         }
         
         // Add block to chain
-        auto blockPtr = std::make_shared<Block>(block);
+        auto blockPtr = std::make_shared<Block>(blockToAdd);
         chain.push_back(blockPtr);
         lastBlock = blockPtr;
+        
+        // Update UTXO set (add outputs, remove inputs)
+        updateUtxoSet(blockToAdd);
         
         // Update difficulty
         // Difficulty adjustment handled automatically
         
         // Update transaction pool (remove confirmed transactions)
-        updateTransactionPool(block);
+        updateTransactionPool(blockToAdd);
         
         LOG_BLOCKCHAIN(LogLevel::INFO, "Block added successfully. Height: " + 
-                      std::to_string(chain.size()) + ", Hash: " + block.getHash().substr(0, 16) + "...");
+                      std::to_string(chain.size()) + ", Hash: " + blockToAdd.getHash().substr(0, 16) + "...");
         
         return true;
         
     } catch (const std::exception& e) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to add block: " + std::string(e.what()));
         return false;
+    }
+}
+
+// Calculate block reward with halving
+double Blockchain::calculateBlockReward(uint32_t height) const {
+    const uint32_t HALVING_INTERVAL = 1051200; // ~4 years
+    const double INITIAL_REWARD = 50.0;
+    
+    uint32_t halvings = height / HALVING_INTERVAL;
+    double reward = INITIAL_REWARD;
+    
+    // Apply halving
+    for (uint32_t i = 0; i < halvings; i++) {
+        reward /= 2.0;
+    }
+    
+    // Minimum reward is 0.00000001 GXC
+    if (reward < 0.00000001) {
+        reward = 0.00000001;
+    }
+    
+    return reward;
+}
+
+// Update UTXO set when block is added
+void Blockchain::updateUtxoSet(const Block& block) {
+    for (const auto& tx : block.getTransactions()) {
+        // Remove inputs (spent outputs)
+        if (!tx.isCoinbaseTransaction()) {
+            for (const auto& input : tx.getInputs()) {
+                std::string utxoKey = input.txHash + "_" + std::to_string(input.outputIndex);
+                utxoSet.erase(utxoKey);
+            }
+        }
+        
+        // Add outputs (new UTXOs)
+        uint32_t outputIndex = 0;
+        for (const auto& output : tx.getOutputs()) {
+            std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
+            utxoSet[utxoKey] = output;
+            outputIndex++;
+        }
     }
 }
 
@@ -500,4 +591,22 @@ void Blockchain::shutdown() {
     traceabilityIndex.clear();
     
     LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain shutdown complete");
+}
+
+// Get balance for an address from UTXO set
+double Blockchain::getBalance(const std::string& address) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    double balance = 0.0;
+    
+    // Sum all UTXOs for this address
+    for (const auto& [utxoKey, output] : utxoSet) {
+        if (output.address == address) {
+            balance += output.amount;
+        }
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::DEBUG, "Balance for " + address.substr(0, 16) + "...: " + std::to_string(balance) + " GXC");
+    
+    return balance;
 }

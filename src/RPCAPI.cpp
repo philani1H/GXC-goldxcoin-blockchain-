@@ -208,8 +208,12 @@ void RPCAPI::processRequests() {
 JsonValue RPCAPI::getBlockchainInfo(const JsonValue& params) {
     JsonValue result;
     
+    uint32_t currentHeight = blockchain->getHeight();
+    double blockReward = calculateBlockReward(currentHeight);
+    
     result["chain"] = "main"; // or "test" for testnet
-    result["blocks"] = static_cast<uint64_t>(blockchain->getHeight());
+    result["blocks"] = static_cast<uint64_t>(currentHeight);
+    result["height"] = static_cast<uint64_t>(currentHeight);
     result["bestblockhash"] = blockchain->getLatestBlock().getHash();
     result["difficulty"] = blockchain->getDifficulty();
     result["mediantime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
@@ -218,6 +222,8 @@ JsonValue RPCAPI::getBlockchainInfo(const JsonValue& params) {
     result["chainwork"] = "0000000000000000000000000000000000000000000000000000000000000000";
     result["size_on_disk"] = 0; // Would calculate actual size
     result["pruned"] = false;
+    result["block_reward"] = blockReward; // Current block reward
+    result["reward"] = blockReward; // Alternative field name
     
     return result;
 }
@@ -374,11 +380,16 @@ JsonValue RPCAPI::listTransactions(const JsonValue& params) {
 
 // Wallet methods
 JsonValue RPCAPI::getBalance(const JsonValue& params) {
-    std::string account = params.size() > 0 ? params[0].get<std::string>() : "";
-    int minConfirms = params.size() > 1 ? params[1].get<int>() : 1;
+    std::string address = params.size() > 0 ? params[0].get<std::string>() : "";
     
-    // In a real implementation, would calculate actual balance
-    return 100.0; // Example balance
+    if (address.empty()) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address parameter");
+    }
+    
+    // Get balance from blockchain using UTXO set
+    double balance = blockchain->getBalance(address);
+    
+    return balance;
 }
 
 JsonValue RPCAPI::getNewAddress(const JsonValue& params) {
@@ -469,22 +480,204 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block data parameter");
     }
     
-    std::string blockData = params[0].get<std::string>();
+    try {
+        // Parse block data - can be JSON object or string
+        JsonValue blockData;
+        if (params[0].is_string()) {
+            try {
+                // nlohmann::json can be constructed from string
+                std::string jsonStr = params[0].get<std::string>();
+                blockData = JsonValue::parse(jsonStr);
+            } catch (const std::exception& e) {
+                // If parse fails, try constructing directly
+                try {
+                    std::string jsonStr = params[0].get<std::string>();
+                    blockData = JsonValue(jsonStr);
+                } catch (...) {
+                    throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Failed to parse block JSON string");
+                }
+            }
+        } else if (params[0].is_object()) {
+            blockData = params[0];
+        } else {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid block data format - must be JSON object or string");
+        }
+        
+        // Extract block information
+        uint32_t height = blockData.value("height", blockData.value("blockNumber", 0));
+        std::string hash = blockData.value("hash", blockData.value("blockHash", ""));
+        std::string prevHash = blockData.value("previousblockhash", blockData.value("prevHash", blockData.value("previousHash", "")));
+        uint64_t nonce = blockData.value("nonce", 0);
+        std::string minerAddress = blockData.value("miner", blockData.value("miner_address", ""));
+        uint64_t timestamp = blockData.value("timestamp", Utils::getCurrentTimestamp());
+        double difficulty = blockData.value("difficulty", 1.0);
+        
+        // Get transactions from block
+        std::vector<Transaction> blockTransactions;
+        if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
+            // Transactions are already in block (from Python miner)
+            // We'll process them below
+        }
+        
+        // Calculate block reward with halving
+        double blockReward = calculateBlockReward(height);
+        
+        // Create Block object
+        Block newBlock(height, prevHash, BlockType::POW_SHA256);
+        newBlock.setHash(hash);
+        newBlock.setNonce(nonce);
+        newBlock.setTimestamp(timestamp);
+        newBlock.setDifficulty(difficulty);
+        newBlock.setMinerAddress(minerAddress);
+        newBlock.setBlockReward(blockReward);
+        
+        // Check if coinbase transaction exists in submitted block
+        bool hasCoinbase = false;
+        if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
+            for (const auto& txJson : blockData["transactions"]) {
+                if (txJson.is_object()) {
+                    bool isCoinbase = txJson.value("is_coinbase", txJson.value("coinbase", txJson.value("type", "") == "coinbase"));
+                    if (isCoinbase) {
+                        hasCoinbase = true;
+                        // Create transaction from JSON
+                        Transaction coinbaseTx = createTransactionFromJson(txJson);
+                        newBlock.addTransaction(coinbaseTx);
+                    } else {
+                        // Regular transaction
+                        Transaction tx = createTransactionFromJson(txJson);
+                        newBlock.addTransaction(tx);
+                    }
+                }
+            }
+        }
+        
+        // If no coinbase transaction, create one automatically
+        if (!hasCoinbase && !minerAddress.empty()) {
+            LOG_API(LogLevel::INFO, "Creating coinbase transaction for miner: " + minerAddress + 
+                    ", Reward: " + std::to_string(blockReward) + " GXC");
+            Transaction coinbase(minerAddress, blockReward);
+            newBlock.addTransaction(coinbase);
+            // Recalculate merkle root after adding coinbase
+            newBlock.calculateMerkleRoot();
+        }
+        
+        // Merkle root already calculated if coinbase was added
+        // Recalculate to ensure it's correct
+        newBlock.calculateMerkleRoot();
+        
+        // Add block to blockchain
+        if (blockchain->addBlock(newBlock)) {
+            LOG_API(LogLevel::INFO, "Block submitted and added successfully. Height: " + std::to_string(height) + ", Hash: " + hash.substr(0, 16) + "...");
+            return JsonValue(); // Success returns null
+        } else {
+            throw RPCException(RPCException::RPC_VERIFY_REJECTED, "Block validation failed");
+        }
+        
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error submitting block: " + std::string(e.what()));
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to submit block: " + std::string(e.what()));
+    }
+}
+
+// Helper function to calculate block reward with halving
+double RPCAPI::calculateBlockReward(uint32_t height) {
+    // Halving every 1051200 blocks (~4 years)
+    const uint32_t HALVING_INTERVAL = 1051200;
+    const double INITIAL_REWARD = 50.0;
     
-    // In a real implementation, would validate and add block to blockchain
-    LOG_API(LogLevel::INFO, "Submitting block for validation");
+    uint32_t halvings = height / HALVING_INTERVAL;
+    double reward = INITIAL_REWARD;
     
-    return JsonValue(); // Success returns null
+    // Apply halving
+    for (uint32_t i = 0; i < halvings; i++) {
+        reward /= 2.0;
+    }
+    
+    // Minimum reward is 0.00000001 GXC
+    if (reward < 0.00000001) {
+        reward = 0.00000001;
+    }
+    
+    return reward;
+}
+
+// Helper function to create Transaction from JSON
+Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
+    // This is a simplified version - in production, would fully parse all fields
+    std::string txHash = txJson.value("hash", txJson.value("txid", ""));
+    bool isCoinbase = txJson.value("is_coinbase", txJson.value("coinbase", false));
+    
+    if (isCoinbase) {
+        // Coinbase transaction
+        std::string minerAddress = "";
+        double amount = 0.0;
+        
+        // Get miner address from outputs or block
+        if (txJson.contains("outputs") && txJson["outputs"].is_array() && txJson["outputs"].size() > 0) {
+            auto output = txJson["outputs"][0];
+            minerAddress = output.value("address", "");
+            amount = output.value("amount", output.value("value", 0.0));
+        } else if (txJson.contains("to")) {
+            minerAddress = txJson["to"].get<std::string>();
+            amount = txJson.value("value", txJson.value("amount", 0.0));
+        }
+        
+        if (!minerAddress.empty() && amount > 0) {
+            Transaction coinbase(minerAddress, amount);
+            coinbase.setHash(txHash);
+            return coinbase;
+        }
+    }
+    
+    // Regular transaction - create empty and populate
+    Transaction tx;
+    tx.setHash(txHash);
+    tx.setCoinbaseTransaction(isCoinbase);
+    
+    // Parse inputs
+    if (txJson.contains("inputs") && txJson["inputs"].is_array()) {
+        for (const auto& inputJson : txJson["inputs"]) {
+            TransactionInput input;
+            input.txHash = inputJson.value("txHash", inputJson.value("prev_tx_hash", ""));
+            input.outputIndex = inputJson.value("outputIndex", inputJson.value("output_index", 0));
+            input.amount = inputJson.value("amount", 0.0);
+            tx.addInput(input);
+        }
+    }
+    
+    // Parse outputs
+    if (txJson.contains("outputs") && txJson["outputs"].is_array()) {
+        for (const auto& outputJson : txJson["outputs"]) {
+            TransactionOutput output;
+            output.address = outputJson.value("address", "");
+            output.amount = outputJson.value("amount", outputJson.value("value", 0.0));
+            tx.addOutput(output);
+        }
+    } else if (txJson.contains("to") && txJson.contains("value")) {
+        // Simple format
+        TransactionOutput output;
+        output.address = txJson["to"].get<std::string>();
+        output.amount = txJson["value"].get<double>();
+        tx.addOutput(output);
+    }
+    
+    return tx;
 }
 
 JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
     JsonValue result;
     
+    uint32_t currentHeight = blockchain->getHeight();
+    double blockReward = calculateBlockReward(currentHeight);
+    
     result["version"] = 1;
     result["previousblockhash"] = blockchain->getLatestBlock().getHash();
     result["transactions"] = JsonValue(JsonValue::array());
     result["coinbaseaux"] = JsonValue(JsonValue::object());
-    result["coinbasevalue"] = static_cast<uint64_t>(5000000.0);  // Default block reward
+    result["coinbasevalue"] = static_cast<uint64_t>(blockReward * 100000000); // Convert to satoshis
+    result["coinbase_value"] = blockReward; // Also provide as GXC
+    result["block_reward"] = blockReward; // For compatibility
+    result["reward"] = blockReward; // Alternative field name
     result["target"] = "00000000ffff0000000000000000000000000000000000000000000000000000";
     result["mintime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
     result["mutable"] = JsonValue(JsonValue::array());
@@ -493,7 +686,8 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
     result["sizelimit"] = 1000000;
     result["curtime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
     result["bits"] = "1d00ffff";
-    result["height"] = static_cast<uint64_t>(blockchain->getHeight());
+    result["height"] = static_cast<uint64_t>(currentHeight);
+    result["difficulty"] = blockchain->getDifficulty();
     
     return result;
 }
