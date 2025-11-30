@@ -393,6 +393,7 @@ private:
     // Helper functions
     double calculateBlockReward(uint32_t height);
     Transaction createTransactionFromJson(const JsonValue& txJson);
+    JsonValue transactionToJson(const Transaction& tx, uint32_t blockHeight, const std::string& blockHash);
     JsonValue getPeerInfo(const JsonValue& params);
     JsonValue getConnectionCount(const JsonValue& params);
     JsonValue addNode(const JsonValue& params);

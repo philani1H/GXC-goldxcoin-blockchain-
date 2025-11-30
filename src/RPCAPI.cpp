@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
+#include <algorithm>
 
 RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
     : blockchain(blockchain), network(nullptr), serverPort(port), isRunning(false) {
@@ -75,16 +76,123 @@ void RPCAPI::registerMethods() {
     rpcMethods["getblockcount"] = [this](const JsonValue& params) { return getBlockCount(params); };
     rpcMethods["getdifficulty"] = [this](const JsonValue& params) { return getDifficulty(params); };
     rpcMethods["getblock"] = [this](const JsonValue& params) { return getBlock(params); };
+    rpcMethods["getblockbynumber"] = [this](const JsonValue& params) { return getBlock(params); };
+    rpcMethods["gxc_getBlockByNumber"] = [this](const JsonValue& params) { return getBlock(params); };
+    rpcMethods["getlatestblock"] = [this](const JsonValue& params) { 
+        JsonValue latestParams = JsonValue(JsonValue::array());
+        latestParams.push_back("latest");
+        if (params.size() > 0) {
+            latestParams.push_back(params[0]);
+        }
+        return getBlock(latestParams);
+    };
+    rpcMethods["gxc_getLatestBlock"] = [this](const JsonValue& params) { 
+        JsonValue latestParams = JsonValue(JsonValue::array());
+        latestParams.push_back("latest");
+        if (params.size() > 0) {
+            latestParams.push_back(params[0]);
+        }
+        return getBlock(latestParams);
+    };
     rpcMethods["getblockhash"] = [this](const JsonValue& params) { return getBlockHash(params); };
     
     // Transaction methods
     rpcMethods["getrawtransaction"] = [this](const JsonValue& params) { return getRawTransaction(params); };
     rpcMethods["sendrawtransaction"] = [this](const JsonValue& params) { return sendRawTransaction(params); };
     rpcMethods["gettransaction"] = [this](const JsonValue& params) { return getTransaction(params); };
+    rpcMethods["gxc_getTransaction"] = [this](const JsonValue& params) { return getTransaction(params); };
+    rpcMethods["gettx"] = [this](const JsonValue& params) { return getTransaction(params); };
     rpcMethods["listtransactions"] = [this](const JsonValue& params) { return listTransactions(params); };
+    rpcMethods["getaddresstransactions"] = [this](const JsonValue& params) { return listTransactions(params); };
+    rpcMethods["getaddresshistory"] = [this](const JsonValue& params) { return listTransactions(params); };
+    rpcMethods["getaddresstxids"] = [this](const JsonValue& params) {
+        // Return just transaction IDs for an address
+        JsonValue txs = listTransactions(params);
+        JsonValue txids(JsonValue::array());
+        for (const auto& tx : txs) {
+            if (tx.is_object() && tx.contains("hash")) {
+                txids.push_back(tx["hash"]);
+            }
+        }
+        return txids;
+    };
+    rpcMethods["searchrawtransactions"] = [this](const JsonValue& params) {
+        // Alias for listTransactions
+        return listTransactions(params);
+    };
+    rpcMethods["gettransactions"] = [this](const JsonValue& params) {
+        // Get transactions for a block or address
+        if (params.size() > 0 && params[0].is_number()) {
+            // Block number
+            JsonValue blockParams = JsonValue(JsonValue::array());
+            blockParams.push_back(params[0]);
+            if (params.size() > 1) {
+                blockParams.push_back(params[1]);
+            }
+            JsonValue block = getBlock(blockParams);
+            return block.value("transactions", JsonValue(JsonValue::array()));
+        } else {
+            // Address
+            return listTransactions(params);
+        }
+    };
+    rpcMethods["getblocktransactions"] = [this](const JsonValue& params) { 
+        if (params.size() < 1) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block number parameter");
+        }
+        JsonValue blockParams = JsonValue(JsonValue::array());
+        blockParams.push_back(params[0]);
+        if (params.size() > 1) {
+            blockParams.push_back(params[1]);
+        }
+        JsonValue block = getBlock(blockParams);
+        return block.value("transactions", JsonValue(JsonValue::array()));
+    };
+    rpcMethods["getblocktxs"] = [this](const JsonValue& params) { 
+        if (params.size() < 1) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block number parameter");
+        }
+        JsonValue blockParams = JsonValue(JsonValue::array());
+        blockParams.push_back(params[0]);
+        if (params.size() > 1) {
+            blockParams.push_back(params[1]);
+        }
+        JsonValue block = getBlock(blockParams);
+        return block.value("transactions", JsonValue(JsonValue::array()));
+    };
+    rpcMethods["gxc_getBlockTransactions"] = [this](const JsonValue& params) { 
+        if (params.size() < 1) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block number parameter");
+        }
+        JsonValue blockParams = JsonValue(JsonValue::array());
+        blockParams.push_back(params[0]);
+        if (params.size() > 1) {
+            blockParams.push_back(params[1]);
+        }
+        JsonValue block = getBlock(blockParams);
+        return block.value("transactions", JsonValue(JsonValue::array()));
+    };
     
     // Wallet methods
     rpcMethods["getbalance"] = [this](const JsonValue& params) { return getBalance(params); };
+    rpcMethods["getaddressbalance"] = [this](const JsonValue& params) { return getBalance(params); };
+    rpcMethods["getaccountbalance"] = [this](const JsonValue& params) { return getBalance(params); };
+    rpcMethods["listunspent"] = [this](const JsonValue& params) {
+        std::string address = params.size() > 0 ? params[0].get<std::string>() : "";
+        JsonValue result(JsonValue::array());
+        if (!address.empty()) {
+            // Return UTXOs for address (simplified - would need UTXO access)
+            double balance = blockchain->getBalance(address);
+            if (balance > 0) {
+                JsonValue utxo;
+                utxo["address"] = address;
+                utxo["amount"] = balance;
+                utxo["confirmations"] = 1;
+                result.push_back(utxo);
+            }
+        }
+        return result;
+    };
     rpcMethods["getnewaddress"] = [this](const JsonValue& params) { return getNewAddress(params); };
     rpcMethods["sendtoaddress"] = [this](const JsonValue& params) { return sendToAddress(params); };
     rpcMethods["validateaddress"] = [this](const JsonValue& params) { return validateAddress(params); };
@@ -242,27 +350,209 @@ JsonValue RPCAPI::getDifficulty(const JsonValue& params) {
 
 JsonValue RPCAPI::getBlock(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block hash parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block hash/height parameter");
     }
     
-    std::string blockHash = params[0].get<std::string>();
     bool verbose = params.size() > 1 ? params[1].get<bool>() : true;
+    uint32_t verbosity = params.size() > 1 && params[1].is_number() ? params[1].get<uint32_t>() : (verbose ? 2 : 0);
     
-    // In a real implementation, would retrieve block by hash
+    Block block;
+    uint32_t height = 0;
+    
+    // Handle different parameter types: hash, height (int/string), "latest", -1
+    if (params[0].is_string()) {
+        std::string param = params[0].get<std::string>();
+        if (param == "latest" || param == "best") {
+            block = blockchain->getLatestBlock();
+            height = blockchain->getHeight() - 1;
+        } else if (param == "-1") {
+            block = blockchain->getLatestBlock();
+            height = blockchain->getHeight() - 1;
+        } else {
+            // Try as hash first
+            block = blockchain->getBlock(param);
+            if (block.getHash().empty()) {
+                // Try as height
+                try {
+                    height = std::stoul(param);
+                    block = blockchain->getBlock(height);
+                } catch (...) {
+                    throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid block hash or height");
+                }
+            } else {
+                height = block.getIndex();
+            }
+        }
+    } else if (params[0].is_number()) {
+        int64_t paramNum = params[0].get<int64_t>();
+        if (paramNum == -1) {
+            block = blockchain->getLatestBlock();
+            height = blockchain->getHeight() - 1;
+        } else {
+            height = static_cast<uint32_t>(paramNum);
+            block = blockchain->getBlock(height);
+        }
+    } else {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid block parameter type");
+    }
+    
+    if (block.getHash().empty()) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Block not found");
+    }
+    
+    uint32_t currentHeight = blockchain->getHeight();
+    uint32_t confirmations = currentHeight > height ? currentHeight - height : 1;
+    
+    // Build complete block response with ALL fields explorer needs
     JsonValue result;
-    result["hash"] = blockHash;
-    result["confirmations"] = 1;
-    result["height"] = blockchain->getHeight() - 1;
+    result["hash"] = block.getHash();
+    result["block_hash"] = block.getHash();
+    result["height"] = height;
+    result["number"] = height;
+    result["block_number"] = height;
+    result["confirmations"] = confirmations;
     result["version"] = 1;
-    result["merkleroot"] = "merkleroot_hash";
-    result["time"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-    result["nonce"] = 0;
+    result["merkleroot"] = block.getMerkleRoot();
+    result["merkle_root"] = block.getMerkleRoot();
+    result["time"] = static_cast<uint64_t>(block.getTimestamp());
+    result["timestamp"] = static_cast<uint64_t>(block.getTimestamp());
+    result["nonce"] = static_cast<uint64_t>(block.getNonce());
     result["bits"] = "1d00ffff";
-    result["difficulty"] = blockchain->getDifficulty();
-    result["previousblockhash"] = "previous_hash";
-    result["tx"] = JsonValue(JsonValue::array());
+    result["difficulty"] = block.getDifficulty();
+    result["previousblockhash"] = block.getPreviousHash();
+    result["prev_hash"] = block.getPreviousHash();
+    result["parent_hash"] = block.getPreviousHash();
+    result["miner"] = block.getMinerAddress();
+    result["miner_address"] = block.getMinerAddress();
+    result["block_reward"] = block.getBlockReward();
+    result["reward"] = block.getBlockReward();
+    result["size"] = 0; // Would calculate actual size
+    result["gas_used"] = 0;
+    result["gas_limit"] = 0;
+    result["total_difficulty"] = 0.0;
+    result["totalDifficulty"] = 0.0;
+    
+    // Block type/consensus
+    std::string consensusType = "pow";
+    if (block.getBlockType() == BlockType::POW_SHA256) {
+        consensusType = "pow_sha256";
+    } else if (block.getBlockType() == BlockType::POW_ETHASH) {
+        consensusType = "pow_ethash";
+    } else if (block.getBlockType() == BlockType::POS) {
+        consensusType = "pos";
+    }
+    result["consensus_type"] = consensusType;
+    result["consensusType"] = consensusType;
+    result["block_type"] = consensusType;
+    
+    // Get all transactions with full data if verbose
+    JsonValue transactions = JsonValue(JsonValue::array());
+    if (verbose || verbosity >= 1) {
+        for (const auto& tx : block.getTransactions()) {
+            JsonValue txJson = transactionToJson(tx, height, block.getHash());
+            transactions.push_back(txJson);
+        }
+    } else {
+        // Just transaction hashes
+        for (const auto& tx : block.getTransactions()) {
+            transactions.push_back(tx.getHash());
+        }
+    }
+    
+    result["transactions"] = transactions;
+    result["tx"] = transactions; // Alternative field name
+    result["transaction_count"] = static_cast<uint32_t>(block.getTransactions().size());
+    result["tx_count"] = static_cast<uint32_t>(block.getTransactions().size());
+    result["nTx"] = static_cast<uint32_t>(block.getTransactions().size());
     
     return result;
+}
+
+// Helper function to convert Transaction to JSON
+JsonValue RPCAPI::transactionToJson(const Transaction& tx, uint32_t blockHeight, const std::string& blockHash) {
+    JsonValue txJson;
+    
+    txJson["hash"] = tx.getHash();
+    txJson["tx_hash"] = tx.getHash();
+    txJson["txid"] = tx.getHash();
+    txJson["transactionHash"] = tx.getHash();
+    
+    txJson["block_number"] = blockHeight;
+    txJson["blockNumber"] = blockHeight;
+    txJson["blockheight"] = blockHeight;
+    txJson["blockHeight"] = blockHeight;
+    txJson["blockhash"] = blockHash;
+    txJson["block_hash"] = blockHash;
+    
+    txJson["is_coinbase"] = tx.isCoinbaseTransaction();
+    txJson["isCoinbase"] = tx.isCoinbaseTransaction();
+    txJson["coinbase"] = tx.isCoinbaseTransaction();
+    txJson["type"] = tx.isCoinbaseTransaction() ? "coinbase" : "transfer";
+    txJson["tx_type"] = tx.isCoinbaseTransaction() ? "coinbase" : "transfer";
+    
+    // From/To addresses
+    if (tx.isCoinbaseTransaction()) {
+        txJson["from"] = "coinbase";
+        txJson["from_address"] = "coinbase";
+        txJson["fromAddress"] = "coinbase";
+    } else {
+        txJson["from"] = tx.getSenderAddress();
+        txJson["from_address"] = tx.getSenderAddress();
+        txJson["fromAddress"] = tx.getSenderAddress();
+    }
+    
+    txJson["to"] = tx.getReceiverAddress();
+    txJson["to_address"] = tx.getReceiverAddress();
+    txJson["toAddress"] = tx.getReceiverAddress();
+    
+    // Amount/value
+    double totalOutput = 0.0;
+    for (const auto& output : tx.getOutputs()) {
+        totalOutput += output.amount;
+    }
+    txJson["value"] = totalOutput;
+    txJson["amount"] = totalOutput;
+    
+    txJson["fee"] = tx.getFee();
+    txJson["gas_price"] = 0.0;
+    txJson["gasPrice"] = 0.0;
+    txJson["gas_used"] = 0;
+    txJson["gasUsed"] = 0;
+    txJson["status"] = "success";
+    txJson["timestamp"] = static_cast<uint64_t>(tx.getTimestamp());
+    txJson["time"] = static_cast<uint64_t>(tx.getTimestamp());
+    txJson["nonce"] = tx.getNonce();
+    txJson["input_data"] = "";
+    txJson["input"] = "";
+    txJson["data"] = "";
+    
+    // Inputs
+    JsonValue inputs = JsonValue(JsonValue::array());
+    for (const auto& input : tx.getInputs()) {
+        JsonValue inputJson;
+        inputJson["txHash"] = input.txHash;
+        inputJson["prev_tx_hash"] = input.txHash;
+        inputJson["outputIndex"] = input.outputIndex;
+        inputJson["output_index"] = input.outputIndex;
+        inputJson["amount"] = input.amount;
+        inputs.push_back(inputJson);
+    }
+    txJson["inputs"] = inputs;
+    txJson["vin"] = inputs;
+    
+    // Outputs
+    JsonValue outputs = JsonValue(JsonValue::array());
+    for (const auto& output : tx.getOutputs()) {
+        JsonValue outputJson;
+        outputJson["address"] = output.address;
+        outputJson["amount"] = output.amount;
+        outputJson["value"] = output.amount;
+        outputs.push_back(outputJson);
+    }
+    txJson["outputs"] = outputs;
+    txJson["vout"] = outputs;
+    
+    return txJson;
 }
 
 JsonValue RPCAPI::getBlockHash(const JsonValue& params) {
@@ -276,8 +566,12 @@ JsonValue RPCAPI::getBlockHash(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Block height out of range");
     }
     
-    // In a real implementation, would get block hash by height
-    return "block_hash_at_height_" + std::to_string(height);
+    Block block = blockchain->getBlock(height);
+    if (block.getHash().empty()) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Block not found");
+    }
+    
+    return block.getHash();
 }
 
 // Transaction methods
@@ -289,25 +583,20 @@ JsonValue RPCAPI::getRawTransaction(const JsonValue& params) {
     std::string txHash = params[0].get<std::string>();
     bool verbose = params.size() > 1 ? params[1].get<bool>() : false;
     
-    // In a real implementation, would retrieve transaction by hash
+    // Use getTransaction to find the transaction
     if (verbose) {
-        JsonValue result;
-        result["txid"] = txHash;
-        result["hash"] = txHash;
-        result["version"] = 1;
-        result["size"] = 250;
-        result["vsize"] = 250;
-        result["weight"] = 1000;
-        result["locktime"] = 0;
-        result["vin"] = JsonValue(JsonValue::array());
-        result["vout"] = JsonValue(JsonValue::array());
-        result["hex"] = "raw_hex_data";
-        result["blockhash"] = "block_hash";
-        result["confirmations"] = 1;
-        result["time"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-        result["blocktime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-        
-        return result;
+        try {
+            JsonValue result = getTransaction(params);
+            result["hex"] = ""; // Would serialize to hex
+            result["size"] = 250; // Would calculate actual size
+            result["vsize"] = 250;
+            result["weight"] = 1000;
+            result["version"] = 1;
+            result["locktime"] = 0;
+            return result;
+        } catch (...) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Transaction not found");
+        }
     } else {
         return "raw_hex_transaction_data";
     }
@@ -332,47 +621,115 @@ JsonValue RPCAPI::getTransaction(const JsonValue& params) {
     }
     
     std::string txHash = params[0].get<std::string>();
+    bool verbose = params.size() > 1 ? params[1].get<bool>() : true;
     
-    JsonValue result;
-    result["amount"] = 0.0;
-    result["fee"] = -0.0001;
-    result["confirmations"] = 1;
-    result["blockhash"] = "block_hash";
-    result["blockindex"] = 0;
-    result["blocktime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-    result["txid"] = txHash;
-    result["time"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-    result["timereceived"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-    result["details"] = JsonValue(JsonValue::array());
-    result["hex"] = "raw_hex_data";
+    // Search for transaction in all blocks
+    uint32_t currentHeight = blockchain->getHeight();
+    Transaction foundTx;
+    uint32_t blockHeight = 0;
+    std::string blockHash = "";
+    bool found = false;
+    
+    // Search from latest to earliest
+    for (uint32_t h = currentHeight; h > 0; h--) {
+        Block block = blockchain->getBlock(h - 1);
+        if (block.getHash().empty()) continue;
+        
+        for (const auto& tx : block.getTransactions()) {
+            if (tx.getHash() == txHash) {
+                foundTx = tx;
+                blockHeight = h - 1;
+                blockHash = block.getHash();
+                found = true;
+                break;
+            }
+        }
+        if (found) break;
+    }
+    
+    if (!found) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Transaction not found");
+    }
+    
+    // Build complete transaction response
+    JsonValue result = transactionToJson(foundTx, blockHeight, blockHash);
+    
+    // Add additional fields
+    uint32_t confirmations = currentHeight > blockHeight ? currentHeight - blockHeight : 1;
+    result["confirmations"] = confirmations;
+    result["blockindex"] = blockHeight;
+    result["blocktime"] = static_cast<uint64_t>(foundTx.getTimestamp());
+    result["timereceived"] = static_cast<uint64_t>(foundTx.getTimestamp());
+    result["hex"] = ""; // Would serialize transaction
+    
+    if (verbose) {
+        result["details"] = JsonValue(JsonValue::array());
+    }
     
     return result;
 }
 
 JsonValue RPCAPI::listTransactions(const JsonValue& params) {
-    std::string account = params.size() > 0 ? params[0].get<std::string>() : "*";
+    std::string address = params.size() > 0 ? params[0].get<std::string>() : "";
     int count = params.size() > 1 ? params[1].get<int>() : 10;
     int skip = params.size() > 2 ? params[2].get<int>() : 0;
     
     JsonValue result(JsonValue::array());
     
-    // In a real implementation, would retrieve actual transactions
-    for (int i = 0; i < std::min(count, 5); ++i) {
-        JsonValue tx;
-        tx["account"] = account;
-        tx["address"] = "GXC_address_" + std::to_string(i);
-        tx["category"] = "receive";
-        tx["amount"] = 1.0 + i;
-        tx["fee"] = 0.0001;
-        tx["confirmations"] = 10 + i;
-        tx["blockhash"] = "block_hash_" + std::to_string(i);
-        tx["blockindex"] = i;
-        tx["blocktime"] = Utils::getCurrentTimestamp() - (i * 600);
-        tx["txid"] = "tx_hash_" + std::to_string(i);
-        tx["time"] = Utils::getCurrentTimestamp() - (i * 600);
-        tx["timereceived"] = Utils::getCurrentTimestamp() - (i * 600);
+    // Get all transactions for address from blockchain
+    uint32_t currentHeight = blockchain->getHeight();
+    std::vector<JsonValue> allTxs;
+    
+    // Search all blocks for transactions involving this address
+    for (uint32_t h = 0; h < currentHeight; h++) {
+        Block block = blockchain->getBlock(h);
+        if (block.getHash().empty()) continue;
         
-        result.push_back(tx);
+        for (const auto& tx : block.getTransactions()) {
+            bool involvesAddress = false;
+            
+            // Check if address is in outputs (receiving)
+            for (const auto& output : tx.getOutputs()) {
+                if (output.address == address) {
+                    involvesAddress = true;
+                    break;
+                }
+            }
+            
+            // Check if address is in inputs (sending)
+            if (!involvesAddress) {
+                // For coinbase, check if miner matches
+                if (tx.isCoinbaseTransaction() && tx.getReceiverAddress() == address) {
+                    involvesAddress = true;
+                } else {
+                    // For regular transactions, check sender
+                    if (tx.getSenderAddress() == address) {
+                        involvesAddress = true;
+                    }
+                }
+            }
+            
+            if (involvesAddress) {
+                JsonValue txJson = transactionToJson(tx, h, block.getHash());
+                uint32_t confirmations = currentHeight > h ? currentHeight - h : 1;
+                txJson["confirmations"] = confirmations;
+                allTxs.push_back(txJson);
+            }
+        }
+    }
+    
+    // Sort by block height (newest first) and apply pagination
+    std::sort(allTxs.begin(), allTxs.end(), [](const JsonValue& a, const JsonValue& b) {
+        uint32_t heightA = a.value("block_number", 0);
+        uint32_t heightB = b.value("block_number", 0);
+        return heightA > heightB;
+    });
+    
+    // Apply skip and count
+    int start = skip;
+    int end = std::min(start + count, static_cast<int>(allTxs.size()));
+    for (int i = start; i < end; i++) {
+        result.push_back(allTxs[i]);
     }
     
     return result;
