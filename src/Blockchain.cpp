@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <numeric>
 #include <sstream>
+#include <unordered_set>
 
 Blockchain::Blockchain() : difficulty(1000.0), lastBlock(), blockReward(50.0), lastHalvingBlock(0) {
     LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created");
@@ -155,6 +156,38 @@ bool Blockchain::addBlock(const Block& block) {
         
         // Update UTXO set (add outputs, remove inputs)
         updateUtxoSet(blockToAdd);
+        
+        // Update traceability index for new transactions
+        for (const auto& tx : blockToAdd.getTransactions()) {
+            if (!tx.isCoinbaseTransaction()) {
+                TraceabilityEntry entry;
+                entry.txHash = tx.getHash();
+                entry.prevTxHash = tx.getPrevTxHash();
+                entry.amount = tx.getReferencedAmount();
+                entry.timestamp = tx.getTimestamp();
+                
+                // Set from/to addresses
+                if (!tx.getInputs().empty()) {
+                    std::string inputTxHash = tx.getInputs()[0].txHash;
+                    Transaction inputTx = getTransactionByHash(inputTxHash);
+                    if (!inputTx.getHash().empty() && !inputTx.getOutputs().empty()) {
+                        entry.fromAddress = inputTx.getOutputs()[0].address;
+                    } else {
+                        entry.fromAddress = tx.getSenderAddress();
+                    }
+                } else {
+                    entry.fromAddress = tx.getSenderAddress();
+                }
+                
+                if (!tx.getOutputs().empty()) {
+                    entry.toAddress = tx.getOutputs()[0].address;
+                } else {
+                    entry.toAddress = tx.getReceiverAddress();
+                }
+                
+                traceabilityIndex[tx.getHash()] = entry;
+            }
+        }
         
         // Update difficulty
         // Difficulty adjustment handled automatically
@@ -365,8 +398,27 @@ bool Blockchain::initializeTraceability() {
                 entry.prevTxHash = tx.getPrevTxHash();
                 entry.amount = tx.getReferencedAmount();
                 entry.timestamp = tx.getTimestamp();
-                entry.fromAddress = ""; // Will be set from transaction inputs
-                entry.toAddress = ""; // Will be set from transaction outputs
+                
+                // Set from/to addresses from transaction
+                if (!tx.getInputs().empty()) {
+                    // Get from address from first input's referenced transaction
+                    std::string inputTxHash = tx.getInputs()[0].txHash;
+                    Transaction inputTx = getTransactionByHash(inputTxHash);
+                    if (!inputTx.getHash().empty() && !inputTx.getOutputs().empty()) {
+                        entry.fromAddress = inputTx.getOutputs()[0].address;
+                    } else {
+                        entry.fromAddress = tx.getSenderAddress();
+                    }
+                } else {
+                    entry.fromAddress = tx.getSenderAddress();
+                }
+                
+                if (!tx.getOutputs().empty()) {
+                    entry.toAddress = tx.getOutputs()[0].address;
+                } else {
+                    entry.toAddress = tx.getReceiverAddress();
+                }
+                
                 traceabilityIndex[tx.getHash()] = entry;
             }
         }
@@ -609,4 +661,171 @@ double Blockchain::getBalance(const std::string& address) const {
     LOG_BLOCKCHAIN(LogLevel::DEBUG, "Balance for " + address.substr(0, 16) + "...: " + std::to_string(balance) + " GXC");
     
     return balance;
+}
+
+// Traceability methods - Implement transaction tracking
+std::vector<std::string> Blockchain::traceTransactionLineage(const std::string& startHash) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    std::vector<std::string> lineage;
+    std::string currentHash = startHash;
+    std::unordered_set<std::string> visited; // Prevent cycles
+    
+    // Trace backwards through transaction chain
+    while (!currentHash.empty() && visited.find(currentHash) == visited.end()) {
+        visited.insert(currentHash);
+        lineage.push_back(currentHash);
+        
+        // Find transaction in traceability index
+        auto it = traceabilityIndex.find(currentHash);
+        if (it != traceabilityIndex.end()) {
+            currentHash = it->second.prevTxHash;
+            if (currentHash == "0" || currentHash.empty()) {
+                break; // Reached genesis or coinbase
+            }
+        } else {
+            // Search in blockchain
+            bool found = false;
+            for (const auto& block : chain) {
+                for (const auto& tx : block->getTransactions()) {
+                    if (tx.getHash() == currentHash) {
+                        currentHash = tx.getPrevTxHash();
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) break;
+            }
+            if (!found) break;
+        }
+    }
+    
+    return lineage;
+}
+
+bool Blockchain::verifyTransactionLineage(const std::string& txHash) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    // Get lineage
+    std::vector<std::string> lineage = traceTransactionLineage(txHash);
+    
+    if (lineage.empty()) {
+        return false;
+    }
+    
+    // Verify each link in the chain
+    for (size_t i = 0; i < lineage.size() - 1; i++) {
+        std::string currentHash = lineage[i];
+        std::string nextHash = lineage[i + 1];
+        
+        // Find transaction
+        Transaction tx = getTransactionByHash(currentHash);
+        if (tx.getHash().empty()) {
+            return false;
+        }
+        
+        // Verify prevTxHash points to next transaction
+        if (tx.getPrevTxHash() != nextHash) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+Transaction Blockchain::getTransactionByHash(const std::string& hash) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    // Search all blocks for transaction
+    for (const auto& block : chain) {
+        for (const auto& tx : block->getTransactions()) {
+            if (tx.getHash() == hash) {
+                return tx;
+            }
+        }
+    }
+    
+    // Return empty transaction if not found
+    return Transaction();
+}
+
+bool Blockchain::isLineageValid(const std::string& startHash) const {
+    return verifyTransactionLineage(startHash);
+}
+
+std::vector<std::string> Blockchain::getTransactionChain(const std::string& address, uint32_t depth) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    std::vector<std::string> txChain;
+    std::string currentHash = "";
+    uint32_t currentDepth = 0;
+    
+    // Find most recent transaction for this address (search from latest to earliest)
+    for (auto it = chain.rbegin(); it != chain.rend() && currentDepth < depth; ++it) {
+        const auto& block = *it;
+        for (const auto& tx : block->getTransactions()) {
+            // Check if address is involved
+            bool involvesAddress = false;
+            
+            // Check outputs
+            for (const auto& output : tx.getOutputs()) {
+                if (output.address == address) {
+                    involvesAddress = true;
+                    break;
+                }
+            }
+            
+            // Check sender (for non-coinbase)
+            if (!involvesAddress && !tx.isCoinbaseTransaction()) {
+                if (tx.getSenderAddress() == address) {
+                    involvesAddress = true;
+                }
+            }
+            
+            if (involvesAddress) {
+                currentHash = tx.getHash();
+                txChain.push_back(currentHash);
+                currentDepth++;
+                
+                // Trace backwards
+                std::string prevHash = tx.getPrevTxHash();
+                while (!prevHash.empty() && prevHash != "0" && currentDepth < depth) {
+                    Transaction prevTx = getTransactionByHash(prevHash);
+                    if (prevTx.getHash().empty()) break;
+                    
+                    txChain.push_back(prevHash);
+                    prevHash = prevTx.getPrevTxHash();
+                    currentDepth++;
+                }
+                
+                break; // Found most recent, stop searching
+            }
+        }
+        if (!currentHash.empty()) break;
+    }
+    
+    return txChain;
+}
+
+bool Blockchain::verifyInputReferences(const Transaction& tx) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    if (tx.isCoinbaseTransaction()) {
+        return true;
+    }
+    
+    // Verify all input references point to valid transactions
+    for (const auto& input : tx.getInputs()) {
+        Transaction referencedTx = getTransactionByHash(input.txHash);
+        if (referencedTx.getHash().empty()) {
+            return false; // Referenced transaction not found
+        }
+        
+        // Verify output index is valid
+        if (input.outputIndex >= referencedTx.getOutputs().size()) {
+            return false; // Invalid output index
+        }
+    }
+    
+    return true;
 }

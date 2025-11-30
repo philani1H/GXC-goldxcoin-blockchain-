@@ -204,6 +204,40 @@ void RPCAPI::registerMethods() {
     rpcMethods["submitblock"] = [this](const JsonValue& params) { return submitBlock(params); };
     rpcMethods["getblocktemplate"] = [this](const JsonValue& params) { return getBlockTemplate(params); };
     
+    // Traceability methods
+    rpcMethods["tracetransaction"] = [this](const JsonValue& params) {
+        if (params.size() < 1) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing transaction hash parameter");
+        }
+        std::string txHash = params[0].get<std::string>();
+        std::vector<std::string> lineage = blockchain->traceTransactionLineage(txHash);
+        JsonValue result(JsonValue::array());
+        for (const auto& hash : lineage) {
+            result.push_back(hash);
+        }
+        return result;
+    };
+    rpcMethods["verifytransactionlineage"] = [this](const JsonValue& params) {
+        if (params.size() < 1) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing transaction hash parameter");
+        }
+        std::string txHash = params[0].get<std::string>();
+        return blockchain->verifyTransactionLineage(txHash);
+    };
+    rpcMethods["gettransactionchain"] = [this](const JsonValue& params) {
+        if (params.size() < 1) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address parameter");
+        }
+        std::string address = params[0].get<std::string>();
+        uint32_t depth = params.size() > 1 ? params[1].get<uint32_t>() : 100;
+        std::vector<std::string> chain = blockchain->getTransactionChain(address, depth);
+        JsonValue result(JsonValue::array());
+        for (const auto& hash : chain) {
+            result.push_back(hash);
+        }
+        return result;
+    };
+    
     // Network methods
     rpcMethods["getpeerinfo"] = [this](const JsonValue& params) { return getPeerInfo(params); };
     rpcMethods["getconnectioncount"] = [this](const JsonValue& params) { return getConnectionCount(params); };
@@ -991,6 +1025,29 @@ Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
     tx.setHash(txHash);
     tx.setCoinbaseTransaction(isCoinbase);
     
+    // Parse prevTxHash for traceability
+    std::string prevTxHash = txJson.value("prevTxHash", txJson.value("prev_tx_hash", txJson.value("previousTxHash", "")));
+    if (!prevTxHash.empty()) {
+        tx.setPrevTxHash(prevTxHash);
+    }
+    
+    // Parse referencedAmount for traceability
+    double referencedAmount = txJson.value("referencedAmount", txJson.value("referenced_amount", 0.0));
+    if (referencedAmount > 0) {
+        tx.setReferencedAmount(referencedAmount);
+    }
+    
+    // Parse sender/receiver addresses
+    std::string senderAddr = txJson.value("from", txJson.value("from_address", txJson.value("fromAddress", "")));
+    if (!senderAddr.empty()) {
+        tx.setSenderAddress(senderAddr);
+    }
+    
+    std::string receiverAddr = txJson.value("to", txJson.value("to_address", txJson.value("toAddress", "")));
+    if (!receiverAddr.empty()) {
+        tx.setReceiverAddress(receiverAddr);
+    }
+    
     // Parse inputs
     if (txJson.contains("inputs") && txJson["inputs"].is_array()) {
         for (const auto& inputJson : txJson["inputs"]) {
@@ -999,6 +1056,16 @@ Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
             input.outputIndex = inputJson.value("outputIndex", inputJson.value("output_index", 0));
             input.amount = inputJson.value("amount", 0.0);
             tx.addInput(input);
+        }
+        
+        // If prevTxHash not set, use first input's txHash
+        if (prevTxHash.empty() && !tx.getInputs().empty()) {
+            tx.setPrevTxHash(tx.getInputs()[0].txHash);
+        }
+        
+        // If referencedAmount not set, use first input's amount
+        if (referencedAmount == 0.0 && !tx.getInputs().empty()) {
+            tx.setReferencedAmount(tx.getInputs()[0].amount);
         }
     }
     
