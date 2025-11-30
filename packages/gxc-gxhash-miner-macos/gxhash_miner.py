@@ -594,7 +594,7 @@ class GXCMiner:
             tags = item.get('tags', [])
             if tags and tags[0]:
                 tx_hash = tags[0]
-                url = f"{self.explorer_url}/transactions?hash={tx_hash}"
+                url = f"{self.explorer_url}/tx/{tx_hash}"
                 webbrowser.open(url)
                 self.log(f"🌐 Opened transaction in explorer: {tx_hash[:16]}...", "INFO")
     

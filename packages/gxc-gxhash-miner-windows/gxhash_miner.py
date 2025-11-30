@@ -594,7 +594,7 @@ class GXCMiner:
             tags = item.get('tags', [])
             if tags and tags[0]:
                 tx_hash = tags[0]
-                url = f"{self.explorer_url}/transactions?hash={tx_hash}"
+                url = f"{self.explorer_url}/tx/{tx_hash}"
                 webbrowser.open(url)
                 self.log(f"🌐 Opened transaction in explorer: {tx_hash[:16]}...", "INFO")
     
@@ -745,7 +745,7 @@ class GXCMiner:
                         self.root.after(0, lambda: self.log(f"💰 Expected reward: {reward_amount} GXC (will verify from blockchain)", "INFO"))
                     
                     # Show explorer link
-                    explorer_url = f"{self.explorer_url}/transactions?hash={tx_hash}"
+                    explorer_url = f"{self.explorer_url}/tx/{tx_hash}"
                     self.root.after(0, lambda: self.show_explorer_link(tx_hash, explorer_url, reward_amount))
                     
                     # Refresh balance and transactions from blockchain to get REAL data
