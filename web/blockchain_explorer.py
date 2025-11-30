@@ -833,48 +833,72 @@ class BlockchainExplorer:
         conn.close()
     
     def get_latest_block(self):
-        """Get latest block from the node - ensures all data is fetched including transactions"""
+        """Get latest block from the node - ensures ALL data is fetched including transactions"""
         try:
             # First try to get blockchain info to get latest height
-            # Use longer timeout for testnet nodes
-            info = rpc_call('getblockchaininfo', timeout=15, show_errors=False)
+            # Use longer timeout for testnet nodes to ensure ALL data is returned
+            info = rpc_call('getblockchaininfo', timeout=20, show_errors=False)
             if info:
                 height = info.get('blocks') or info.get('height') or 0
                 if height > 0:
-                    # Get the latest block by number (which will fetch all transactions)
+                    # Get the latest block by number (which will fetch ALL transactions with full data)
                     block = self.get_block_by_number(height)
                     if block:
                         return block
             
-            # Try multiple methods for compatibility
+            # Try multiple methods for compatibility - ALWAYS request verbose/full data
             methods = [
+                ('gxc_getLatestBlock', [True]),  # verbose
                 ('gxc_getLatestBlock', []),
+                ('getlatestblock', [True]),  # verbose
                 ('getlatestblock', []),
+                ('getblock', ['latest', 2]),  # verbosity level 2 = full data
+                ('getblock', ['latest', True]),  # verbose
                 ('getblock', ['latest']),
+                ('getblock', [-1, 2]),  # verbosity level 2
+                ('getblock', [-1, True]),  # verbose
                 ('getblock', [-1])
             ]
             
             for method, params in methods:
-                # Use longer timeout to ensure all data is fetched
-                result = rpc_call(method, params=params, timeout=15, show_errors=False)
+                # Use longer timeout (20s) to ensure ALL data is fetched
+                result = rpc_call(method, params=params, timeout=20, show_errors=False)
                 if result:
                     # Normalize the block data to ensure consistent field names
                     normalized = self._normalize_block_data(result)
-                    # Ensure transactions are included
+                    # ALWAYS ensure transactions are included with FULL data
                     if not normalized.get('transactions') or len(normalized['transactions']) == 0:
-                        # Try to fetch transactions separately
+                        # Try to fetch transactions separately with verbose flags
                         block_num = normalized.get('number') or normalized.get('height') or 0
                         if block_num > 0:
                             tx_methods = [
+                                ('getblocktransactions', [block_num, True]),  # verbose
                                 ('getblocktransactions', [block_num]),
+                                ('getblocktxs', [block_num, True]),  # verbose
                                 ('getblocktxs', [block_num]),
+                                ('gxc_getBlockTransactions', [block_num, True]),  # verbose
                                 ('gxc_getBlockTransactions', [block_num])
                             ]
                             for tx_method, tx_params in tx_methods:
-                                tx_result = rpc_call(tx_method, params=tx_params, timeout=15, show_errors=False)
+                                tx_result = rpc_call(tx_method, params=tx_params, timeout=20, show_errors=False)
                                 if tx_result:
                                     normalized['transactions'] = tx_result if isinstance(tx_result, list) else [tx_result]
                                     break
+                    
+                    # If transactions are just hashes, fetch full data
+                    if normalized.get('transactions'):
+                        full_transactions = []
+                        for tx in normalized['transactions']:
+                            if isinstance(tx, str):
+                                tx_full = self._get_full_transaction_data(tx)
+                                if tx_full:
+                                    full_transactions.append(tx_full)
+                                else:
+                                    full_transactions.append({'hash': tx})
+                            else:
+                                full_transactions.append(tx)
+                        normalized['transactions'] = full_transactions
+                    
                     return normalized
             
             return None
@@ -941,40 +965,74 @@ class BlockchainExplorer:
         return normalized
     
     def get_block_by_number(self, block_number):
-        """Get block by number from the node with full transaction data - ensures all data is fetched"""
+        """Get block by number from the node with full transaction data - ensures ALL data is fetched"""
         try:
-            # Try multiple methods for compatibility, with verbose flag to get transactions
+            # Try multiple methods for compatibility, ALWAYS use verbose flag to get ALL transaction data
             # Use longer timeout for testnet nodes to ensure all data is fetched
             methods = [
-                ('gxc_getBlockByNumber', [block_number, True]),  # True = verbose, include transactions
-                ('getblockbynumber', [block_number, True]),
-                ('getblock', [int(block_number), True]),  # True = verbose
-                ('getblock', [str(block_number), True]),
+                ('gxc_getBlockByNumber', [block_number, True, True]),  # block_number, verbose, include_tx_data
+                ('gxc_getBlockByNumber', [block_number, True]),  # block_number, verbose
+                ('getblockbynumber', [block_number, True, True]),  # verbose + include_tx_data
+                ('getblockbynumber', [block_number, True]),  # verbose
+                ('getblock', [int(block_number), 2]),  # verbosity level 2 = full data
+                ('getblock', [int(block_number), True]),  # verbose
+                ('getblock', [str(block_number), 2]),  # verbosity level 2
+                ('getblock', [str(block_number), True]),  # verbose
                 ('getblock', [int(block_number)]),  # Fallback without verbose
                 ('getblock', [str(block_number)])
             ]
             
             for method, params in methods:
-                # Use longer timeout (15s) to ensure testnet nodes can return all data
-                result = rpc_call(method, params=params, timeout=15, show_errors=False)
+                # Use longer timeout (20s) to ensure testnet nodes can return ALL data
+                result = rpc_call(method, params=params, timeout=20, show_errors=False)
                 if result:
                     # Normalize the block data to ensure consistent field names
                     normalized = self._normalize_block_data(result)
                     
-                    # If transactions are not included, try to fetch them separately
+                    # ALWAYS try to fetch transactions separately if not included or incomplete
+                    # This ensures we get ALL transaction data even if block response doesn't include it
                     if not normalized.get('transactions') or len(normalized['transactions']) == 0:
-                        # Try multiple methods to get transactions for this block
+                        # Try multiple methods to get ALL transactions for this block
                         tx_methods = [
+                            ('getblocktransactions', [block_number, True]),  # verbose
                             ('getblocktransactions', [block_number]),
+                            ('getblocktxs', [block_number, True]),  # verbose
                             ('getblocktxs', [block_number]),
+                            ('gettransactions', [block_number, True]),  # verbose
                             ('gettransactions', [block_number]),
+                            ('gxc_getBlockTransactions', [block_number, True]),  # verbose
                             ('gxc_getBlockTransactions', [block_number])
                         ]
                         for tx_method, tx_params in tx_methods:
-                            tx_result = rpc_call(tx_method, params=tx_params, timeout=15, show_errors=False)
+                            tx_result = rpc_call(tx_method, params=tx_params, timeout=20, show_errors=False)
                             if tx_result:
-                                normalized['transactions'] = tx_result if isinstance(tx_result, list) else [tx_result]
+                                # Ensure we have a list of transactions
+                                if isinstance(tx_result, list):
+                                    normalized['transactions'] = tx_result
+                                elif isinstance(tx_result, dict):
+                                    normalized['transactions'] = [tx_result]
+                                else:
+                                    normalized['transactions'] = [tx_result] if tx_result else []
+                                
+                                # Update transaction count
+                                normalized['transaction_count'] = len(normalized['transactions'])
+                                normalized['tx_count'] = len(normalized['transactions'])
                                 break
+                    
+                    # If we have transactions but they're incomplete (just hashes), fetch full data
+                    if normalized.get('transactions'):
+                        full_transactions = []
+                        for tx in normalized['transactions']:
+                            # If transaction is just a hash string, fetch full data
+                            if isinstance(tx, str):
+                                tx_full = self._get_full_transaction_data(tx)
+                                if tx_full:
+                                    full_transactions.append(tx_full)
+                                else:
+                                    full_transactions.append({'hash': tx})  # Keep hash if can't fetch
+                            else:
+                                full_transactions.append(tx)  # Already has data
+                        normalized['transactions'] = full_transactions
                     
                     return normalized
             
@@ -984,6 +1042,29 @@ class BlockchainExplorer:
             import traceback
             traceback.print_exc()
             return None
+    
+    def _get_full_transaction_data(self, tx_hash):
+        """Get full transaction data by hash - ensures ALL fields are returned"""
+        if not tx_hash:
+            return None
+        
+        methods = [
+            ('gettransaction', [tx_hash, True]),  # verbose
+            ('gettransaction', [tx_hash]),
+            ('getrawtransaction', [tx_hash, True]),  # verbose
+            ('getrawtransaction', [tx_hash]),
+            ('gxc_getTransaction', [tx_hash, True]),  # verbose
+            ('gxc_getTransaction', [tx_hash]),
+            ('gettx', [tx_hash, True]),  # verbose
+            ('gettx', [tx_hash])
+        ]
+        
+        for method, params in methods:
+            result = rpc_call(method, params=params, timeout=15, show_errors=False)
+            if result:
+                return result
+        
+        return None
     
     def store_block(self, block_data):
         """Store block data in database"""
@@ -3104,17 +3185,22 @@ def transaction_detail(tx_hash):
         # If transaction not in database, try to get it from node
         if not transaction:
             print(f"[EXPLORER] Transaction {tx_hash} not in database, trying to fetch from node...")
-            # Try multiple RPC methods to get complete transaction data
+            # Try multiple RPC methods to get COMPLETE transaction data with ALL fields
             tx_data = None
             methods = [
+                ('gettransaction', [tx_hash, True]),  # verbose - includes all fields
                 ('gettransaction', [tx_hash]),
-                ('getrawtransaction', [tx_hash, True]),
+                ('getrawtransaction', [tx_hash, True]),  # verbose - decoded with all fields
+                ('getrawtransaction', [tx_hash]),
+                ('gxc_getTransaction', [tx_hash, True]),  # verbose
                 ('gxc_getTransaction', [tx_hash]),
+                ('gettx', [tx_hash, True]),  # verbose
                 ('gettx', [tx_hash])
             ]
             
             for method, params in methods:
-                tx_data = rpc_call(method, params=params, timeout=10, show_errors=False)
+                # Use longer timeout to ensure all data is returned
+                tx_data = rpc_call(method, params=params, timeout=20, show_errors=False)
                 if tx_data:
                     break
             
@@ -3185,12 +3271,13 @@ def transaction_detail(tx_hash):
             
             tx_data = cursor.fetchone()
             
-            # If transaction not in DB, try to fetch from node
+            # If transaction not in DB, try to fetch from node with ALL data
             if not tx_data:
                 print(f"[EXPLORER] Transaction {current_tx_hash} not in DB for traceability, fetching from node...")
-                tx_node_data = rpc_call('gettransaction', [current_tx_hash], timeout=5, show_errors=False)
+                # Use verbose flag to get ALL transaction fields
+                tx_node_data = rpc_call('gettransaction', [current_tx_hash, True], timeout=15, show_errors=False)
                 if not tx_node_data:
-                    tx_node_data = rpc_call('getrawtransaction', [current_tx_hash, True], timeout=5, show_errors=False)
+                    tx_node_data = rpc_call('getrawtransaction', [current_tx_hash, True], timeout=15, show_errors=False)
                 
                 if tx_node_data:
                     block_num = tx_node_data.get('blockNumber') or tx_node_data.get('block_number') or 0
@@ -3217,12 +3304,13 @@ def transaction_detail(tx_hash):
             
             prev_tx_data = cursor.fetchone()
             
-            # If previous transaction not in DB, try to fetch from node
+            # If previous transaction not in DB, try to fetch from node with ALL data
             if not prev_tx_data:
                 print(f"[EXPLORER] Previous transaction {prev_tx_hash} not in DB for traceability, fetching from node...")
-                prev_tx_node_data = rpc_call('gettransaction', [prev_tx_hash], timeout=5, show_errors=False)
+                # Use verbose flag to get ALL transaction fields
+                prev_tx_node_data = rpc_call('gettransaction', [prev_tx_hash, True], timeout=15, show_errors=False)
                 if not prev_tx_node_data:
-                    prev_tx_node_data = rpc_call('getrawtransaction', [prev_tx_hash, True], timeout=5, show_errors=False)
+                    prev_tx_node_data = rpc_call('getrawtransaction', [prev_tx_hash, True], timeout=15, show_errors=False)
                 
                 if prev_tx_node_data:
                     prev_block_num = prev_tx_node_data.get('blockNumber') or prev_tx_node_data.get('block_number') or 0
@@ -3288,39 +3376,52 @@ def address_detail(address):
         # If address not in database, try to get balance and data from node
         if not addr_info:
             print(f"[EXPLORER] Address {address} not in database, fetching from node...")
-            # Try multiple methods to get balance
+            # Try multiple methods to get balance - ensure ALL address data is fetched
             balance = None
             methods = [
+                ('getbalance', [address, True]),  # verbose - includes all balance info
                 ('getbalance', [address]),
+                ('gxc_getBalance', [address, True]),  # verbose
                 ('gxc_getBalance', [address]),
+                ('getaddressbalance', [address, True]),  # verbose
                 ('getaddressbalance', [address])
             ]
             
             for method, params in methods:
-                balance = rpc_call(method, params=params, timeout=10, show_errors=False)
+                # Use longer timeout to ensure all data is returned
+                balance = rpc_call(method, params=params, timeout=20, show_errors=False)
                 if balance is not None:
                     break
             
             if balance is None:
                 balance = 0.0
             
-            # Try to get address transaction count and other info
+            # Try to get address transaction count and other info - fetch ALL transaction data
             tx_count = 0
             try:
-                # Try to get transaction history
-                tx_history = rpc_call('getaddresstxids', [address], timeout=10, show_errors=False)
+                # Try to get transaction history - use verbose to get all transaction IDs
+                tx_history = rpc_call('getaddresstxids', [address, True], timeout=20, show_errors=False)
+                if not tx_history:
+                    tx_history = rpc_call('getaddresstxids', [address], timeout=20, show_errors=False)
+                
                 if tx_history and isinstance(tx_history, list):
                     tx_count = len(tx_history)
-                    # Store any missing transactions
+                    # Store any missing transactions with FULL data
                     for tx_hash in tx_history[:100]:  # Limit to first 100
                         try:
-                            tx_data = rpc_call('gettransaction', [tx_hash], timeout=5, show_errors=False)
+                            # Use verbose flag to get ALL transaction fields
+                            tx_data = rpc_call('gettransaction', [tx_hash, True], timeout=15, show_errors=False)
+                            if not tx_data:
+                                tx_data = rpc_call('getrawtransaction', [tx_hash, True], timeout=15, show_errors=False)
+                            
                             if tx_data:
                                 block_num = tx_data.get('blockNumber') or tx_data.get('block_number') or 0
                                 explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0))
-                        except:
+                        except Exception as e:
+                            print(f"Error fetching transaction {tx_hash}: {e}")
                             pass
-            except:
+            except Exception as e:
+                print(f"Error getting address transaction history: {e}")
                 pass
             
             # Create address entry
@@ -3353,24 +3454,29 @@ def address_detail(address):
         if not transactions and addr_info:
             print(f"[EXPLORER] Address {address} has no transactions in DB, trying to fetch from node...")
             try:
-                # Try to get transaction history from node
-                tx_history = rpc_call('getaddresstxids', [address], timeout=10, show_errors=False)
+                # Try to get transaction history from node - use verbose to get ALL transaction IDs
+                tx_history = rpc_call('getaddresstxids', [address, True], timeout=20, show_errors=False)
+                if not tx_history:
+                    tx_history = rpc_call('getaddresstxids', [address], timeout=20, show_errors=False)
+                
                 if tx_history and isinstance(tx_history, list):
-                    # Fetch and store transactions
+                    # Fetch and store transactions with FULL data
                     for tx_hash in tx_history[:50]:  # Limit to 50
                         try:
-                            tx_data = rpc_call('gettransaction', [tx_hash], timeout=5, show_errors=False)
+                            # Use verbose flag to get ALL transaction fields
+                            tx_data = rpc_call('gettransaction', [tx_hash, True], timeout=15, show_errors=False)
                             if not tx_data:
-                                tx_data = rpc_call('getrawtransaction', [tx_hash, True], timeout=5, show_errors=False)
+                                tx_data = rpc_call('getrawtransaction', [tx_hash, True], timeout=15, show_errors=False)
                             
                             if tx_data:
                                 block_num = tx_data.get('blockNumber') or tx_data.get('block_number') or 0
                                 if block_num > 0:
-                                    # Ensure block exists
+                                    # Ensure block exists with ALL data
                                     block_data = explorer.get_block_by_number(block_num)
                                     if block_data:
                                         explorer.store_block(block_data)
                                 
+                                # Store transaction with ALL fields
                                 explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0))
                         except Exception as e:
                             print(f"Error fetching transaction {tx_hash}: {e}")
