@@ -22,7 +22,9 @@ WORKDIR /app
 COPY CMakeLists.txt ./
 COPY include/ ./include/
 COPY src/ ./src/
-COPY third_party/ ./third_party/ 2>/dev/null || true
+
+# Create third_party directory (optional dependencies)
+RUN mkdir -p ./third_party
 
 # Create build directory and build
 RUN mkdir -p build && cd build && \

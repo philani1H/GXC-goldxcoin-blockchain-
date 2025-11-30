@@ -61,4 +61,4 @@ node_modules/
 !src/
 !include/
 !CMakeLists.txt
-!third_party/
+# third_party is optional - don't fail if missing
