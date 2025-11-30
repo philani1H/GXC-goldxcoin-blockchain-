@@ -22,9 +22,8 @@ WORKDIR /app
 COPY CMakeLists.txt ./
 COPY include/ ./include/
 COPY src/ ./src/
-
-# Create third_party directory (optional dependencies)
-RUN mkdir -p ./third_party
+# Copy third_party (contains json library)
+COPY third_party/ ./third_party/
 
 # Create build directory and build
 RUN mkdir -p build && cd build && \
