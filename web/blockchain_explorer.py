@@ -3001,10 +3001,21 @@ def block_detail(block_number):
             'connected': ACTIVE_NODE_TYPE is not None
         }
         
+        # Network information for display
+        network_info = {
+            'network': NETWORK.upper(),
+            'address_prefix': CURRENT_NETWORK['address_prefix'],
+            'block_reward': CURRENT_NETWORK['block_reward'],
+            'block_time': CURRENT_NETWORK['block_time'],
+            'is_testnet': NETWORK == 'testnet',
+            'is_mainnet': NETWORK == 'mainnet'
+        }
+        
         return render_template('block_detail.html', 
                              block=block,
                              transactions=transactions,
-                             connection_info=connection_info)
+                             connection_info=connection_info,
+                             network_info=network_info)
         
     except Exception as e:
         print(f"Error in block_detail: {e}")
@@ -3178,11 +3189,22 @@ def transaction_detail(tx_hash):
             
             current_tx_hash = prev_tx_hash
         
+        # Network information for display
+        network_info = {
+            'network': NETWORK.upper(),
+            'address_prefix': CURRENT_NETWORK['address_prefix'],
+            'block_reward': CURRENT_NETWORK['block_reward'],
+            'block_time': CURRENT_NETWORK['block_time'],
+            'is_testnet': NETWORK == 'testnet',
+            'is_mainnet': NETWORK == 'mainnet'
+        }
+        
         return render_template('transaction_detail.html', 
                              transaction=transaction,
                              inputs=inputs,
                              outputs=outputs,
-                             traceability_chain=traceability_chain)
+                             traceability_chain=traceability_chain,
+                             network_info=network_info)
         
     finally:
         conn.close()
@@ -3309,10 +3331,21 @@ def address_detail(address):
             'connected': ACTIVE_NODE_TYPE is not None
         }
         
+        # Network information for display
+        network_info = {
+            'network': NETWORK.upper(),
+            'address_prefix': CURRENT_NETWORK['address_prefix'],
+            'block_reward': CURRENT_NETWORK['block_reward'],
+            'block_time': CURRENT_NETWORK['block_time'],
+            'is_testnet': NETWORK == 'testnet',
+            'is_mainnet': NETWORK == 'mainnet'
+        }
+        
         return render_template('address_detail.html',
                              address_info=addr_info,
                              transactions=transactions,
-                             connection_info=connection_info)
+                             connection_info=connection_info,
+                             network_info=network_info)
         
     except Exception as e:
         print(f"Error in address_detail: {e}")
@@ -3381,7 +3414,21 @@ def blocks_list():
         traceback.print_exc()
     
     blocks = explorer.get_recent_blocks(50)
-    return render_template('blocks.html', blocks=blocks, blockchain_node_url=BLOCKCHAIN_NODE_URL)
+    
+    # Network information for display
+    network_info = {
+        'network': NETWORK.upper(),
+        'address_prefix': CURRENT_NETWORK['address_prefix'],
+        'block_reward': CURRENT_NETWORK['block_reward'],
+        'block_time': CURRENT_NETWORK['block_time'],
+        'is_testnet': NETWORK == 'testnet',
+        'is_mainnet': NETWORK == 'mainnet'
+    }
+    
+    return render_template('blocks.html', 
+                         blocks=blocks, 
+                         blockchain_node_url=BLOCKCHAIN_NODE_URL,
+                         network_info=network_info)
 
 @app.route('/transactions')
 def transactions_list():
@@ -3423,9 +3470,19 @@ def transactions_list():
         rows = cursor.fetchall()
         transactions = []
         
+        # Network information for display
+        network_info = {
+            'network': NETWORK.upper(),
+            'address_prefix': CURRENT_NETWORK['address_prefix'],
+            'block_reward': CURRENT_NETWORK['block_reward'],
+            'block_time': CURRENT_NETWORK['block_time'],
+            'is_testnet': NETWORK == 'testnet',
+            'is_mainnet': NETWORK == 'mainnet'
+        }
+        
         # Handle empty result gracefully
         if not rows:
-            return render_template('transactions.html', transactions=[])
+            return render_template('transactions.html', transactions=[], network_info=network_info)
         
         for row in rows:
             # Safely unpack row - all values are guaranteed by COALESCE
@@ -3467,14 +3524,23 @@ def transactions_list():
                 'is_coinbase': bool(is_coinbase) if is_coinbase is not None else False
             })
         
-        return render_template('transactions.html', transactions=transactions)
+        return render_template('transactions.html', transactions=transactions, network_info=network_info)
         
     except Exception as e:
         # Log error for debugging
         import logging
         logging.error(f"Error in transactions_list: {e}")
+        # Network information for display (even on error)
+        network_info = {
+            'network': NETWORK.upper(),
+            'address_prefix': CURRENT_NETWORK['address_prefix'],
+            'block_reward': CURRENT_NETWORK['block_reward'],
+            'block_time': CURRENT_NETWORK['block_time'],
+            'is_testnet': NETWORK == 'testnet',
+            'is_mainnet': NETWORK == 'mainnet'
+        }
         # Return empty list on error instead of crashing
-        return render_template('transactions.html', transactions=[])
+        return render_template('transactions.html', transactions=[], network_info=network_info)
     finally:
         conn.close()
 
@@ -3482,19 +3548,37 @@ def transactions_list():
 def validators_list():
     """Validators list page"""
     validator_data = explorer.get_validators()
+    network_info = {
+        'network': NETWORK.upper(),
+        'address_prefix': CURRENT_NETWORK['address_prefix'],
+        'block_reward': CURRENT_NETWORK['block_reward'],
+        'block_time': CURRENT_NETWORK['block_time'],
+        'is_testnet': NETWORK == 'testnet',
+        'is_mainnet': NETWORK == 'mainnet'
+    }
     return render_template('validators.html', 
                          validators=validator_data['validators'],
                          total_staked=validator_data['total_staked'],
-                         total_validators=validator_data['total_validators'])
+                         total_validators=validator_data['total_validators'],
+                         network_info=network_info)
 
 @app.route('/addresses')
 def addresses_list():
     """Top addresses page"""
     address_data = explorer.get_top_addresses(100)
+    network_info = {
+        'network': NETWORK.upper(),
+        'address_prefix': CURRENT_NETWORK['address_prefix'],
+        'block_reward': CURRENT_NETWORK['block_reward'],
+        'block_time': CURRENT_NETWORK['block_time'],
+        'is_testnet': NETWORK == 'testnet',
+        'is_mainnet': NETWORK == 'mainnet'
+    }
     return render_template('addresses.html', 
                          addresses=address_data['addresses'],
                          total_addresses=address_data['total_addresses'],
-                         total_supply=address_data['total_supply'])
+                         total_supply=address_data['total_supply'],
+                         network_info=network_info)
 
 @app.route('/mining')
 def mining_page():

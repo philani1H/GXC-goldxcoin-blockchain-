@@ -177,7 +177,13 @@
             <a class="navbar-brand fw-bold" href="/">
                 <i class="fas fa-cube me-2"></i>GXC Explorer
             </a>
-            <div class="navbar-nav ms-auto">
+            <div class="navbar-nav ms-auto d-flex flex-row align-items-center gap-3">
+                {% if network_info %}
+                <span class="badge {% if network_info.is_testnet %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                    <i class="fas {% if network_info.is_testnet %}fa-vial{% else %}fa-network-wired{% endif %} me-1"></i>
+                    {{ network_info.network }}
+                </span>
+                {% endif %}
                 <a href="/" class="nav-link">Home</a>
                 <a href="/blocks" class="nav-link">Blocks</a>
                 <a href="/transactions" class="nav-link active">Transactions</a>
@@ -191,9 +197,14 @@
         <div class="container">
             <h1 class="display-4 fw-bold mb-2">
                 <i class="fas fa-exchange-alt me-3"></i>Transactions
+                {% if network_info %}
+                <span class="badge {% if network_info.is_testnet %}bg-warning text-dark{% else %}bg-light text-dark{% endif %} ms-2 fs-6">
+                    {{ network_info.network }}
+                </span>
+                {% endif %}
             </h1>
             <p class="lead mb-0 opacity-90">
-                Real-time view of all GXC blockchain transactions
+                Real-time view of all GXC {% if network_info and network_info.is_testnet %}testnet{% else %}mainnet{% endif %} blockchain transactions
             </p>
         </div>
     </div>

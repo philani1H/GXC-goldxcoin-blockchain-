@@ -422,16 +422,36 @@
         </div>
     </nav>
 
-    <!-- Connection Status Banner -->
-    {% if connection_info and not connection_info.connected %}
+    <!-- Network & Connection Status Banner -->
+    {% if network_info %}
+    <div class="container mt-3">
+        <div class="alert {% if network_info.is_testnet %}alert-info{% else %}alert-primary{% endif %} alert-dismissible fade show" role="alert">
+            <i class="fas {% if network_info.is_testnet %}fa-vial{% else %}fa-network-wired{% endif %} me-2"></i>
+            <strong>Network: {{ network_info.network }}</strong>
+            {% if network_info.is_testnet %}
+            <span class="badge bg-warning text-dark ms-2">TESTNET</span>
+            {% else %}
+            <span class="badge bg-success ms-2">MAINNET</span>
+            {% endif %}
+            <span class="ms-2">Address Prefix: <code>{{ network_info.address_prefix }}</code></span>
+            {% if connection_info and connection_info.connected %}
+            <span class="badge bg-success ms-2">
+                <i class="fas fa-check-circle me-1"></i>Connected to {{ connection_info.active_node|upper }} node
+            </span>
+            {% elif connection_info and not connection_info.connected %}
+            <span class="badge bg-warning text-dark ms-2">
+                <i class="fas fa-exclamation-triangle me-1"></i>Using cached data
+            </span>
+            {% endif %}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>
+    {% elif connection_info and not connection_info.connected %}
     <div class="container mt-3">
         <div class="alert alert-warning alert-dismissible fade show" role="alert">
             <i class="fas fa-exclamation-triangle me-2"></i>
             <strong>Blockchain node not connected!</strong> 
             The explorer is currently using cached data only. 
-            {% if network_info %}
-            <span class="badge bg-secondary ms-2">{{ network_info.network }}</span>
-            {% endif %}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     </div>
@@ -440,9 +460,6 @@
         <div class="alert alert-success alert-dismissible fade show" role="alert">
             <i class="fas fa-check-circle me-2"></i>
             <strong>Connected to {{ connection_info.active_node|upper }} node</strong>
-            {% if network_info %}
-            <span class="badge bg-primary ms-2">{{ network_info.network }}</span>
-            {% endif %}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     </div>
