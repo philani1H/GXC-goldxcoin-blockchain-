@@ -1,0 +1,55 @@
+FROM ubuntu:22.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libssl-dev \
+    libsqlite3-dev \
+    pkg-config \
+    curl \
+    netcat \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy source files
+COPY CMakeLists.txt ./
+COPY include/ ./include/
+COPY src/ ./src/
+COPY third_party/ ./third_party/ 2>/dev/null || true
+
+# Create build directory and build
+RUN mkdir -p build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_GUI=OFF -DBUILD_TESTS=OFF && \
+    make -j$(nproc) gxc-node && \
+    cp gxc-node /app/gxc-node && \
+    cd .. && rm -rf build
+
+# Create data directories
+RUN mkdir -p /app/testnet_data /app/logs
+
+# Create testnet config
+RUN echo "network_port=19333" > /app/gxc-testnet.conf && \
+    echo "rpc_port=\${PORT:-18332}" >> /app/gxc-testnet.conf && \
+    echo "rest_port=18080" >> /app/gxc-testnet.conf && \
+    echo "data_dir=/app/testnet_data" >> /app/gxc-testnet.conf && \
+    echo "testnet=true" >> /app/gxc-testnet.conf && \
+    echo "log_level=INFO" >> /app/gxc-testnet.conf && \
+    echo "log_file=/app/logs/testnet.log" >> /app/gxc-testnet.conf
+
+# Expose port (Railway will set PORT env var)
+EXPOSE 18332
+
+# Health check (Railway PORT will be set at runtime)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD sh -c 'PORT=${PORT:-18332} && curl -f -X POST http://localhost:$PORT/rpc -H "Content-Type: application/json" -d "{\"jsonrpc\":\"2.0\",\"method\":\"getblockchaininfo\",\"params\":[],\"id\":1}" || exit 1'
+
+# Start the C++ testnet node
+# Railway provides PORT env var - the node will automatically use it
+CMD ["/app/gxc-node", "--testnet", "--config=/app/gxc-testnet.conf"]

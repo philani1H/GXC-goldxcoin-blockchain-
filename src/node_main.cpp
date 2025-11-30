@@ -11,6 +11,7 @@
 #include <thread>
 #include <fstream>
 #include <filesystem>
+#include <cstdlib>
 
 bool g_shutdown = false;
 
@@ -145,9 +146,23 @@ int main(int argc, char* argv[]) {
     // Adjust ports for testnet
     if (nodeConfig.testnet) {
         nodeConfig.networkPort = 19333;
-        nodeConfig.rpcPort = 18332;
+        // Use Railway PORT env var if available, otherwise default to 18332
+        const char* railwayPort = std::getenv("PORT");
+        if (railwayPort != nullptr) {
+            nodeConfig.rpcPort = std::stoi(railwayPort);
+            std::cout << "Using Railway PORT: " << nodeConfig.rpcPort << std::endl;
+        } else {
+            nodeConfig.rpcPort = 18332;
+        }
         nodeConfig.restPort = 18080;
         std::cout << "Testnet mode enabled" << std::endl;
+    } else {
+        // For mainnet, also check Railway PORT
+        const char* railwayPort = std::getenv("PORT");
+        if (railwayPort != nullptr) {
+            nodeConfig.rpcPort = std::stoi(railwayPort);
+            std::cout << "Using Railway PORT: " << nodeConfig.rpcPort << std::endl;
+        }
     }
     
     // Set up signal handlers
