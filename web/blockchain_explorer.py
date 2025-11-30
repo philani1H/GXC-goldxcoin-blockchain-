@@ -1289,14 +1289,16 @@ class BlockchainExplorer:
             conn.close()
     
     def get_block_by_number_from_db(self, block_number):
-        """Get a specific block from database by number"""
+        """Get a specific block from database by number with ALL fields"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         try:
+            # Get ALL available fields from blocks table
             cursor.execute('''
-                SELECT block_number, block_hash, timestamp, miner_address,
-                       transaction_count, reward, consensus_type, difficulty
+                SELECT block_number, block_hash, parent_hash, timestamp, miner_address,
+                       transaction_count, reward, consensus_type, difficulty, total_difficulty,
+                       size, gas_used, gas_limit, nonce, merkle_root
                 FROM blocks
                 WHERE block_number = ?
             ''', (block_number,))
@@ -1305,18 +1307,33 @@ class BlockchainExplorer:
             if row:
                 return {
                     'number': row[0] if row[0] is not None else 0,
+                    'block_number': row[0] if row[0] is not None else 0,
                     'hash': row[1] if row[1] else '',
-                    'timestamp': row[2] if row[2] else datetime.now(),
-                    'miner': row[3] if row[3] else '',
-                    'tx_count': row[4] if row[4] is not None else 0,
-                    'reward': row[5] if row[5] is not None else 12.5,
-                    'consensus_type': row[6] if row[6] else 'pow',
-                    'difficulty': row[7] if len(row) > 7 and row[7] is not None else 0.1
+                    'block_hash': row[1] if row[1] else '',
+                    'parent_hash': row[2] if len(row) > 2 and row[2] else '',
+                    'timestamp': row[3] if row[3] else datetime.now(),
+                    'miner': row[4] if len(row) > 4 and row[4] else '',
+                    'miner_address': row[4] if len(row) > 4 and row[4] else '',
+                    'tx_count': row[5] if len(row) > 5 and row[5] is not None else 0,
+                    'transaction_count': row[5] if len(row) > 5 and row[5] is not None else 0,
+                    'reward': row[6] if len(row) > 6 and row[6] is not None else 12.5,
+                    'consensus_type': row[7] if len(row) > 7 and row[7] else 'pow',
+                    'consensusType': row[7] if len(row) > 7 and row[7] else 'pow',
+                    'difficulty': row[8] if len(row) > 8 and row[8] is not None else 0.1,
+                    'total_difficulty': row[9] if len(row) > 9 and row[9] is not None else (row[8] if len(row) > 8 and row[8] is not None else 0.1),
+                    'size': row[10] if len(row) > 10 and row[10] is not None else 0,
+                    'gas_used': row[11] if len(row) > 11 and row[11] is not None else 0,
+                    'gas_limit': row[12] if len(row) > 12 and row[12] is not None else 0,
+                    'nonce': row[13] if len(row) > 13 and row[13] is not None else 0,
+                    'merkle_root': row[14] if len(row) > 14 and row[14] else '',
+                    'transactions': []  # Transactions are stored separately
                 }
             return None
             
         except Exception as e:
             print(f"Error getting block from database: {e}")
+            import traceback
+            traceback.print_exc()
             return None
         finally:
             conn.close()
@@ -2838,30 +2855,74 @@ class BlockchainExplorer:
                                 # Get the stored block from database to ensure consistent format
                                 stored_block = self.get_block_by_number_from_db(current_height)
                                 if stored_block:
-                                    # Convert to dict format for WebSocket
+                                    # Convert to dict format for WebSocket - ensure ALL fields are present
+                                    # stored_block is a dict from get_block_by_number_from_db
                                     emit_block = {
-                                        'number': stored_block.get('number', current_height),
-                                        'block_number': stored_block.get('number', current_height),
-                                        'height': stored_block.get('number', current_height),
-                                        'hash': stored_block.get('hash', ''),
-                                        'miner': stored_block.get('miner', ''),
-                                        'miner_address': stored_block.get('miner', ''),
-                                        'tx_count': stored_block.get('tx_count', 0),
-                                        'transaction_count': stored_block.get('tx_count', 0),
-                                        'transactions': [],
-                                        'consensus_type': stored_block.get('consensus_type', 'pow'),
-                                        'timestamp': str(stored_block.get('timestamp', ''))
+                                        'number': stored_block.get('number') or stored_block.get('block_number') or current_height or 0,
+                                        'block_number': stored_block.get('number') or stored_block.get('block_number') or current_height or 0,
+                                        'height': stored_block.get('number') or stored_block.get('block_number') or current_height or 0,
+                                        'hash': stored_block.get('hash') or stored_block.get('block_hash') or '',
+                                        'block_hash': stored_block.get('hash') or stored_block.get('block_hash') or '',
+                                        'parent_hash': stored_block.get('parent_hash') or '',
+                                        'miner': stored_block.get('miner') or stored_block.get('miner_address') or '',
+                                        'miner_address': stored_block.get('miner') or stored_block.get('miner_address') or '',
+                                        'tx_count': stored_block.get('tx_count') or stored_block.get('transaction_count') or 0,
+                                        'transaction_count': stored_block.get('tx_count') or stored_block.get('transaction_count') or 0,
+                                        'transactions': stored_block.get('transactions') or [],
+                                        'consensus_type': stored_block.get('consensus_type') or stored_block.get('consensusType') or 'pow',
+                                        'consensusType': stored_block.get('consensus_type') or stored_block.get('consensusType') or 'pow',
+                                        'timestamp': str(stored_block.get('timestamp', '')) if stored_block.get('timestamp') else str(int(time.time())),
+                                        'difficulty': stored_block.get('difficulty') or 0.1,
+                                        'reward': stored_block.get('reward') or 12.5
                                     }
                                     socketio.emit('new_block', emit_block)
                                 else:
-                                    # Fallback to normalized latest_block
-                                    socketio.emit('new_block', latest_block)
+                                    # Fallback to normalized latest_block - ensure ALL fields are present
+                                    if latest_block:
+                                        normalized_emit = {
+                                            'number': latest_block.get('number') or latest_block.get('block_number') or latest_block.get('height') or current_height or 0,
+                                            'block_number': latest_block.get('number') or latest_block.get('block_number') or latest_block.get('height') or current_height or 0,
+                                            'height': latest_block.get('number') or latest_block.get('block_number') or latest_block.get('height') or current_height or 0,
+                                            'hash': latest_block.get('hash') or latest_block.get('block_hash') or '',
+                                            'block_hash': latest_block.get('hash') or latest_block.get('block_hash') or '',
+                                            'parent_hash': latest_block.get('parent_hash') or latest_block.get('prev_hash') or '',
+                                            'miner': latest_block.get('miner') or latest_block.get('miner_address') or '',
+                                            'miner_address': latest_block.get('miner') or latest_block.get('miner_address') or '',
+                                            'tx_count': latest_block.get('tx_count') or latest_block.get('transaction_count') or len(latest_block.get('transactions', [])) or 0,
+                                            'transaction_count': latest_block.get('tx_count') or latest_block.get('transaction_count') or len(latest_block.get('transactions', [])) or 0,
+                                            'transactions': latest_block.get('transactions') or [],
+                                            'consensus_type': latest_block.get('consensus_type') or latest_block.get('consensusType') or 'pow',
+                                            'consensusType': latest_block.get('consensus_type') or latest_block.get('consensusType') or 'pow',
+                                            'timestamp': str(latest_block.get('timestamp') or int(time.time())),
+                                            'difficulty': latest_block.get('difficulty') or 0.1,
+                                            'reward': latest_block.get('reward') or 12.5
+                                        }
+                                        socketio.emit('new_block', normalized_emit)
                             except Exception as e:
                                 print(f"[EXPLORER] Error emitting block: {e}")
-                                # Try to emit original block anyway
+                                import traceback
+                                traceback.print_exc()
+                                # Try to emit normalized block with ALL fields
                                 try:
-                                    socketio.emit('new_block', latest_block)
-                                except:
+                                    if latest_block:
+                                        safe_emit = {
+                                            'number': latest_block.get('number') or latest_block.get('block_number') or latest_block.get('height') or current_height or 0,
+                                            'block_number': latest_block.get('number') or latest_block.get('block_number') or latest_block.get('height') or current_height or 0,
+                                            'height': latest_block.get('number') or latest_block.get('block_number') or latest_block.get('height') or current_height or 0,
+                                            'hash': latest_block.get('hash') or latest_block.get('block_hash') or '',
+                                            'miner': latest_block.get('miner') or latest_block.get('miner_address') or '',
+                                            'miner_address': latest_block.get('miner') or latest_block.get('miner_address') or '',
+                                            'tx_count': latest_block.get('tx_count') or latest_block.get('transaction_count') or len(latest_block.get('transactions', [])) or 0,
+                                            'transaction_count': latest_block.get('tx_count') or latest_block.get('transaction_count') or len(latest_block.get('transactions', [])) or 0,
+                                            'transactions': latest_block.get('transactions') or [],
+                                            'consensus_type': latest_block.get('consensus_type') or latest_block.get('consensusType') or 'pow',
+                                            'timestamp': str(latest_block.get('timestamp') or int(time.time())),
+                                            'difficulty': latest_block.get('difficulty') or 0.1,
+                                            'reward': latest_block.get('reward') or 12.5
+                                        }
+                                        socketio.emit('new_block', safe_emit)
+                                except Exception as e2:
+                                    print(f"[EXPLORER] Error in fallback block emission: {e2}")
                                     pass  # SocketIO might not be initialized
                             
                             # Update network stats periodically
@@ -3093,9 +3154,13 @@ def block_detail(block_number):
     cursor = conn.cursor()
     
     try:
-        # Get block data from database
+        # Get block data from database - select ALL fields in correct order
         cursor.execute('''
-            SELECT * FROM blocks WHERE block_number = ?
+            SELECT block_number, block_hash, parent_hash, timestamp, miner_address,
+                   difficulty, total_difficulty, size, gas_used, gas_limit,
+                   transaction_count, reward, consensus_type, nonce, validator_signature,
+                   fee_burn_rate, pop_reference, merkle_root
+            FROM blocks WHERE block_number = ?
         ''', (block_number,))
         
         block = cursor.fetchone()
@@ -3108,12 +3173,23 @@ def block_detail(block_number):
                 explorer.store_block(block_data)
                 # Re-fetch from database
                 cursor.execute('''
-                    SELECT * FROM blocks WHERE block_number = ?
+                    SELECT block_number, block_hash, parent_hash, timestamp, miner_address,
+                           difficulty, total_difficulty, size, gas_used, gas_limit,
+                           transaction_count, reward, consensus_type, nonce, validator_signature,
+                           fee_burn_rate, pop_reference, merkle_root
+                    FROM blocks WHERE block_number = ?
                 ''', (block_number,))
                 block = cursor.fetchone()
         
         if not block:
             return "Block not found", 404
+        
+        # Ensure block tuple has all fields with defaults
+        # Pad with None if tuple is shorter than expected
+        block_list = list(block) if block else []
+        while len(block_list) < 18:
+            block_list.append(None)
+        block = tuple(block_list)
         
         # Get block transactions
         cursor.execute('''

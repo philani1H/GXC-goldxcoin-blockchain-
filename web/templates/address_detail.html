@@ -395,17 +395,17 @@
                             {% for tx in transactions %}
                             <tr>
                                 <td>
-                                    <a href="/tx/{{ tx[0] }}" class="text-decoration-none text-primary fw-bold">
-                                        {{ tx[0][:16] }}...
+                                    <a href="/tx/{{ tx[0]|default('') }}" class="text-decoration-none text-primary fw-bold">
+                                        {{ (tx[0]|default('Unknown'))[:16] }}...
                                     </a>
                                 </td>
                                 <td>
-                                    <a href="/block/{{ tx[1] }}" class="text-decoration-none text-primary">
-                                        #{{ tx[1] }}
+                                    <a href="/block/{{ tx[1]|default(0) }}" class="text-decoration-none text-primary">
+                                        #{{ tx[1]|default(0) }}
                                     </a>
                                 </td>
                                 <td>
-                                    {% if tx[3] == address_info[0] %}
+                                    {% if tx|length > 3 and tx[3] == address_info[0] %}
                                     <span class="badge bg-danger">
                                         <i class="fas fa-arrow-up me-1"></i>OUT
                                     </span>
@@ -416,29 +416,31 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if tx[3] == address_info[0] %}
-                                    {% if tx[4] %}
+                                    {% if tx|length > 3 and tx[3] == address_info[0] %}
+                                    {% if tx|length > 4 and tx[4] %}
                                     <a href="/address/{{ tx[4] }}" class="text-decoration-none">
                                         {{ tx[4][:10] }}...
                                     </a>
                                     {% else %}
                                     <span class="text-muted">Contract</span>
                                     {% endif %}
-                                    {% else %}
+                                    {% elif tx|length > 3 and tx[3] %}
                                     <a href="/address/{{ tx[3] }}" class="text-decoration-none">
                                         {{ tx[3][:10] }}...
                                     </a>
+                                    {% else %}
+                                    <span class="text-muted">Unknown</span>
                                     {% endif %}
                                 </td>
                                 <td>
                                     <span
-                                        class="fw-bold {% if tx[3] == address_info[0] %}text-danger{% else %}text-success{% endif %}">
-                                        {{ "%.4f"|format(tx[5]) }} GXC
+                                        class="fw-bold {% if tx|length > 3 and tx[3] == address_info[0] %}text-danger{% else %}text-success{% endif %}">
+                                        {{ "%.4f"|format(tx[5]|default(0.0)) }} GXC
                                     </span>
                                 </td>
                                 <td class="text-muted small">
                                     <script>
-                                        document.write(timeAgo('{{ tx[10] }}'));
+                                        document.write(timeAgo('{{ tx[10]|default("") }}'));
                                     </script>
                                 </td>
                             </tr>

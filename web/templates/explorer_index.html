@@ -923,6 +923,12 @@
             });
 
             socket.on('new_block', function (block) {
+                // Ensure block has all required fields
+                if (!block || (typeof block !== 'object')) {
+                    console.warn('Invalid block data received:', block);
+                    return;
+                }
+                
                 // Show toast notification
                 const toastElement = document.getElementById('liveToast');
                 if (toastElement) {
@@ -931,10 +937,11 @@
                     if (toastBody) {
                         const blockNum = block.number || block.block_number || block.height || 0;
                         const miner = block.miner || block.miner_address || '';
-                        const txCount = (block.transactions || []).length || block.transaction_count || block.tx_count || 0;
-                        const minerDisplay = miner ? `${miner.substring(0, 10)}...` : 'Unknown';
+                        const txCount = (block.transactions && Array.isArray(block.transactions) ? block.transactions.length : 0) || 
+                                       block.transaction_count || block.tx_count || 0;
+                        const minerDisplay = miner && miner.length > 0 ? `${miner.substring(0, 10)}...` : 'Unknown';
                         toastBody.innerHTML =
-                            `Block #${blockNum} mined by ${minerDisplay} with ${txCount} transactions`;
+                            `Block #${blockNum} mined by ${minerDisplay} with ${txCount} transaction${txCount !== 1 ? 's' : ''}`;
                         toast.show();
                     }
                 }
@@ -953,15 +960,28 @@
             const tbody = document.getElementById('blocks-table');
             if (!tbody) return;
             
+            // Validate block data
+            if (!newBlock || typeof newBlock !== 'object') {
+                console.warn('Invalid block data in updateBlocksTable:', newBlock);
+                return;
+            }
+            
             const blockNumber = newBlock.number || newBlock.block_number || newBlock.height || 0;
             const miner = newBlock.miner || newBlock.miner_address || '';
-            const txCount = (newBlock.transactions || []).length || newBlock.transaction_count || newBlock.tx_count || 0;
+            const txCount = (newBlock.transactions && Array.isArray(newBlock.transactions) ? newBlock.transactions.length : 0) || 
+                           newBlock.transaction_count || newBlock.tx_count || 0;
             const consensusType = newBlock.consensus_type || newBlock.consensusType || 'pow';
+            
+            // Ensure blockNumber is valid
+            if (blockNumber === 0 && !newBlock.number && !newBlock.block_number && !newBlock.height) {
+                console.warn('Block number is undefined, skipping update');
+                return;
+            }
             
             const row = tbody.insertRow(0);
             
             // Handle empty miner address
-            const minerCell = miner ? 
+            const minerCell = miner && miner.length > 0 ? 
                 `<a href="/address/${miner}" class="address-link text-decoration-none">${miner.substring(0, 10)}...</a>` :
                 `<span class="text-muted">Unknown</span>`;
 
@@ -979,7 +999,7 @@
 
             // Remove last row if we have more than 10
             if (tbody.rows.length > 10) {
-                tbody.deleteRow(-1);
+                tbody.deleteRow(tbody.rows.length - 1);
             }
         }
 
@@ -1111,9 +1131,11 @@
         // Socket.IO notifications (if socket already exists, reuse it)
         if (typeof socket !== 'undefined' && socket) {
             socket.on('new_block', function(data) {
-                if (notificationPermission) {
+                if (notificationPermission && data) {
                     const blockNum = data.number || data.block_number || data.height || 0;
-                    showNotification('New Block Mined', `Block #${blockNum} has been mined`, '/static/favicon.ico');
+                    if (blockNum > 0) {
+                        showNotification('New Block Mined', `Block #${blockNum} has been mined`, '/static/favicon.ico');
+                    }
                 }
             });
         }
