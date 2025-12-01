@@ -215,5 +215,7 @@ public:
     static const uint32_t HALVING_INTERVAL = 1051200; // ~4 years
     static const uint32_t DIFFICULTY_ADJUSTMENT_INTERVAL = 2016; // ~2 weeks
     static constexpr double INITIAL_BLOCK_REWARD = 50.0;
-    static constexpr double MIN_STAKE = 100.0; // Minimum stake for validators
+    
+    // UTXO access for RPC
+    const std::unordered_map<std::string, TransactionOutput>& getUtxoSet() const;
 };

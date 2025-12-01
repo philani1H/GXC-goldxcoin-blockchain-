@@ -184,6 +184,40 @@ void RPCAPI::registerMethods() {
     rpcMethods["gxc_getBalance"] = [this](const JsonValue& params) { return getBalance(params); };
     rpcMethods["getaddressbalance"] = [this](const JsonValue& params) { return getBalance(params); };
     rpcMethods["getaccountbalance"] = [this](const JsonValue& params) { return getBalance(params); };
+    
+    // Transaction listing methods
+    rpcMethods["listtransactions"] = [this](const JsonValue& params) { return listTransactions(params); };
+    rpcMethods["getaddresstransactions"] = [this](const JsonValue& params) { return listTransactions(params); };
+    rpcMethods["gettransactions"] = [this](const JsonValue& params) { return listTransactions(params); };
+    rpcMethods["getaddresshistory"] = [this](const JsonValue& params) { return listTransactions(params); };
+    
+    // UTXO methods
+    rpcMethods["listunspent"] = [this](const JsonValue& params) {
+        std::string address = params.size() > 2 && params[2].is_array() && params[2].size() > 0 
+                             ? params[2][0].get<std::string>() 
+                             : (params.size() > 0 ? params[0].get<std::string>() : "");
+        
+        if (address.empty()) {
+            return JsonValue(JsonValue::array());
+        }
+        
+        JsonValue utxos(JsonValue::array());
+        // Get UTXOs from blockchain
+        auto utxoSet = blockchain->getUtxoSet();
+        for (const auto& [key, output] : utxoSet) {
+            if (output.address == address) {
+                JsonValue utxo;
+                utxo["address"] = output.address;
+                utxo["amount"] = output.amount;
+                utxo["value"] = output.amount;
+                utxo["txid"] = key.substr(0, key.find('_'));
+                utxo["vout"] = 0;
+                utxo["scriptPubKey"] = output.script;
+                utxos.push_back(utxo);
+            }
+        }
+        return utxos;
+    };
     rpcMethods["listunspent"] = [this](const JsonValue& params) {
         std::string address = params.size() > 0 ? params[0].get<std::string>() : "";
         JsonValue result(JsonValue::array());

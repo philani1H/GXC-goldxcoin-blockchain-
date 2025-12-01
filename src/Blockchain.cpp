@@ -784,9 +784,13 @@ double Blockchain::getBalance(const std::string& address) const {
         }
     }
     
-    LOG_BLOCKCHAIN(LogLevel::DEBUG, "Balance for " + address.substr(0, 16) + "...: " + std::to_string(balance) + " GXC");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Balance for " + address.substr(0, 16) + "...: " + std::to_string(balance) + " GXC (" + std::to_string(utxoSet.size()) + " total UTXOs)");
     
     return balance;
+}
+
+const std::unordered_map<std::string, TransactionOutput>& Blockchain::getUtxoSet() const {
+    return utxoSet;
 }
 
 // Traceability methods - Implement transaction tracking
