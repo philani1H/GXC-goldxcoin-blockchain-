@@ -29,6 +29,7 @@ ENV/
 
 # Documentation
 *.md
+!README.md
 docs/
 
 # Test files
