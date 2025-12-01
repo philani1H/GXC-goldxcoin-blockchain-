@@ -24,6 +24,8 @@ COPY include/ ./include/
 COPY src/ ./src/
 # Copy third_party (contains json library)
 COPY third_party/ ./third_party/
+# Copy LICENSE and README.md (needed for CPack)
+COPY LICENSE README.md ./
 
 # Create build directory and build
 RUN mkdir -p build && cd build && \
