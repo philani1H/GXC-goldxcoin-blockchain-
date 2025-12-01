@@ -317,7 +317,15 @@ set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
 if(NOT TARGET nlohmann_json::nlohmann_json)
     find_package(nlohmann_json QUIET)
     if(NOT nlohmann_json_FOUND)
-        if(EXISTS ${THIRD_PARTY_DIR}/json)
+        # Check if we have header-only json.hpp
+        if(EXISTS ${THIRD_PARTY_DIR}/json/json.hpp)
+            # Header-only library - just add include directory
+            add_library(nlohmann_json INTERFACE)
+            target_include_directories(nlohmann_json INTERFACE ${THIRD_PARTY_DIR}/json)
+            add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
+            message(STATUS "Using header-only nlohmann/json from third_party")
+        elseif(EXISTS ${THIRD_PARTY_DIR}/json/CMakeLists.txt)
+            # Has CMakeLists.txt - use subdirectory
             add_subdirectory(${THIRD_PARTY_DIR}/json EXCLUDE_FROM_ALL)
         else()
             message(WARNING "nlohmann_json not found. Some features may be unavailable.")
@@ -1285,7 +1293,12 @@ elseif(UNIX)
     set(CPACK_RPM_PACKAGE_REQUIRES "openssl-libs, sqlite, glibc")
 endif()
 
-include(CPack)
+# CPack configuration (optional - skip if files missing)
+if(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE" AND EXISTS "${CMAKE_SOURCE_DIR}/README.md")
+    include(CPack)
+else()
+    message(STATUS "Skipping CPack - LICENSE or README.md not found")
+endif()
 
 # Display build configuration
 message(STATUS "")
