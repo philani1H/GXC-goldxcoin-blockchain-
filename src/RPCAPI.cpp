@@ -1178,15 +1178,33 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
             throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Block hash is empty");
         }
         
-        LOG_API(LogLevel::DEBUG, "submitBlock: Block prepared. Height: " + std::to_string(height) + 
-                ", Hash: " + newBlock.getHash().substr(0, 16) + "..., Index: " + std::to_string(newBlock.getIndex()));
+        LOG_API(LogLevel::INFO, "submitBlock: Block prepared. Height: " + std::to_string(height) + 
+                ", Hash: " + newBlock.getHash().substr(0, 16) + "..., Index: " + std::to_string(newBlock.getIndex()) +
+                ", Miner: " + minerAddress.substr(0, 20) + "..., Reward: " + std::to_string(blockReward));
+        
+        // Log block details before adding
+        LOG_API(LogLevel::INFO, "submitBlock: Transactions in block: " + std::to_string(newBlock.getTransactions().size()));
+        for (const auto& tx : newBlock.getTransactions()) {
+            LOG_API(LogLevel::INFO, "  TX: " + tx.getHash().substr(0, 16) + "..., Coinbase: " + 
+                    (tx.isCoinbaseTransaction() ? "YES" : "NO") + ", Outputs: " + std::to_string(tx.getOutputs().size()));
+        }
         
         // Add block to blockchain
-        if (blockchain->addBlock(newBlock)) {
-            LOG_API(LogLevel::INFO, "Block submitted and added successfully. Height: " + std::to_string(height) + ", Hash: " + hash.substr(0, 16) + "...");
+        LOG_API(LogLevel::INFO, "submitBlock: Calling blockchain->addBlock()...");
+        bool addResult = false;
+        try {
+            addResult = blockchain->addBlock(newBlock);
+            LOG_API(LogLevel::INFO, "submitBlock: addBlock returned: " + std::string(addResult ? "true" : "false"));
+        } catch (const std::exception& e) {
+            LOG_API(LogLevel::ERROR, "submitBlock: Exception in addBlock: " + std::string(e.what()));
+            throw;
+        }
+        
+        if (addResult) {
+            LOG_API(LogLevel::INFO, "✅ Block submitted and added successfully. Height: " + std::to_string(height) + ", Hash: " + hash.substr(0, 16) + "...");
             return JsonValue(); // Success returns null
         } else {
-            LOG_API(LogLevel::ERROR, "Block validation failed. Height: " + std::to_string(height) + 
+            LOG_API(LogLevel::ERROR, "❌ Block validation failed. Height: " + std::to_string(height) + 
                     ", Hash: " + hash.substr(0, 16) + "...");
             throw RPCException(RPCException::RPC_VERIFY_REJECTED, "Block validation failed");
         }

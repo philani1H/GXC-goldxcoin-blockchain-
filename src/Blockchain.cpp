@@ -132,16 +132,23 @@ void Blockchain::createGenesisBlock() {
 bool Blockchain::addBlock(const Block& block) {
     std::lock_guard<std::mutex> lock(chainMutex);
     
+    LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Starting. Block index: " + std::to_string(block.getIndex()) + 
+                  ", Hash: " + block.getHash().substr(0, 16) + "..., Miner: " + block.getMinerAddress().substr(0, 20) + "...");
+    
     try {
-        // Ensure block has coinbase transaction
+        // Make a mutable copy of the block
         Block blockToAdd = block;
         bool hasCoinbase = false;
         std::string minerAddress = block.getMinerAddress();
+        std::string originalHash = block.getHash(); // Save miner's proof of work
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Original hash: " + originalHash.substr(0, 16) + "...");
         
         // Check if block has coinbase transaction
         for (const auto& tx : block.getTransactions()) {
             if (tx.isCoinbaseTransaction()) {
                 hasCoinbase = true;
+                LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Block already has coinbase transaction");
                 break;
             }
         }
@@ -151,45 +158,51 @@ bool Blockchain::addBlock(const Block& block) {
             // Calculate block reward with halving
             double blockReward = calculateBlockReward(block.getIndex());
             
-            LOG_BLOCKCHAIN(LogLevel::INFO, "Creating coinbase transaction for miner: " + minerAddress + 
-                          ", Reward: " + std::to_string(blockReward) + " GXC");
+            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Creating coinbase transaction for miner: " + minerAddress.substr(0, 20) + 
+                          "..., Reward: " + std::to_string(blockReward) + " GXC");
             
             Transaction coinbase(minerAddress, blockReward);
+            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Coinbase TX hash: " + coinbase.getHash().substr(0, 16) + 
+                          "..., Outputs: " + std::to_string(coinbase.getOutputs().size()));
             
-            // Create new block with coinbase as first transaction
-            Block newBlock(blockToAdd.getIndex(), blockToAdd.getPreviousHash(), blockToAdd.getBlockType());
-            newBlock.setHash(blockToAdd.getHash());
-            newBlock.setNonce(blockToAdd.getNonce());
-            newBlock.setTimestamp(blockToAdd.getTimestamp());
-            newBlock.setDifficulty(blockToAdd.getDifficulty());
-            newBlock.setMinerAddress(minerAddress);
-            newBlock.setBlockReward(blockReward);
+            // Add coinbase transaction to the block
+            blockToAdd.addTransaction(coinbase);
             
-            // Add coinbase first
-            newBlock.addTransaction(coinbase);
+            // Recalculate merkle root
+            blockToAdd.calculateMerkleRoot();
             
-            // Add other transactions
-            for (const auto& tx : blockToAdd.getTransactions()) {
-                if (!tx.isCoinbaseTransaction()) {
-                    newBlock.addTransaction(tx);
-                }
-            }
+            // CRITICAL: Restore the original hash (miner's proof of work)
+            // The hash must not change when we add the coinbase
+            blockToAdd.setHash(originalHash);
             
-            newBlock.calculateMerkleRoot();
-            blockToAdd = newBlock;
+            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Coinbase added, hash restored: " + blockToAdd.getHash().substr(0, 16) + "...");
+        } else if (hasCoinbase) {
+            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Using existing coinbase transaction");
+        } else {
+            LOG_BLOCKCHAIN(LogLevel::WARNING, "addBlock: No coinbase and no miner address!");
         }
         
         // Validate block
-        if (!validateBlock(blockToAdd)) {
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "Block validation failed");
+        LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Starting block validation...");
+        bool validationResult = validateBlock(blockToAdd);
+        LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Block validation result: " + std::string(validationResult ? "PASS" : "FAIL"));
+        
+        if (!validationResult) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "addBlock: Block validation failed");
             return false;
         }
         
         // Validate traceability for all transactions in block
-        if (!validateBlockTraceability(blockToAdd)) {
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "Block traceability validation failed");
+        LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Starting traceability validation...");
+        bool traceabilityResult = validateBlockTraceability(blockToAdd);
+        LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Traceability validation result: " + std::string(traceabilityResult ? "PASS" : "FAIL"));
+        
+        if (!traceabilityResult) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "addBlock: Block traceability validation failed");
             return false;
         }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: All validations passed, adding block to chain...");
         
         // Add block to chain
         auto blockPtr = std::make_shared<Block>(blockToAdd);

@@ -301,3 +301,105 @@ tion successful
 [2025-12-01 06:19:56.398] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
 [2025-12-01 06:19:56.398] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
 [2025-12-01 06:20:01.065] [INFO] Node Status - Height: 1, Peers: 0, Difficulty: 1000.000000
+[2025-12-01 18:27:40.008] [INFO] Logger initialized: gxc.log
+[2025-12-01 18:27:40.008] [INFO] GXC Node starting up
+[2025-12-01 18:27:40.008] [INFO] Configuration system initialized
+[2025-12-01 18:27:40.008] [INFO] Config updated: rpc_port = 8080
+[2025-12-01 18:27:40.008] [INFO] Config updated: testnet = true
+[2025-12-01 18:27:40.009] [INFO] Data directory: ./gxc_data
+[2025-12-01 18:27:40.009] [INFO] Using TESTNET database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 18:27:40.009] [INFO] [DATABASE] Database instance created
+[2025-12-01 18:27:40.009] [INFO] [DATABASE] ✓ Testnet database path validated
+[2025-12-01 18:27:40.009] [INFO] [DATABASE] Opening database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 18:27:40.009] [INFO] [DATABASE] Network mode: TESTNET
+[2025-12-01 18:27:40.121] [INFO] [DATABASE] Database tables created successfully
+[2025-12-01 18:27:40.121] [INFO] [DATABASE] Database opened successfully
+[2025-12-01 18:27:40.121] [INFO] [BLOCKCHAIN] Blockchain instance created
+[2025-12-01 18:27:40.121] [INFO] [BLOCKCHAIN] Initializing blockchain
+[2025-12-01 18:27:40.121] [INFO] [BLOCKCHAIN] Creating genesis block
+[2025-12-01 18:27:40.121] [INFO] [BLOCKCHAIN] Using TESTNET genesis address: tGXC9fab7317231b966af85ac453e168c0932
+[2025-12-01 18:27:40.121] [INFO] [BLOCKCHAIN] Using testnet difficulty: 0.1
+[2025-12-01 18:27:40.122] [INFO] [BLOCKCHAIN] Mining genesis block (difficulty: 2 leading zeros)
+[2025-12-01 18:27:40.122] [INFO] [BLOCKCHAIN] Genesis block mined after 126 attempts
+[2025-12-01 18:27:40.122] [INFO] [BLOCKCHAIN] Genesis block created with hash: 25e684e28656e6ac1c31676813335ee568aa532ba57c7f3e412e2c59b78b7db7
+[2025-12-01 18:27:40.122] [INFO] [BLOCKCHAIN] Initializing traceability system
+[2025-12-01 18:27:40.122] [INFO] [BLOCKCHAIN] Traceability index built with 0 entries
+[2025-12-01 18:27:40.122] [INFO] [BLOCKCHAIN] Blockchain initialized successfully with 1 blocks
+[2025-12-01 18:27:40.122] [INFO] [NETWORK] Network instance created
+[2025-12-01 18:27:40.122] [INFO] [NETWORK] Starting network on port 9333
+[2025-12-01 18:27:40.122] [INFO] [NETWORK] Network started successfully on port 9333
+[2025-12-01 18:27:40.122] [INFO] [API] Registered 49 RPC methods
+[2025-12-01 18:27:40.123] [INFO] [API] Starting RPC API server
+[2025-12-01 18:27:40.123] [INFO] [API] RPC API server started successfully on port 8080
+[2025-12-01 18:27:40.123] [INFO] [API] RPC server loop started
+[2025-12-01 18:27:40.123] [INFO] [API] RPC server loop started
+[2025-12-01 18:27:40.123] [INFO] [API] REST API initialized on port 8080
+[2025-12-01 18:27:40.123] [INFO] [API] Starting REST API server
+[2025-12-01 18:27:40.123] [INFO] [API] RPC server listening on port 8080
+[2025-12-01 18:27:40.123] [INFO] [API] REST API server started successfully on port 8080
+[2025-12-01 18:27:40.123] [INFO] GXC node initialized successfully
+[2025-12-01 18:27:40.123] [INFO] Blockchain height: 1
+[2025-12-01 18:27:40.123] [INFO] Network listening on port: 9333
+[2025-12-01 18:27:40.123] [INFO] RPC server listening on port: 8080
+[2025-12-01 18:27:40.123] [INFO] [API] REST server loop started
+[2025-12-01 18:27:40.123] [INFO] [API] REST server loop started
+[2025-12-01 18:27:40.123] [INFO] REST server listening on port: 8080
+[2025-12-01 18:27:40.123] [INFO] [BLOCKCHAIN] Validating complete blockchain traceability
+[2025-12-01 18:27:40.123] [INFO] [BLOCKCHAIN] Complete blockchain traceability validation successful
+[2025-12-01 18:27:40.123] [INFO] Entering main event loop. Press Ctrl+C to shutdown.
+[2025-12-01 18:27:45.017] [INFO] [BLOCKCHAIN] getBalance(tGXC9fab7317231b966a...): 0.000000 GXC from 0 UTXOs (total: 0)
+[2025-12-01 18:27:45.058] [INFO] [API] Creating coinbase transaction for miner: tGXC9fab7317231b966af85ac453e168c0932, Reward: 50.000000 GXC
+[2025-12-01 18:32:33.698] [INFO] Logger initialized: gxc.log
+[2025-12-01 18:32:33.698] [INFO] GXC Node starting up
+[2025-12-01 18:32:33.698] [INFO] Configuration system initialized
+[2025-12-01 18:32:33.698] [INFO] Config updated: rpc_port = 8080
+[2025-12-01 18:32:33.698] [INFO] Config updated: testnet = true
+[2025-12-01 18:32:33.698] [INFO] Data directory: ./gxc_data
+[2025-12-01 18:32:33.698] [INFO] Using TESTNET database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 18:32:33.698] [INFO] [DATABASE] Database instance created
+[2025-12-01 18:32:33.698] [INFO] [DATABASE] ✓ Testnet database path validated
+[2025-12-01 18:32:33.698] [INFO] [DATABASE] Opening database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 18:32:33.698] [INFO] [DATABASE] Network mode: TESTNET
+[2025-12-01 18:32:33.795] [INFO] [DATABASE] Database tables created successfully
+[2025-12-01 18:32:33.795] [INFO] [DATABASE] Database opened successfully
+[2025-12-01 18:32:33.795] [INFO] [BLOCKCHAIN] Blockchain instance created
+[2025-12-01 18:32:33.795] [INFO] [BLOCKCHAIN] Initializing blockchain
+[2025-12-01 18:32:33.795] [INFO] [BLOCKCHAIN] Creating genesis block
+[2025-12-01 18:32:33.795] [INFO] [BLOCKCHAIN] Using TESTNET genesis address: tGXC9fab7317231b966af85ac453e168c0932
+[2025-12-01 18:32:33.796] [INFO] [BLOCKCHAIN] Using testnet difficulty: 0.1
+[2025-12-01 18:32:33.797] [INFO] [BLOCKCHAIN] Mining genesis block (difficulty: 2 leading zeros)
+[2025-12-01 18:32:33.797] [INFO] [BLOCKCHAIN] Genesis block mined after 126 attempts
+[2025-12-01 18:32:33.797] [INFO] [BLOCKCHAIN] Genesis block created with hash: 16fbfb927244df25282d911d1bee8f3f91a3687e9869dcf096fe40de300be50c
+[2025-12-01 18:32:33.797] [INFO] [BLOCKCHAIN] Initializing traceability system
+[2025-12-01 18:32:33.797] [INFO] [BLOCKCHAIN] Traceability index built with 0 entries
+[2025-12-01 18:32:33.797] [INFO] [BLOCKCHAIN] Blockchain initialized successfully with 1 blocks
+[2025-12-01 18:32:33.797] [INFO] [NETWORK] Network instance created
+[2025-12-01 18:32:33.797] [INFO] [NETWORK] Starting network on port 9333
+[2025-12-01 18:32:33.797] [INFO] [NETWORK] Network started successfully on port 9333
+[2025-12-01 18:32:33.797] [INFO] [API] Registered 49 RPC methods
+[2025-12-01 18:32:33.797] [INFO] [API] Starting RPC API server
+[2025-12-01 18:32:33.797] [INFO] [API] RPC API server started successfully on port 8080
+[2025-12-01 18:32:33.797] [INFO] [API] REST API initialized on port 8080
+[2025-12-01 18:32:33.797] [INFO] [API] Starting REST API server
+[2025-12-01 18:32:33.797] [INFO] [API] RPC server loop started
+[2025-12-01 18:32:33.797] [INFO] [API] RPC server loop started
+[2025-12-01 18:32:33.797] [INFO] [API] REST API server started successfully on port 8080
+[2025-12-01 18:32:33.797] [INFO] GXC node initialized successfully
+[2025-12-01 18:32:33.797] [INFO] [API] REST server loop started
+[2025-12-01 18:32:33.797] [INFO] [API] RPC server listening on port 8080
+[2025-12-01 18:32:33.797] [INFO] Blockchain height: 1
+[2025-12-01 18:32:33.797] [INFO] Network listening on port: 9333
+[2025-12-01 18:32:33.797] [INFO] RPC server listening on port: 8080
+[2025-12-01 18:32:33.797] [INFO] REST server listening on port: 8080
+[2025-12-01 18:32:33.797] [INFO] [BLOCKCHAIN] Validating complete blockchain traceability
+[2025-12-01 18:32:33.797] [INFO] [BLOCKCHAIN] Complete blockchain traceability validation successful
+[2025-12-01 18:32:33.797] [INFO] Entering main event loop. Press Ctrl+C to shutdown.
+[2025-12-01 18:32:38.712] [INFO] [API] Creating coinbase transaction for miner: tGXC9fab7317231b966af85ac453e168c0932, Reward: 50.000000 GXC
+[2025-12-01 18:32:38.712] [INFO] [API] submitBlock: Block prepared. Height: 1, Hash: 0000abcd12345678..., Index: 1, Miner: tGXC9fab7317231b966a..., Reward: 50.000000
+[2025-12-01 18:32:38.712] [INFO] [API] submitBlock: Transactions in block: 1
+[2025-12-01 18:32:38.712] [INFO] [API]   TX: 84bc92b9b461faa4..., Coinbase: YES, Outputs: 1
+[2025-12-01 18:32:38.712] [INFO] [API] submitBlock: Calling blockchain->addBlock()...
+[2025-12-01 18:32:38.712] [INFO] [BLOCKCHAIN] addBlock: Starting. Block index: 1, Hash: 0000abcd12345678..., Miner: tGXC9fab7317231b966a...
+[2025-12-01 18:32:38.712] [INFO] [BLOCKCHAIN] addBlock: Original hash: 0000abcd12345678...
+[2025-12-01 18:32:38.712] [INFO] [BLOCKCHAIN] addBlock: Block already has coinbase transaction
+[2025-12-01 18:32:38.712] [INFO] [BLOCKCHAIN] addBlock: Using existing coinbase transaction
