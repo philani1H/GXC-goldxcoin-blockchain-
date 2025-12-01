@@ -1,1 +1,1 @@
-web: python3 testnet_blockchain_node.py
+web: /app/gxc-node --testnet --config=/app/gxc-testnet.conf

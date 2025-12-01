@@ -368,6 +368,7 @@ private:
     
     void registerMethods();
     void serverLoop();
+    void handleClient(int clientSocket);
     std::string createSuccessResponse(const JsonValue& result, const JsonValue& id);
     std::string createErrorResponse(int code, const std::string& message, const JsonValue& id);
     

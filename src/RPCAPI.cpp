@@ -7,6 +7,12 @@
 #include <iomanip>
 #include <stdexcept>
 #include <algorithm>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
 
 RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
     : blockchain(blockchain), network(nullptr), serverPort(port), isRunning(false) {
@@ -326,10 +332,68 @@ std::string RPCAPI::createErrorResponse(int code, const std::string& message, co
 void RPCAPI::serverLoop() {
     LOG_API(LogLevel::INFO, "RPC server loop started");
     
+    // Create socket
+    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSocket < 0) {
+        LOG_API(LogLevel::ERROR, "Failed to create socket");
+        return;
+    }
+    
+    // Set socket options
+    int opt = 1;
+    if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        LOG_API(LogLevel::ERROR, "Failed to set socket options");
+        close(serverSocket);
+        return;
+    }
+    
+    // Bind socket
+    struct sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
+    serverAddr.sin_port = htons(serverPort);
+    
+    if (bind(serverSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
+        LOG_API(LogLevel::ERROR, "Failed to bind socket to port " + std::to_string(serverPort));
+        close(serverSocket);
+        return;
+    }
+    
+    // Listen for connections
+    if (listen(serverSocket, 10) < 0) {
+        LOG_API(LogLevel::ERROR, "Failed to listen on socket");
+        close(serverSocket);
+        return;
+    }
+    
+    LOG_API(LogLevel::INFO, "RPC server listening on port " + std::to_string(serverPort));
+    
+    // Set socket to non-blocking mode
+    int flags = fcntl(serverSocket, F_GETFL, 0);
+    fcntl(serverSocket, F_SETFL, flags | O_NONBLOCK);
+    
     while (isRunning) {
         try {
-            // Simplified server loop - would handle actual HTTP requests in real implementation
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            struct sockaddr_in clientAddr;
+            socklen_t clientLen = sizeof(clientAddr);
+            
+            int clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddr, &clientLen);
+            
+            if (clientSocket < 0) {
+                if (errno == EWOULDBLOCK || errno == EAGAIN) {
+                    // No pending connections, sleep briefly
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    continue;
+                } else {
+                    LOG_API(LogLevel::ERROR, "Failed to accept connection");
+                    continue;
+                }
+            }
+            
+            // Handle client in a separate thread
+            std::thread([this, clientSocket]() {
+                handleClient(clientSocket);
+            }).detach();
             
         } catch (const std::exception& e) {
             LOG_API(LogLevel::ERROR, "Error in RPC server loop: " + std::string(e.what()));
@@ -337,7 +401,112 @@ void RPCAPI::serverLoop() {
         }
     }
     
+    close(serverSocket);
     LOG_API(LogLevel::INFO, "RPC server loop stopped");
+}
+
+void RPCAPI::handleClient(int clientSocket) {
+    try {
+        // Read HTTP request
+        char buffer[8192];
+        ssize_t bytesRead = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
+        
+        if (bytesRead <= 0) {
+            close(clientSocket);
+            return;
+        }
+        
+        buffer[bytesRead] = '\0';
+        std::string request(buffer);
+        
+        // Parse HTTP request
+        std::string method, path, httpVersion;
+        std::istringstream requestStream(request);
+        requestStream >> method >> path >> httpVersion;
+        
+        std::string response;
+        
+        // Handle GET requests (health checks)
+        if (method == "GET") {
+            if (path == "/" || path == "/health" || path == "/ping") {
+                // Health check endpoint
+                JsonValue health;
+                health["status"] = "ok";
+                health["service"] = "GXC Blockchain Node";
+                health["height"] = blockchain->getHeight();
+                health["difficulty"] = blockchain->getDifficulty();
+                health["timestamp"] = Utils::getCurrentTimestamp();
+                
+                std::string body = health.dump();
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += body;
+            } else {
+                // 404 for other GET requests
+                std::string body = "{\"error\":\"Not found\"}";
+                response = "HTTP/1.1 404 Not Found\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += body;
+            }
+        }
+        // Handle POST requests (RPC calls)
+        else if (method == "POST") {
+            // Find the body (after \r\n\r\n)
+            size_t bodyStart = request.find("\r\n\r\n");
+            std::string body;
+            
+            if (bodyStart != std::string::npos) {
+                body = request.substr(bodyStart + 4);
+            }
+            
+            // Process RPC request
+            std::string rpcResponse = processRequest(body);
+            
+            response = "HTTP/1.1 200 OK\r\n";
+            response += "Content-Type: application/json\r\n";
+            response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+            response += "Access-Control-Allow-Origin: *\r\n";
+            response += "Connection: close\r\n";
+            response += "\r\n";
+            response += rpcResponse;
+        }
+        // Handle OPTIONS requests (CORS preflight)
+        else if (method == "OPTIONS") {
+            response = "HTTP/1.1 200 OK\r\n";
+            response += "Access-Control-Allow-Origin: *\r\n";
+            response += "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n";
+            response += "Access-Control-Allow-Headers: Content-Type\r\n";
+            response += "Content-Length: 0\r\n";
+            response += "Connection: close\r\n";
+            response += "\r\n";
+        }
+        else {
+            // 405 Method Not Allowed
+            std::string body = "{\"error\":\"Method not allowed\"}";
+            response = "HTTP/1.1 405 Method Not Allowed\r\n";
+            response += "Content-Type: application/json\r\n";
+            response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+            response += "Connection: close\r\n";
+            response += "\r\n";
+            response += body;
+        }
+        
+        // Send response
+        send(clientSocket, response.c_str(), response.length(), 0);
+        
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error handling client: " + std::string(e.what()));
+    }
+    
+    close(clientSocket);
 }
 
 void RPCAPI::processRequests() {
