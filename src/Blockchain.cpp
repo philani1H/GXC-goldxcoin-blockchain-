@@ -3,6 +3,7 @@
 #include "../include/Utils.h"
 #include "../include/HashUtils.h"
 
+#include "../include/Config.h"
 #include <algorithm>
 #include <numeric>
 #include <sstream>
@@ -51,11 +52,35 @@ bool Blockchain::initialize() {
 void Blockchain::createGenesisBlock() {
     LOG_BLOCKCHAIN(LogLevel::INFO, "Creating genesis block");
     
+    // Determine genesis wallet address based on network mode
+    bool isTestnet = Config::isTestnet();
+    std::string genesisAddress;
+    
+    if (isTestnet) {
+        // Testnet genesis address - matches the miner address
+        genesisAddress = "tGXC9fab7317231b966af85ac453e168c0932";
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Using TESTNET genesis address: " + genesisAddress);
+    } else {
+        // Mainnet genesis address - to be set before mainnet launch
+        genesisAddress = "GXC9fab7317231b966af85ac453e168c0932";
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Using MAINNET genesis address: " + genesisAddress);
+    }
+    
     Block genesis;
     genesis.setIndex(0);
     genesis.setPreviousHash("0000000000000000000000000000000000000000000000000000000000000000");
     genesis.setTimestamp(1640995200); // 2022-01-01 00:00:00 UTC
-    genesis.setDifficulty(1000.0);
+    genesis.setMinerAddress(genesisAddress);
+    
+    // Use easier difficulty for testnet
+    if (isTestnet) {
+        genesis.setDifficulty(0.1);  // Very easy for testnet
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Using testnet difficulty: 0.1");
+    } else {
+        genesis.setDifficulty(1000.0);  // Harder for mainnet
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Using mainnet difficulty: 1000.0");
+    }
+    
     genesis.setNonce(0);
     
     // Create coinbase transaction for genesis
@@ -64,21 +89,37 @@ void Blockchain::createGenesisBlock() {
     coinbase.setCoinbaseTransaction(true);
     coinbase.setTimestamp(genesis.getTimestamp());
     
-    // Add coinbase output
+    // Add coinbase output to genesis address
     TransactionOutput output;
-    output.address = "genesis_address";
+    output.address = genesisAddress;
     output.amount = 50000000.0; // 50M GXC initial supply
     coinbase.addOutput(output);
     
     genesis.addTransaction(coinbase);
     genesis.calculateMerkleRoot();
     
-    // Mine genesis block (easy difficulty)
-    while (!genesis.getHash().substr(0, 4).empty() && 
-           genesis.getHash().substr(0, 4) != "0000") {
+    // Mine genesis block with appropriate difficulty
+    int requiredZeros = isTestnet ? 2 : 4;
+    std::string target(requiredZeros, '0');
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Mining genesis block (difficulty: " + std::to_string(requiredZeros) + " leading zeros)");
+    
+    uint64_t attempts = 0;
+    do {
         genesis.incrementNonce();
-        genesis.calculateHash();
-    }
+        std::string hash = genesis.calculateHash();
+        attempts++;
+        
+        if (attempts % 10000 == 0) {
+            LOG_BLOCKCHAIN(LogLevel::DEBUG, "Genesis mining attempts: " + std::to_string(attempts));
+        }
+        
+        if (hash.substr(0, requiredZeros) == target) {
+            break;
+        }
+    } while (true);
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block mined after " + std::to_string(attempts) + " attempts");
     
     // Add to chain
     std::lock_guard<std::mutex> lock(chainMutex);
