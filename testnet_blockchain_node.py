@@ -210,6 +210,33 @@ class Blockchain:
 class RPCHandler(BaseHTTPRequestHandler):
     blockchain = None
     
+    def log_message(self, format, *args):
+        """Suppress default HTTP server logging"""
+        pass
+    
+    def do_GET(self):
+        """Handle GET requests for health checks"""
+        if self.path == '/' or self.path == '/health' or self.path == '/ping':
+            # Health check endpoint
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            
+            health_data = {
+                'status': 'ok',
+                'service': 'GXC Testnet Node',
+                'height': self.blockchain.current_height if self.blockchain else 0,
+                'difficulty': self.blockchain.current_difficulty if self.blockchain else 0,
+                'timestamp': int(time.time())
+            }
+            self.wfile.write(json.dumps(health_data).encode('utf-8'))
+        else:
+            # For other GET requests, return 404
+            self.send_response(404)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
+    
     def do_POST(self):
         """Handle RPC POST requests"""
         content_length = int(self.headers['Content-Length'])
