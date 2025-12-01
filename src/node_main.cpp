@@ -48,6 +48,12 @@ struct NodeConfig {
     bool daemon = false;
     bool verbose = false;
     bool quiet = false;
+    
+    // Track which values were explicitly set via command line
+    bool dataDirSetViaCommandLine = false;
+    bool networkPortSetViaCommandLine = false;
+    bool rpcPortSetViaCommandLine = false;
+    bool restPortSetViaCommandLine = false;
 };
 
 bool parseArguments(int argc, char* argv[], NodeConfig& config) {
@@ -66,21 +72,27 @@ bool parseArguments(int argc, char* argv[], NodeConfig& config) {
         }
         else if (arg.find("--datadir=") == 0) {
             config.dataDir = arg.substr(10);
+            config.dataDirSetViaCommandLine = true;
         }
         else if (arg == "-d" && i + 1 < argc) {
             config.dataDir = argv[++i];
+            config.dataDirSetViaCommandLine = true;
         }
         else if (arg.find("--port=") == 0) {
             config.networkPort = std::stoi(arg.substr(7));
+            config.networkPortSetViaCommandLine = true;
         }
         else if (arg == "-p" && i + 1 < argc) {
             config.networkPort = std::stoi(argv[++i]);
+            config.networkPortSetViaCommandLine = true;
         }
         else if (arg.find("--rpc-port=") == 0) {
             config.rpcPort = std::stoi(arg.substr(11));
+            config.rpcPortSetViaCommandLine = true;
         }
         else if (arg.find("--rest-port=") == 0) {
             config.restPort = std::stoi(arg.substr(12));
+            config.restPortSetViaCommandLine = true;
         }
         else if (arg == "--testnet") {
             config.testnet = true;
@@ -184,11 +196,33 @@ int main(int argc, char* argv[]) {
             Config::loadFromFile(nodeConfig.configFile);
         }
         
-        // Override config with command line options
-        Config::set("data_dir", nodeConfig.dataDir);
-        Config::set("network_port", std::to_string(nodeConfig.networkPort));
-        Config::set("rpc_port", std::to_string(nodeConfig.rpcPort));
-        Config::set("rest_port", std::to_string(nodeConfig.restPort));
+        // Only override config file with command line options if explicitly set
+        if (nodeConfig.dataDirSetViaCommandLine) {
+            Config::set("data_dir", nodeConfig.dataDir);
+        } else {
+            // Use config file value or default
+            nodeConfig.dataDir = Config::get("data_dir", nodeConfig.dataDir);
+        }
+        
+        if (nodeConfig.networkPortSetViaCommandLine) {
+            Config::set("network_port", std::to_string(nodeConfig.networkPort));
+        } else {
+            nodeConfig.networkPort = std::stoi(Config::get("network_port", std::to_string(nodeConfig.networkPort)));
+        }
+        
+        if (nodeConfig.rpcPortSetViaCommandLine) {
+            Config::set("rpc_port", std::to_string(nodeConfig.rpcPort));
+        } else {
+            nodeConfig.rpcPort = std::stoi(Config::get("rpc_port", std::to_string(nodeConfig.rpcPort)));
+        }
+        
+        if (nodeConfig.restPortSetViaCommandLine) {
+            Config::set("rest_port", std::to_string(nodeConfig.restPort));
+        } else {
+            nodeConfig.restPort = std::stoi(Config::get("rest_port", std::to_string(nodeConfig.restPort)));
+        }
+        
+        // Always set testnet flag
         Config::set("testnet", nodeConfig.testnet ? "true" : "false");
         
         // Create data directory
@@ -198,8 +232,21 @@ int main(int argc, char* argv[]) {
         
         LOG_CORE(LogLevel::INFO, "Data directory: " + nodeConfig.dataDir);
         
+        // Build database path with network-specific naming
+        std::string dbPath;
+        if (nodeConfig.testnet) {
+            dbPath = nodeConfig.dataDir + "/blockchain_testnet.db";
+            LOG_CORE(LogLevel::INFO, "Using TESTNET database: " + dbPath);
+        } else {
+            dbPath = nodeConfig.dataDir + "/blockchain_mainnet.db";
+            LOG_CORE(LogLevel::INFO, "Using MAINNET database: " + dbPath);
+        }
+        
         // Initialize database
-        Database::initialize(nodeConfig.dataDir + "/blockchain.db");
+        if (!Database::initialize(dbPath)) {
+            LOG_CORE(LogLevel::ERROR, "Failed to initialize database");
+            return 1;
+        }
         
         // Initialize blockchain
         Blockchain blockchain;

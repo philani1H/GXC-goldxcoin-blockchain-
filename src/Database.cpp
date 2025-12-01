@@ -1,8 +1,10 @@
 #include "../include/Database.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
+#include "../include/Config.h"
 #include <sqlite3.h>
 #include <sstream>
+#include <fstream>
 
 // Static instance
 std::unique_ptr<Database> Database::instance = nullptr;
@@ -50,7 +52,43 @@ Database& Database::getInstance() {
 
 bool Database::open(const std::string& dbPath) {
     try {
+        // Validate database path based on network mode
+        bool isTestnet = Config::isTestnet();
+        
+        // CRITICAL: Ensure testnet and mainnet databases are completely separate
+        if (isTestnet) {
+            // Testnet mode - database MUST contain "testnet" in path
+            if (dbPath.find("testnet") == std::string::npos) {
+                LOG_DATABASE(LogLevel::ERROR, "TESTNET mode but database path doesn't contain 'testnet': " + dbPath);
+                LOG_DATABASE(LogLevel::ERROR, "REFUSING to open database - risk of mainnet data corruption!");
+                LOG_DATABASE(LogLevel::ERROR, "Database path must contain 'testnet' for testnet mode");
+                return false;
+            }
+            LOG_DATABASE(LogLevel::INFO, "✓ Testnet database path validated");
+        } else {
+            // Mainnet mode - database MUST NOT contain "testnet"
+            if (dbPath.find("testnet") != std::string::npos) {
+                LOG_DATABASE(LogLevel::ERROR, "MAINNET mode but database path contains 'testnet': " + dbPath);
+                LOG_DATABASE(LogLevel::ERROR, "REFUSING to open testnet database in mainnet mode!");
+                LOG_DATABASE(LogLevel::ERROR, "This would corrupt testnet data!");
+                return false;
+            }
+            
+            // Additional safety: Check if mainnet database already exists
+            // If it exists and we're still testing, warn loudly
+            std::ifstream dbFile(dbPath);
+            if (dbFile.good()) {
+                LOG_DATABASE(LogLevel::WARNING, "========================================");
+                LOG_DATABASE(LogLevel::WARNING, "WARNING: MAINNET DATABASE ALREADY EXISTS!");
+                LOG_DATABASE(LogLevel::WARNING, "Path: " + dbPath);
+                LOG_DATABASE(LogLevel::WARNING, "If you're still testing, use --testnet flag!");
+                LOG_DATABASE(LogLevel::WARNING, "========================================");
+            }
+            LOG_DATABASE(LogLevel::INFO, "✓ Mainnet database path validated");
+        }
+        
         LOG_DATABASE(LogLevel::INFO, "Opening database: " + dbPath);
+        LOG_DATABASE(LogLevel::INFO, "Network mode: " + std::string(isTestnet ? "TESTNET" : "MAINNET"));
         
         int rc = sqlite3_open(dbPath.c_str(), &db);
         
