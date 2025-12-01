@@ -92,7 +92,7 @@ void Blockchain::createGenesisBlock() {
     // Add coinbase output to genesis address
     TransactionOutput output;
     output.address = genesisAddress;
-    output.amount = 50000000.0; // 50M GXC initial supply
+    output.amount = 50.0; // Genesis block reward (same as initial block reward)
     coinbase.addOutput(output);
     
     genesis.addTransaction(coinbase);

@@ -38,3 +38,266 @@
 [2025-11-28 12:39:10.556] [INFO] [BLOCKCHAIN] Blockchain instance created
 [2025-11-28 12:39:10.556] [INFO] [BLOCKCHAIN] Initializing blockchain
 [2025-11-28 12:39:10.556] [INFO] [BLOCKCHAIN] Creating genesis block
+[2025-12-01 02:44:12.060] [INFO] Logger initialized: gxc.log
+[2025-12-01 02:44:12.060] [INFO] GXC Node starting up
+[2025-12-01 02:44:12.060] [INFO] Configuration system initialized
+[2025-12-01 02:44:12.060] [INFO] Loading configuration from: gxc-testnet.conf
+[2025-12-01 02:44:12.060] [INFO] Failed to open config file: gxc-testnet.conf
+[2025-12-01 02:44:12.060] [INFO] Config updated: data_dir = ./gxc_data
+[2025-12-01 02:44:12.060] [INFO] Config updated: network_port = 19333
+[2025-12-01 02:44:12.060] [INFO] Config updated: rpc_port = 18332
+[2025-12-01 02:44:12.060] [INFO] Config updated: rest_port = 18080
+[2025-12-01 02:44:12.060] [INFO] Config updated: testnet = true
+[2025-12-01 02:44:12.060] [INFO] Data directory: ./gxc_data
+[2025-12-01 02:44:12.061] [INFO] [DATABASE] Database instance created
+[2025-12-01 02:44:12.061] [INFO] [DATABASE] Opening database: ./gxc_data/blockchain.db
+[2025-12-01 02:44:12.077] [INFO] [DATABASE] Database tables created successfully
+[2025-12-01 02:44:12.077] [INFO] [DATABASE] Database opened successfully
+[2025-12-01 02:44:12.077] [INFO] [BLOCKCHAIN] Blockchain instance created
+[2025-12-01 02:44:12.077] [INFO] [BLOCKCHAIN] Initializing blockchain
+[2025-12-01 02:44:12.077] [INFO] [BLOCKCHAIN] Creating genesis block
+[2025-12-01 06:09:42.277] [INFO] Logger initialized: gxc.log
+[2025-12-01 06:09:42.277] [INFO] GXC Node starting up
+[2025-12-01 06:09:42.277] [INFO] Configuration system initialized
+[2025-12-01 06:09:42.277] [INFO] Config updated: testnet = true
+[2025-12-01 06:09:42.277] [INFO] Data directory: ./gxc_data
+[2025-12-01 06:09:42.277] [INFO] Using TESTNET database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 06:09:42.277] [INFO] [DATABASE] Database instance created
+[2025-12-01 06:09:42.277] [INFO] [DATABASE] ✓ Testnet database path validated
+[2025-12-01 06:09:42.277] [INFO] [DATABASE] Opening database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 06:09:42.277] [INFO] [DATABASE] Network mode: TESTNET
+[2025-12-01 06:09:42.384] [INFO] [DATABASE] Database tables created successfully
+[2025-12-01 06:09:42.384] [INFO] [DATABASE] Database opened successfully
+[2025-12-01 06:09:42.384] [INFO] [BLOCKCHAIN] Blockchain instance created
+[2025-12-01 06:09:42.384] [INFO] [BLOCKCHAIN] Initializing blockchain
+[2025-12-01 06:09:42.384] [INFO] [BLOCKCHAIN] Creating genesis block
+[2025-12-01 06:09:59.313] [INFO] Logger initialized: gxc.log
+[2025-12-01 06:09:59.313] [INFO] GXC Node starting up
+[2025-12-01 06:09:59.313] [INFO] Configuration system initialized
+[2025-12-01 06:09:59.313] [INFO] Config updated: testnet = false
+[2025-12-01 06:09:59.313] [INFO] Data directory: ./gxc_data
+[2025-12-01 06:09:59.313] [INFO] Using MAINNET database: ./gxc_data/blockchain_mainnet.db
+[2025-12-01 06:09:59.313] [INFO] [DATABASE] Database instance created
+[2025-12-01 06:09:59.313] [INFO] [DATABASE] ✓ Mainnet database path validated
+[2025-12-01 06:09:59.313] [INFO] [DATABASE] Opening database: ./gxc_data/blockchain_mainnet.db
+[2025-12-01 06:09:59.313] [INFO] [DATABASE] Network mode: MAINNET
+[2025-12-01 06:09:59.411] [INFO] [DATABASE] Database tables created successfully
+[2025-12-01 06:09:59.411] [INFO] [DATABASE] Database opened successfully
+[2025-12-01 06:09:59.411] [INFO] [BLOCKCHAIN] Blockchain instance created
+[2025-12-01 06:09:59.411] [INFO] [BLOCKCHAIN] Initializing blockchain
+[2025-12-01 06:09:59.411] [INFO] [BLOCKCHAIN] Creating genesis block
+[2025-12-01 06:17:22.147] [INFO] Logger initialized: gxc.log
+[2025-12-01 06:17:22.147] [INFO] GXC Node starting up
+[2025-12-01 06:17:22.147] [INFO] Configuration system initialized
+[2025-12-01 06:17:22.147] [INFO] Config updated: testnet = true
+[2025-12-01 06:17:22.148] [INFO] Data directory: ./gxc_data
+[2025-12-01 06:17:22.148] [INFO] Using TESTNET database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 06:17:22.148] [INFO] [DATABASE] Database instance created
+[2025-12-01 06:17:22.148] [INFO] [DATABASE] ✓ Testnet database path validated
+[2025-12-01 06:17:22.148] [INFO] [DATABASE] Opening database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 06:17:22.148] [INFO] [DATABASE] Network mode: TESTNET
+[2025-12-01 06:17:22.248] [INFO] [DATABASE] Database tables created successfully
+[2025-12-01 06:17:22.248] [INFO] [DATABASE] Database opened successfully
+[2025-12-01 06:17:22.248] [INFO] [BLOCKCHAIN] Blockchain instance created
+[2025-12-01 06:17:22.249] [INFO] [BLOCKCHAIN] Initializing blockchain
+[2025-12-01 06:17:22.249] [INFO] [BLOCKCHAIN] Creating genesis block
+[2025-12-01 06:17:22.249] [INFO] [BLOCKCHAIN] Using TESTNET genesis address: tGXC9fab7317231b966af85ac453e168c0932
+[2025-12-01 06:17:22.249] [INFO] [BLOCKCHAIN] Using testnet difficulty: 0.1
+[2025-12-01 06:17:22.250] [INFO] [BLOCKCHAIN] Mining genesis block (difficulty: 2 leading zeros)
+[2025-12-01 06:17:22.252] [INFO] [BLOCKCHAIN] Genesis block mined after 234 attempts
+[2025-12-01 06:17:22.252] [INFO] [BLOCKCHAIN] Genesis block created with hash: 9427423f7c5c6740861c2f79214fa3e538252e653a09a07f0119d8ff52577a4c
+[2025-12-01 06:17:22.252] [INFO] [BLOCKCHAIN] Initializing traceability system
+[2025-12-01 06:17:22.252] [INFO] [BLOCKCHAIN] Traceability index built with 0 entries
+[2025-12-01 06:17:22.252] [INFO] [BLOCKCHAIN] Blockchain initialized successfully with 1 blocks
+[2025-12-01 06:17:22.252] [INFO] [NETWORK] Network instance created
+[2025-12-01 06:17:22.252] [INFO] [NETWORK] Starting network on port 9333
+[2025-12-01 06:17:22.252] [INFO] [NETWORK] Network started successfully on port 9333
+[2025-12-01 06:17:22.252] [INFO] [API] Registered 46 RPC methods
+[2025-12-01 06:17:22.252] [INFO] [API] Starting RPC API server
+[2025-12-01 06:17:22.252] [INFO] [API] RPC API server started successfully on port 8332
+[2025-12-01 06:17:22.252] [INFO] [API] REST API initialized on port 8080
+[2025-12-01 06:17:22.252] [INFO] [API] Starting REST API server
+[2025-12-01 06:17:22.252] [INFO] [API] REST API server started successfully on port 8080
+[2025-12-01 06:17:22.252] [INFO] GXC node initialized successfully
+[2025-12-01 06:17:22.252] [INFO] Blockchain height: 1
+[2025-12-01 06:17:22.252] [INFO] Network listening on port: 9333
+[2025-12-01 06:17:22.253] [INFO] RPC server listening on port: 8332
+[2025-12-01 06:17:22.253] [INFO] REST server listening on port: 8080
+[2025-12-01 06:17:22.253] [INFO] [BLOCKCHAIN] Validating complete blockchain traceability
+[2025-12-01 06:17:22.253] [INFO] [BLOCKCHAIN] Complete blockchain traceability validation successful
+[2025-12-01 06:17:22.253] [INFO] Entering main event loop. Press Ctrl+C to shutdown.
+[2025-12-01 06:17:22.253] [INFO] [API] RPC server loop started
+[2025-12-01 06:17:22.253] [INFO] [API] REST server loop started
+[2025-12-01 06:17:22.253] [INFO] [API] REST server loop started
+ Ctrl+C to shutdown.
+tion successful
+7:22.252] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:17:22.253] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:17:22.254] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:17:22.254] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:17:27.254] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:17:27.254] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:17:27.254] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:17:27.254] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:17:32.254] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:17:32.254] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:17:32.254] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:17:32.254] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:17:37.255] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:17:37.255] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:17:37.255] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:17:37.255] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:17:42.255] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:17:42.256] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:17:42.256] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:17:42.256] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:17:47.256] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:17:47.256] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:17:47.256] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:17:47.256] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:17:52.256] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:17:52.256] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:17:52.259] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:17:52.259] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:01.285] [INFO] Logger initialized: gxc.log
+[2025-12-01 06:18:01.285] [INFO] GXC Node starting up
+[2025-12-01 06:18:01.285] [INFO] Configuration system initialized
+[2025-12-01 06:18:01.285] [INFO] Config updated: testnet = true
+[2025-12-01 06:18:01.285] [INFO] Data directory: ./gxc_data
+[2025-12-01 06:18:01.285] [INFO] Using TESTNET database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 06:18:01.285] [INFO] [DATABASE] Database instance created
+[2025-12-01 06:18:01.285] [INFO] [DATABASE] ✓ Testnet database path validated
+[2025-12-01 06:18:01.285] [INFO] [DATABASE] Opening database: ./gxc_data/blockchain_testnet.db
+[2025-12-01 06:18:01.285] [INFO] [DATABASE] Network mode: TESTNET
+[2025-12-01 06:18:01.384] [INFO] [DATABASE] Database tables created successfully
+[2025-12-01 06:18:01.384] [INFO] [DATABASE] Database opened successfully
+[2025-12-01 06:18:01.384] [INFO] [BLOCKCHAIN] Blockchain instance created
+[2025-12-01 06:18:01.384] [INFO] [BLOCKCHAIN] Initializing blockchain
+[2025-12-01 06:18:01.384] [INFO] [BLOCKCHAIN] Creating genesis block
+[2025-12-01 06:18:01.384] [INFO] [BLOCKCHAIN] Using TESTNET genesis address: tGXC9fab7317231b966af85ac453e168c0932
+[2025-12-01 06:18:01.384] [INFO] [BLOCKCHAIN] Using testnet difficulty: 0.1
+[2025-12-01 06:18:01.385] [INFO] [BLOCKCHAIN] Mining genesis block (difficulty: 2 leading zeros)
+[2025-12-01 06:18:01.386] [INFO] [BLOCKCHAIN] Genesis block mined after 234 attempts
+[2025-12-01 06:18:01.386] [INFO] [BLOCKCHAIN] Genesis block created with hash: 4ca48e989521f634f7ad7248d96fb2c308b8076e9a6c35f0c522ff0722e1aafb
+[2025-12-01 06:18:01.386] [INFO] [BLOCKCHAIN] Initializing traceability system
+[2025-12-01 06:18:01.386] [INFO] [BLOCKCHAIN] Traceability index built with 0 entries
+[2025-12-01 06:18:01.386] [INFO] [BLOCKCHAIN] Blockchain initialized successfully with 1 blocks
+[2025-12-01 06:18:01.386] [INFO] [NETWORK] Network instance created
+[2025-12-01 06:18:01.386] [INFO] [NETWORK] Starting network on port 9333
+[2025-12-01 06:18:01.386] [INFO] [NETWORK] Network started successfully on port 9333
+[2025-12-01 06:18:01.386] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:01.386] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:01.386] [INFO] [API] Registered 46 RPC methods
+[2025-12-01 06:18:01.386] [INFO] [API] Starting RPC API server
+[2025-12-01 06:18:01.386] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:01.386] [INFO] [API] RPC API server started successfully on port 8332
+[2025-12-01 06:18:01.386] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:01.386] [INFO] [API] REST API initialized on port 8080
+[2025-12-01 06:18:01.386] [INFO] [API] Starting REST API server
+[2025-12-01 06:18:01.386] [INFO] [API] REST API server started successfully on port 8080
+[2025-12-01 06:18:01.387] [INFO] GXC node initialized successfully
+[2025-12-01 06:18:01.387] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:01.387] [INFO] [API] RPC server loop started
+[2025-12-01 06:18:01.387] [INFO] [API] RPC server loop started
+[2025-12-01 06:18:01.387] [INFO] [API] REST server loop started
+[2025-12-01 06:18:01.387] [INFO] Blockchain height: 1
+[2025-12-01 06:18:01.387] [INFO] Network listening on port: 9333
+[2025-12-01 06:18:01.387] [INFO] RPC server listening on port: 8332
+[2025-12-01 06:18:01.387] [INFO] REST server listening on port: 8080
+[2025-12-01 06:18:01.387] [INFO] [BLOCKCHAIN] Validating complete blockchain traceability
+[2025-12-01 06:18:01.387] [INFO] [BLOCKCHAIN] Complete blockchain traceability validation successful
+[2025-12-01 06:18:01.387] [INFO] Entering main event loop. Press Ctrl+C to shutdown.
+[2025-12-01 06:18:06.387] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:06.387] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:06.387] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:06.387] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:11.387] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:11.387] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:11.387] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:11.387] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:16.387] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:16.387] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:16.387] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:16.388] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:21.388] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:21.388] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:21.388] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:21.388] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:26.388] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:26.388] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:26.388] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:26.388] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:31.388] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:31.388] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:31.391] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:31.391] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:36.391] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:36.391] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:36.391] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:36.391] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:41.391] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:41.391] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:41.391] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:41.391] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:46.391] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:46.391] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:46.391] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:46.392] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:51.392] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:51.392] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:51.392] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:51.392] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:18:56.392] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:18:56.392] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:18:56.392] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:18:56.392] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:01.025] [INFO] Node Status - Height: 1, Peers: 0, Difficulty: 1000.000000
+[2025-12-01 06:19:01.392] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:01.392] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:01.392] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:01.392] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:06.393] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:06.393] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:06.393] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:06.393] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:11.393] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:11.393] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:11.393] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:11.393] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:16.393] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:16.393] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:16.393] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:16.393] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:21.394] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:21.394] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:21.394] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:21.394] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:26.394] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:26.394] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:26.394] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:26.394] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:31.394] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:31.394] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:31.396] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:31.397] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:36.397] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:36.397] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:36.397] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:36.397] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:41.397] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:41.397] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:41.397] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:41.397] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:46.397] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:46.397] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:46.397] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:46.397] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:51.398] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:51.398] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:51.398] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:51.398] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:19:56.398] [ERROR] [NETWORK] Invalid peer address: seed1.gxc.network
+[2025-12-01 06:19:56.398] [ERROR] [NETWORK] Invalid peer address: seed2.gxc.network
+[2025-12-01 06:19:56.398] [ERROR] [NETWORK] Invalid peer address: seed3.gxc.network
+[2025-12-01 06:19:56.398] [ERROR] [NETWORK] Failed to connect to peer 127.0.0.1:9334
+[2025-12-01 06:20:01.065] [INFO] Node Status - Height: 1, Peers: 0, Difficulty: 1000.000000
