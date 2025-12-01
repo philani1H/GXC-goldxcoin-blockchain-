@@ -40,8 +40,9 @@ RUN mkdir -p build && cd build && \
 RUN mkdir -p /app/testnet_data /app/logs
 
 # Create testnet config
+# Note: rpc_port will be overridden by Railway's PORT env var in node_main.cpp
 RUN echo "network_port=19333" > /app/gxc-testnet.conf && \
-    echo "rpc_port=\${PORT:-18332}" >> /app/gxc-testnet.conf && \
+    echo "rpc_port=18332" >> /app/gxc-testnet.conf && \
     echo "rest_port=18080" >> /app/gxc-testnet.conf && \
     echo "data_dir=/app/testnet_data" >> /app/gxc-testnet.conf && \
     echo "testnet=true" >> /app/gxc-testnet.conf && \
