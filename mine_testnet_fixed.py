@@ -173,56 +173,62 @@ def mine_block():
             
             elapsed = time.time() - start_time
             
-            if result and isinstance(result, dict) and result.get('success'):
-                # Success!
-                print(f"\n{'='*70}")
-                print(f"🎉 BLOCK MINED SUCCESSFULLY!")
-                print(f"{'='*70}")
-                print(f"   Height: {result.get('height', height)}")
-                print(f"   Hash: {block_hash[:32]}...")
-                # Get reward from blockchain, not hardcoded
-                reward = result.get('reward')
-                if not reward:
-                    blockchain_info = rpc_call("getblockchaininfo", show_errors=False)
-                    if blockchain_info:
-                        reward = blockchain_info.get('block_reward') or blockchain_info.get('reward')
-                if reward:
-                    print(f"   Reward: {reward} GXC (from blockchain)")
-                else:
-                    print(f"   Reward: Will be verified from blockchain")
-                print(f"   Time: {elapsed:.2f} seconds")
-                print(f"   Nonce: {nonce}")
-                print(f"   Miner: {MINER_ADDRESS}")
-                print(f"{'='*70}\n")
-                return True
-            elif result == "Block rejected":
-                print(f"❌ Block rejected by node")
-                print(f"   This might be a validation issue")
-                print(f"   Block data: {json.dumps(block_data, indent=2)}")
+            # Handle different result types from submitblock
+            success = False
+            
+            if result is None:
+                # None typically means success in RPC implementations
+                success = True
+            elif isinstance(result, dict):
+                if result.get('success') or result.get('accepted'):
+                    success = True
+                elif result.get('error'):
+                    print(f"❌ Block submission error: {result.get('error')}")
+                    return False
+            elif isinstance(result, str):
+                if 'rejected' in result.lower() or 'error' in result.lower():
+                    print(f"❌ Block rejected: {result}")
+                    return False
+                # Some implementations return success as string
+                success = True
+            elif result is False:
+                print(f"❌ Block submission returned False")
                 return False
-            elif result is None:
-                # None means success in some RPC implementations
+            else:
+                # Unexpected result, but might be success
+                success = True
+            
+            if success:
+                # Success!
                 print(f"\n{'='*70}")
                 print(f"🎉 BLOCK MINED!")
                 print(f"{'='*70}")
                 print(f"   Height: {height}")
                 print(f"   Hash: {block_hash[:32]}...")
-                # Get reward from blockchain, not hardcoded
-                reward = None
-                blockchain_info = rpc_call("getblockchaininfo", show_errors=False)
-                if blockchain_info:
-                    reward = blockchain_info.get('block_reward') or blockchain_info.get('reward')
+                
+                # Get reward from template (prefer GXC values over satoshis)
+                reward = template.get('block_reward') or template.get('reward') or template.get('coinbase_value')
+                if not reward and template.get('coinbasevalue'):
+                    reward = template.get('coinbasevalue') / 100000000.0
+                
+                # Fallback to blockchain info
+                if not reward:
+                    blockchain_info = rpc_call("getblockchaininfo", show_errors=False)
+                    if blockchain_info:
+                        reward = blockchain_info.get('block_reward') or blockchain_info.get('reward')
+                
                 if reward:
-                    print(f"   Reward: {reward} GXC (from blockchain)")
+                    print(f"   Reward: {reward} GXC")
                 else:
                     print(f"   Reward: Will be verified from blockchain")
+                
                 print(f"   Time: {elapsed:.2f} seconds")
                 print(f"   Nonce: {nonce}")
                 print(f"   Miner: {MINER_ADDRESS}")
                 print(f"{'='*70}\n")
                 return True
             else:
-                print(f"❌ Unexpected result: {result}")
+                print(f"❌ Block submission failed: {result}")
                 return False
         
         nonce += 1

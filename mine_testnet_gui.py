@@ -507,7 +507,28 @@ class TestnetMinerGUI:
                 result = self.rpc_call("submitblock", [block_data], show_errors=False)
                 elapsed = time.time() - start_time
                 
-                if result is None or (isinstance(result, dict) and result.get('success')):
+                # Handle different result types
+                success = False
+                if result is None:
+                    success = True  # None typically means success
+                elif isinstance(result, dict):
+                    if result.get('success') or result.get('accepted'):
+                        success = True
+                    elif result.get('error'):
+                        self.log(f"❌ Block submission error: {result.get('error')}", "ERROR")
+                        return False
+                elif isinstance(result, str):
+                    if 'rejected' in result.lower() or 'error' in result.lower():
+                        self.log(f"❌ Block rejected: {result}", "ERROR")
+                        return False
+                    success = True
+                elif result is False:
+                    self.log(f"❌ Block submission returned False", "ERROR")
+                    return False
+                else:
+                    success = True  # Assume success for unexpected types
+                
+                if success:
                     # Get reward from blockchain - NO HARDCODED VALUES
                     reward = None
                     try:

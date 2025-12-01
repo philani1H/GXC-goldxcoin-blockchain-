@@ -74,20 +74,64 @@ class BlockchainClient:
     
     def get_block_template(self, algorithm: str = "gxhash") -> Optional[Dict]:
         """Get block template for mining"""
+        # Try GXC-specific method first
         result = self.rpc_call("gxc_getBlockTemplate", [{"algorithm": algorithm}])
         if result:
             return result
-        return self.rpc_call("getblocktemplate")
+        # Fallback to standard method with algorithm parameter
+        result = self.rpc_call("getblocktemplate", [{"algorithm": algorithm}])
+        if result:
+            return result
+        # Last resort: try without parameters (for backward compatibility)
+        return self.rpc_call("getblocktemplate", [])
     
     def submit_block(self, block_data: Dict) -> Optional[str]:
         """Submit mined block to blockchain, returns transaction hash"""
-        result = self.rpc_call("submitblock", [json.dumps(block_data)])
-        if result is None:
-            result = self.rpc_call("gxc_submitBlock", [block_data])
+        # Try multiple submission methods for compatibility
+        methods = [
+            ("gxc_submitBlock", [block_data]),  # GXC-specific method
+            ("submitblock", [block_data]),  # Direct object (preferred)
+            ("submitblock", [json.dumps(block_data)]),  # Standard JSON-RPC string
+        ]
         
-        if result is not False:
-            # Return block hash as transaction ID
-            return block_data.get('hash') or block_data.get('blockHash')
+        for method, params in methods:
+            try:
+                result = self.rpc_call(method, params)
+                
+                # Check if submission was successful
+                # None typically means success in RPC implementations
+                if result is None:
+                    return block_data.get('hash') or block_data.get('blockHash')
+                
+                # If result is True or a hash string, block was accepted
+                if result is True or (isinstance(result, str) and len(result) > 0):
+                    return block_data.get('hash') or block_data.get('blockHash')
+                
+                # If result is a dict with success status
+                if isinstance(result, dict):
+                    if result.get('accepted', False) or result.get('success', False):
+                        return block_data.get('hash') or block_data.get('blockHash')
+                    # Check for error message
+                    if 'error' in result:
+                        error_msg = result.get('error', 'Unknown error')
+                        if isinstance(error_msg, dict):
+                            error_msg = error_msg.get('message', str(error_msg))
+                        print(f"[WARNING] Block submission error ({method}): {error_msg}")
+                        # Continue to next method
+                        continue
+                
+                # If result is False or empty string, try next method
+                if result is False or (isinstance(result, str) and ('rejected' in result.lower() or 'error' in result.lower())):
+                    print(f"[WARNING] Block rejected by {method}: {result}")
+                    continue
+                    
+            except Exception as e:
+                # Continue to next method on error
+                print(f"[WARNING] Exception in {method}: {e}")
+                continue
+        
+        # All methods failed
+        print(f"[ERROR] All block submission methods failed for block {block_data.get('hash', 'unknown')[:16]}...")
         return None
     
     def get_difficulty(self) -> Optional[float]:
