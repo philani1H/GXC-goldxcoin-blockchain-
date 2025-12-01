@@ -7,26 +7,7 @@
 #include <cstdint>
 #include <atomic>
 #include <thread>
-
-struct PeerInfo {
-    std::string address;
-    uint16_t port;
-    uint64_t lastSeen;
-    bool connected;
-    uint32_t version;
-    uint32_t height;
-    uint64_t bytesSent;
-    uint64_t bytesReceived;
-    uint32_t messagesSent;
-    uint32_t messagesReceived;
-    uint64_t connectTime;
-    uint64_t uptime;
-    
-    // Initialize defaults
-    PeerInfo() : port(0), lastSeen(0), connected(false), version(0), height(0),
-                 bytesSent(0), bytesReceived(0), messagesSent(0), messagesReceived(0),
-                 connectTime(0), uptime(0) {}
-};
+#include "Network.h"  // For PeerInfo definition
 
 class PeerManager {
 private:

@@ -22,6 +22,8 @@ WORKDIR /app
 COPY CMakeLists.txt ./
 COPY include/ ./include/
 COPY src/ ./src/
+COPY mining/ ./mining/
+COPY tools/ ./tools/
 # Copy third_party (contains json library)
 COPY third_party/ ./third_party/
 # Copy LICENSE and README.md (needed for CPack)

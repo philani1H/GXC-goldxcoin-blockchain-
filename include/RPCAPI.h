@@ -16,6 +16,7 @@ class Blockchain;
 class NetworkNode;
 class Network;
 class Wallet;
+class Transaction;
 
 // RPC Exception class
 class RPCException : public std::runtime_error {
@@ -31,6 +32,7 @@ public:
     static constexpr int RPC_METHOD_NOT_FOUND = -32601;
     static constexpr int RPC_INVALID_REQUEST = -32600;
     static constexpr int RPC_INTERNAL_ERROR = -32603;
+    static constexpr int RPC_VERIFY_REJECTED = -25;
 };
 
 // RPC method result

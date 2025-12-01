@@ -968,6 +968,9 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         LOG_API(LogLevel::ERROR, "Error submitting block: " + std::string(e.what()));
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to submit block: " + std::string(e.what()));
     }
+    
+    // Should never reach here, but satisfy compiler
+    return JsonValue();
 }
 
 // Helper function to calculate block reward with halving
