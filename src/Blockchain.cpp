@@ -402,9 +402,12 @@ void Blockchain::updateUtxoSet(const Block& block) {
             outputIndex++;
             outputsAdded++;
             
-            // Log coinbase outputs for debugging
+            // Log all UTXO additions at INFO level for debugging
             if (tx.isCoinbaseTransaction()) {
-                LOG_BLOCKCHAIN(LogLevel::DEBUG, "Added coinbase UTXO: " + std::to_string(output.amount) + 
+                LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Added coinbase UTXO [" + utxoKey + "]: " + std::to_string(output.amount) + 
+                              " GXC to " + output.address.substr(0, 20) + "...");
+            } else {
+                LOG_BLOCKCHAIN(LogLevel::DEBUG, "Added UTXO [" + utxoKey + "]: " + std::to_string(output.amount) + 
                               " GXC to " + output.address.substr(0, 16) + "...");
             }
         }
@@ -851,11 +854,12 @@ double Blockchain::getBalance(const std::string& address) const {
         if (output.address == address) {
             balance += output.amount;
             utxoCount++;
+            LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " = " + std::to_string(output.amount) + " GXC");
         }
     }
     
-    // Only log at DEBUG level to avoid spam, but log important balance changes
-    LOG_BLOCKCHAIN(LogLevel::DEBUG, "Balance for " + address.substr(0, 16) + "...: " + std::to_string(balance) + " GXC (" + std::to_string(utxoCount) + " UTXOs, " + std::to_string(utxoSet.size()) + " total UTXOs)");
+    // Always log balance queries at INFO level for debugging
+    LOG_BLOCKCHAIN(LogLevel::INFO, "getBalance(" + address.substr(0, 20) + "...): " + std::to_string(balance) + " GXC from " + std::to_string(utxoCount) + " UTXOs (total: " + std::to_string(utxoSet.size()) + ")");
     
     return balance;
 }
