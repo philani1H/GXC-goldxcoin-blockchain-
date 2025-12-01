@@ -6,6 +6,8 @@
 #include <sstream>
 #include <iomanip>
 #include <thread>
+#include <set>
+#include <algorithm>
 #include <nlohmann/json.hpp>
 
 RESTServer::RESTServer(Blockchain* blockchain, uint16_t port)
@@ -128,73 +130,213 @@ std::string RESTServer::handleRequest(const std::string& method, const std::stri
 }
 
 std::string RESTServer::getBlockchainInfo() {
-    nlohmann::json response;
-    
-    response["chain"] = "main";
-    response["blocks"] = static_cast<uint64_t>(blockchain->getHeight());
-    response["bestblockhash"] = blockchain->getLatestBlock().getHash();
-    response["difficulty"] = blockchain->getDifficulty();
-    response["mediantime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-    response["verificationprogress"] = 1.0;
-    response["initialblockdownload"] = false;
-    response["pruned"] = false;
-    response["block_reward"] = static_cast<uint64_t>(5000000.0);
-    response["total_supply"] = 50000000.0;
-    
-    return jsonToString(response);
+    try {
+        nlohmann::json response;
+        
+        uint32_t height = blockchain->getHeight();
+        Block latestBlock = blockchain->getLatestBlock();
+        
+        // Calculate block reward for current height
+        double blockReward = 50.0;  // Base reward
+        uint32_t halvings = height / 1051200;  // Halving every 1051200 blocks
+        for (uint32_t i = 0; i < halvings; i++) {
+            blockReward /= 2.0;
+        }
+        if (blockReward < 0.00000001) {
+            blockReward = 0.00000001;  // Minimum
+        }
+        
+        response["chain"] = "main";
+        response["blocks"] = static_cast<uint64_t>(height);
+        response["height"] = static_cast<uint64_t>(height);  // Alternative field name
+        response["bestblockhash"] = latestBlock.getHash().empty() ? "0000000000000000000000000000000000000000000000000000000000000000" : latestBlock.getHash();
+        response["best_block_hash"] = latestBlock.getHash().empty() ? "0000000000000000000000000000000000000000000000000000000000000000" : latestBlock.getHash();  // Alternative field name
+        response["difficulty"] = blockchain->getDifficulty();
+        response["mediantime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
+        response["verificationprogress"] = 1.0;
+        response["initialblockdownload"] = false;
+        response["pruned"] = false;
+        response["block_reward"] = blockReward;
+        response["reward"] = blockReward;  // Alternative field name
+        response["total_supply"] = 50000000.0;  // Would calculate from actual supply
+        
+        return jsonToString(response);
+        
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error in getBlockchainInfo: " + std::string(e.what()));
+        return createErrorResponse(500, "Internal Server Error", e.what());
+    }
 }
 
 std::string RESTServer::getBlock(const std::string& blockId) {
     try {
-        nlohmann::json response;
+        Block block;
+        uint32_t height = 0;
         
         // Check if blockId is a hash or height
         if (blockId.length() == 64) {
             // Assume it's a hash
-            response["hash"] = blockId;
-            response["height"] = blockchain->getHeight() - 1; // Simplified
-        } else {
-            // Assume it's a height
-            uint32_t height = std::stoul(blockId);
-            if (height >= blockchain->getHeight()) {
+            block = blockchain->getBlock(blockId);
+            if (block.getHash().empty()) {
                 return createErrorResponse(404, "Not Found", "Block not found");
             }
-            response["height"] = height;
-            response["hash"] = "block_hash_" + blockId;
+            height = block.getIndex();
+        } else {
+            // Assume it's a height
+            try {
+                height = std::stoul(blockId);
+                if (height >= blockchain->getHeight()) {
+                    return createErrorResponse(404, "Not Found", "Block not found");
+                }
+                block = blockchain->getBlock(height);
+                if (block.getHash().empty()) {
+                    return createErrorResponse(404, "Not Found", "Block not found");
+                }
+            } catch (const std::exception&) {
+                return createErrorResponse(400, "Bad Request", "Invalid block identifier");
+            }
         }
         
-        response["confirmations"] = 1;
+        // Get previous block for previous hash
+        Block prevBlock;
+        if (height > 0) {
+            prevBlock = blockchain->getBlock(height - 1);
+        }
+        
+        nlohmann::json response;
+        response["hash"] = block.getHash();
+        response["height"] = height;
+        response["number"] = height;  // Alternative field name
+        response["block_number"] = height;  // Explorer expects this
+        response["confirmations"] = blockchain->getHeight() - height;
         response["version"] = 1;
-        response["merkleroot"] = "merkleroot_hash";
-        response["time"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-        response["nonce"] = 0;
+        response["merkleroot"] = block.getMerkleRoot();
+        response["merkle_root"] = block.getMerkleRoot();  // Alternative field name
+        response["time"] = static_cast<uint64_t>(block.getTimestamp());
+        response["timestamp"] = static_cast<uint64_t>(block.getTimestamp());  // Alternative field name
+        response["nonce"] = block.getNonce();
         response["bits"] = "1d00ffff";
-        response["difficulty"] = blockchain->getDifficulty();
-        response["previousblockhash"] = "previous_hash";
-        response["tx"] = nlohmann::json(nlohmann::json::array());
+        response["difficulty"] = block.getDifficulty();
+        response["previousblockhash"] = prevBlock.getHash().empty() ? "0000000000000000000000000000000000000000000000000000000000000000" : prevBlock.getHash();
+        response["parent_hash"] = prevBlock.getHash().empty() ? "0000000000000000000000000000000000000000000000000000000000000000" : prevBlock.getHash();  // Alternative field name
+        response["miner"] = block.getMinerAddress();
+        response["miner_address"] = block.getMinerAddress();  // Alternative field name
+        response["reward"] = block.getBlockReward();
+        response["block_reward"] = block.getBlockReward();  // Alternative field name
+        response["size"] = 0;  // Would calculate actual size
+        response["gas_used"] = 0;
+        response["gas_limit"] = 0;
+        response["transaction_count"] = static_cast<uint32_t>(block.getTransactions().size());
+        response["tx_count"] = static_cast<uint32_t>(block.getTransactions().size());
+        response["nTx"] = static_cast<uint32_t>(block.getTransactions().size());
+        
+        // Include all transactions with full data
+        nlohmann::json transactions(nlohmann::json::array());
+        for (size_t i = 0; i < block.getTransactions().size(); ++i) {
+            const auto& tx = block.getTransactions()[i];
+            nlohmann::json txJson;
+            txJson["hash"] = tx.getHash();
+            txJson["txid"] = tx.getHash();
+            txJson["tx_hash"] = tx.getHash();  // Alternative field name
+            txJson["index"] = static_cast<uint32_t>(i);
+            txJson["tx_index"] = static_cast<uint32_t>(i);  // Alternative field name
+            txJson["time"] = static_cast<uint64_t>(tx.getTimestamp());
+            txJson["timestamp"] = static_cast<uint64_t>(tx.getTimestamp());  // Alternative field name
+            txJson["is_coinbase"] = tx.isCoinbaseTransaction();
+            txJson["coinbase"] = tx.isCoinbaseTransaction();  // Alternative field name
+            
+            // Inputs
+            nlohmann::json inputs(nlohmann::json::array());
+            for (const auto& input : tx.getInputs()) {
+                nlohmann::json inputJson;
+                inputJson["txid"] = input.txHash;
+                inputJson["vout"] = input.outputIndex;
+                inputJson["amount"] = input.amount;
+                inputs.push_back(inputJson);
+            }
+            txJson["vin"] = inputs;
+            txJson["inputs"] = inputs;  // Alternative field name
+            
+            // Outputs
+            nlohmann::json outputs(nlohmann::json::array());
+            for (size_t j = 0; j < tx.getOutputs().size(); ++j) {
+                const auto& output = tx.getOutputs()[j];
+                nlohmann::json outputJson;
+                outputJson["n"] = static_cast<uint32_t>(j);
+                outputJson["value"] = output.amount;
+                outputJson["amount"] = output.amount;  // Alternative field name
+                outputJson["address"] = output.address;
+                outputs.push_back(outputJson);
+            }
+            txJson["vout"] = outputs;
+            txJson["outputs"] = outputs;  // Alternative field name
+            
+            // Traceability info
+            txJson["prev_tx_hash"] = tx.getPrevTxHash();
+            txJson["referenced_amount"] = tx.getReferencedAmount();
+            txJson["sender_address"] = tx.getSenderAddress();
+            txJson["receiver_address"] = tx.getReceiverAddress();
+            txJson["from_address"] = tx.getSenderAddress();  // Alternative field name
+            txJson["to_address"] = tx.getReceiverAddress();  // Alternative field name
+            
+            transactions.push_back(txJson);
+        }
+        response["tx"] = transactions;
+        response["transactions"] = transactions;  // Alternative field name
         
         return jsonToString(response);
         
-    } catch (const std::exception&) {
-        return createErrorResponse(400, "Bad Request", "Invalid block identifier");
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error in getBlock: " + std::string(e.what()));
+        return createErrorResponse(500, "Internal Server Error", e.what());
     }
 }
 
 std::string RESTServer::getBlocks() {
     nlohmann::json response(nlohmann::json::array());
     
-    // Return last 10 blocks (simplified)
+    // Return last 20 blocks with real data
     uint32_t chainLength = blockchain->getHeight();
-    uint32_t startBlock = chainLength > 10 ? chainLength - 10 : 0;
+    uint32_t startBlock = chainLength > 20 ? chainLength - 20 : 0;
     
     for (uint32_t i = startBlock; i < chainLength; ++i) {
-        nlohmann::json block;
-        block["height"] = i;
-        block["hash"] = "block_hash_" + std::to_string(i);
-        block["time"] = static_cast<uint64_t>(Utils::getCurrentTimestamp() - (chainLength - i) * 600);
-        block["tx_count"] = 1;
-        
-        response.push_back(block);
+        try {
+            Block block = blockchain->getBlock(i);
+            if (block.getHash().empty()) {
+                continue;  // Skip invalid blocks
+            }
+            
+            nlohmann::json blockJson;
+            blockJson["height"] = i;
+            blockJson["number"] = i;  // Alternative field name
+            blockJson["block_number"] = i;  // Explorer expects this
+            blockJson["hash"] = block.getHash();
+            blockJson["block_hash"] = block.getHash();  // Alternative field name
+            blockJson["time"] = static_cast<uint64_t>(block.getTimestamp());
+            blockJson["timestamp"] = static_cast<uint64_t>(block.getTimestamp());  // Alternative field name
+            blockJson["tx_count"] = static_cast<uint32_t>(block.getTransactions().size());
+            blockJson["transaction_count"] = static_cast<uint32_t>(block.getTransactions().size());  // Alternative field name
+            blockJson["miner"] = block.getMinerAddress();
+            blockJson["miner_address"] = block.getMinerAddress();  // Alternative field name
+            blockJson["reward"] = block.getBlockReward();
+            blockJson["block_reward"] = block.getBlockReward();  // Alternative field name
+            blockJson["difficulty"] = block.getDifficulty();
+            
+            // Get previous block hash
+            if (i > 0) {
+                Block prevBlock = blockchain->getBlock(i - 1);
+                blockJson["previousblockhash"] = prevBlock.getHash();
+                blockJson["parent_hash"] = prevBlock.getHash();  // Alternative field name
+            } else {
+                blockJson["previousblockhash"] = "0000000000000000000000000000000000000000000000000000000000000000";
+                blockJson["parent_hash"] = "0000000000000000000000000000000000000000000000000000000000000000";
+            }
+            
+            response.push_back(blockJson);
+        } catch (const std::exception&) {
+            // Skip blocks that can't be retrieved
+            continue;
+        }
     }
     
     return jsonToString(response);
@@ -202,26 +344,58 @@ std::string RESTServer::getBlocks() {
 
 std::string RESTServer::getTransaction(const std::string& txHash) {
     try {
-        // In real implementation, would retrieve actual transaction
-        Transaction tx = Transaction();// blockchain->getTransactionByHash(txHash);
+        // Search for transaction in all blocks
+        Transaction tx;
+        uint32_t blockHeight = 0;
+        std::string blockHash;
+        bool found = false;
+        
+        uint32_t chainLength = blockchain->getHeight();
+        for (uint32_t h = 0; h < chainLength && !found; ++h) {
+            Block block = blockchain->getBlock(h);
+            if (block.getHash().empty()) continue;
+            
+            for (const auto& blockTx : block.getTransactions()) {
+                if (blockTx.getHash() == txHash) {
+                    tx = blockTx;
+                    blockHeight = h;
+                    blockHash = block.getHash();
+                    found = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!found || tx.getHash().empty()) {
+            return createErrorResponse(404, "Not Found", "Transaction not found");
+        }
         
         nlohmann::json response;
         response["txid"] = tx.getHash();
         response["hash"] = tx.getHash();
+        response["tx_hash"] = tx.getHash();  // Alternative field name
         response["version"] = 1;
-        response["size"] = 250;
+        response["size"] = 250;  // Would calculate actual size
         response["vsize"] = 250;
         response["weight"] = 1000;
         response["locktime"] = tx.getLockTime();
         response["time"] = static_cast<uint64_t>(tx.getTimestamp());
+        response["timestamp"] = static_cast<uint64_t>(tx.getTimestamp());  // Alternative field name
         response["blocktime"] = static_cast<uint64_t>(tx.getTimestamp());
-        response["confirmations"] = 1;
+        response["block_height"] = blockHeight;
+        response["block_number"] = blockHeight;  // Alternative field name
+        response["block_hash"] = blockHash;
+        response["confirmations"] = chainLength - blockHeight;
+        response["is_coinbase"] = tx.isCoinbaseTransaction();
+        response["coinbase"] = tx.isCoinbaseTransaction();  // Alternative field name
         
         // Traceability information
         response["prev_tx_hash"] = tx.getPrevTxHash();
         response["referenced_amount"] = tx.getReferencedAmount();
         response["sender_address"] = tx.getSenderAddress();
         response["receiver_address"] = tx.getReceiverAddress();
+        response["from_address"] = tx.getSenderAddress();  // Alternative field name
+        response["to_address"] = tx.getReceiverAddress();  // Alternative field name
         response["is_traceable"] = tx.isTraceabilityValid();
         
         // Inputs
@@ -234,23 +408,31 @@ std::string RESTServer::getTransaction(const std::string& txHash) {
             inputs.push_back(inputJson);
         }
         response["vin"] = inputs;
+        response["inputs"] = inputs;  // Alternative field name
         
         // Outputs
         nlohmann::json outputs(nlohmann::json::array());
+        double totalValue = 0.0;
         for (size_t i = 0; i < tx.getOutputs().size(); ++i) {
             const auto& output = tx.getOutputs()[i];
             nlohmann::json outputJson;
             outputJson["n"] = static_cast<uint32_t>(i);
             outputJson["value"] = output.amount;
+            outputJson["amount"] = output.amount;  // Alternative field name
             outputJson["address"] = output.address;
             outputs.push_back(outputJson);
+            totalValue += output.amount;
         }
         response["vout"] = outputs;
+        response["outputs"] = outputs;  // Alternative field name
+        response["value"] = totalValue;
+        response["amount"] = totalValue;  // Alternative field name
         
         return jsonToString(response);
         
-    } catch (const std::exception&) {
-        return createErrorResponse(404, "Not Found", "Transaction not found");
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error in getTransaction: " + std::string(e.what()));
+        return createErrorResponse(500, "Internal Server Error", e.what());
     }
 }
 
@@ -280,52 +462,155 @@ std::string RESTServer::submitTransaction(const std::string& txData) {
 }
 
 std::string RESTServer::getAddressBalance(const std::string& address) {
-    nlohmann::json response;
-    
-    // In real implementation, would calculate actual balance
-    response["address"] = address;
-    response["balance"] = 100.0; // Example balance
-    response["confirmed"] = 100.0;
-    response["unconfirmed"] = 0.0;
-    response["tx_count"] = 5;
-    
-    return jsonToString(response);
+    try {
+        nlohmann::json response;
+        
+        // Get real balance from blockchain
+        double balance = blockchain->getBalance(address);
+        
+        // Count transactions for this address
+        uint32_t txCount = 0;
+        uint32_t chainLength = blockchain->getHeight();
+        for (uint32_t h = 0; h < chainLength; ++h) {
+            Block block = blockchain->getBlock(h);
+            if (block.getHash().empty()) continue;
+            
+            for (const auto& tx : block.getTransactions()) {
+                // Check if address is in outputs (receiving)
+                for (const auto& output : tx.getOutputs()) {
+                    if (output.address == address) {
+                        txCount++;
+                        break;
+                    }
+                }
+                // Check if address is in inputs (sending) - would need to trace back
+                // For now, just count outputs
+            }
+        }
+        
+        response["address"] = address;
+        response["balance"] = balance;
+        response["confirmed"] = balance;
+        response["unconfirmed"] = 0.0;  // Would calculate from mempool
+        response["tx_count"] = txCount;
+        response["transaction_count"] = txCount;  // Alternative field name
+        
+        return jsonToString(response);
+        
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error in getAddressBalance: " + std::string(e.what()));
+        return createErrorResponse(500, "Internal Server Error", e.what());
+    }
 }
 
 std::string RESTServer::getAddressTransactions(const std::string& address) {
-    nlohmann::json response = nlohmann::json::array();
-    
-    // Get transaction chain for this address using traceability system
-    auto txChain = std::vector<std::string>();  // Placeholder - would use blockchain->getTransactionChain(address, 20)
-    
-    for (const auto& txHash : txChain) {
-        try {
-            Transaction tx;  // Placeholder - would use blockchain->getTransactionByHash(txHash)
+    try {
+        nlohmann::json response = nlohmann::json::array();
+        
+        // Get transaction chain for this address using traceability system
+        std::vector<std::string> txChain = blockchain->getTransactionChain(address, 50);
+        
+        uint32_t chainLength = blockchain->getHeight();
+        
+        // Also search all blocks for transactions involving this address
+        std::set<std::string> seenTxHashes;
+        
+        for (uint32_t h = 0; h < chainLength; ++h) {
+            Block block = blockchain->getBlock(h);
+            if (block.getHash().empty()) continue;
             
-            nlohmann::json txJson;
-            txJson["txid"] = tx.getHash();
-            txJson["time"] = static_cast<uint64_t>(tx.getTimestamp());
-            txJson["amount"] = tx.getTotalOutputAmount();
-            txJson["confirmations"] = 1;
-            txJson["prev_tx_hash"] = tx.getPrevTxHash(); // Traceability info
-            
-            response.push_back(txJson);
-        } catch (const std::exception&) {
-            // Skip invalid transactions
+            for (const auto& tx : block.getTransactions()) {
+                // Skip if already seen
+                if (seenTxHashes.find(tx.getHash()) != seenTxHashes.end()) {
+                    continue;
+                }
+                
+                bool involvesAddress = false;
+                double amount = 0.0;
+                
+                // Check if address is in outputs (receiving)
+                for (const auto& output : tx.getOutputs()) {
+                    if (output.address == address) {
+                        involvesAddress = true;
+                        amount += output.amount;
+                    }
+                }
+                
+                // Check if address is sender (would need to trace inputs)
+                if (tx.getSenderAddress() == address || tx.getReceiverAddress() == address) {
+                    involvesAddress = true;
+                }
+                
+                if (involvesAddress) {
+                    seenTxHashes.insert(tx.getHash());
+                    
+                    nlohmann::json txJson;
+                    txJson["txid"] = tx.getHash();
+                    txJson["hash"] = tx.getHash();
+                    txJson["tx_hash"] = tx.getHash();  // Alternative field name
+                    txJson["time"] = static_cast<uint64_t>(tx.getTimestamp());
+                    txJson["timestamp"] = static_cast<uint64_t>(tx.getTimestamp());  // Alternative field name
+                    txJson["amount"] = amount > 0 ? amount : tx.getTotalOutputAmount();
+                    txJson["value"] = amount > 0 ? amount : tx.getTotalOutputAmount();  // Alternative field name
+                    txJson["block_height"] = h;
+                    txJson["block_number"] = h;  // Alternative field name
+                    txJson["block_hash"] = block.getHash();
+                    txJson["confirmations"] = chainLength - h;
+                    txJson["prev_tx_hash"] = tx.getPrevTxHash();  // Traceability info
+                    txJson["is_coinbase"] = tx.isCoinbaseTransaction();
+                    
+                    // Add input/output info
+                    nlohmann::json inputs(nlohmann::json::array());
+                    for (const auto& input : tx.getInputs()) {
+                        nlohmann::json inputJson;
+                        inputJson["txid"] = input.txHash;
+                        inputJson["vout"] = input.outputIndex;
+                        inputJson["amount"] = input.amount;
+                        inputs.push_back(inputJson);
+                    }
+                    txJson["vin"] = inputs;
+                    
+                    nlohmann::json outputs(nlohmann::json::array());
+                    for (size_t i = 0; i < tx.getOutputs().size(); ++i) {
+                        const auto& output = tx.getOutputs()[i];
+                        nlohmann::json outputJson;
+                        outputJson["n"] = static_cast<uint32_t>(i);
+                        outputJson["value"] = output.amount;
+                        outputJson["address"] = output.address;
+                        outputs.push_back(outputJson);
+                    }
+                    txJson["vout"] = outputs;
+                    
+                    response.push_back(txJson);
+                }
+            }
         }
+        
+        // Sort by block height descending (newest first)
+        std::sort(response.begin(), response.end(), 
+            [](const nlohmann::json& a, const nlohmann::json& b) {
+                return a.value("block_height", 0) > b.value("block_height", 0);
+            });
+        
+        return jsonToString(response);
+        
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error in getAddressTransactions: " + std::string(e.what()));
+        return createErrorResponse(500, "Internal Server Error", e.what());
     }
-    
-    return jsonToString(response);
 }
 
 std::string RESTServer::traceTransaction(const std::string& txHash) {
     try {
         // Use the traceability system to trace transaction lineage
-        auto lineage = std::vector<std::string>();  // Placeholder - would use blockchain->traceTransactionLineage(txHash)
+        std::vector<std::string> lineage = blockchain->traceTransactionLineage(txHash);
+        bool isLineageValid = blockchain->isLineageValid(txHash);
         
         nlohmann::json response;
         response["transaction"] = txHash;
-        response["is_lineage_valid"] = true;  // Placeholder - would use blockchain->isLineageValid(txHash)
+        response["tx_hash"] = txHash;  // Alternative field name
+        response["is_lineage_valid"] = isLineageValid;
+        response["lineage_valid"] = isLineageValid;  // Alternative field name
         
         nlohmann::json lineageArray(nlohmann::json::array());
         for (const auto& hash : lineage) {
@@ -333,11 +618,13 @@ std::string RESTServer::traceTransaction(const std::string& txHash) {
         }
         response["lineage"] = lineageArray;
         response["lineage_length"] = static_cast<uint32_t>(lineage.size());
+        response["lineageLength"] = static_cast<uint32_t>(lineage.size());  // Alternative field name
         
         return jsonToString(response);
         
-    } catch (const std::exception&) {
-        return createErrorResponse(404, "Not Found", "Transaction not found");
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error in traceTransaction: " + std::string(e.what()));
+        return createErrorResponse(500, "Internal Server Error", e.what());
     }
 }
 
