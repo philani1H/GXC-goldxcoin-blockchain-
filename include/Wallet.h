@@ -38,5 +38,6 @@ public:
     // Getters
     std::string getAddress() const { return address; }
     std::string getPublicKey() const { return publicKey; }
+
     std::string getLastTxHash() const { return lastTxHash; }
 };

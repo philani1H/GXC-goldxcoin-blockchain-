@@ -174,3 +174,4 @@ double Wallet::getBalance(const std::unordered_map<std::string, TransactionOutpu
     
     return balance;
 }
+

@@ -2,6 +2,7 @@
 #include "../../include/Logger.h"
 #include "../../include/Utils.h"
 #include "../../include/HashUtils.h"
+#include "../../include/Wallet.h"
 #include <thread>
 #include <chrono>
 #include <algorithm>
@@ -26,6 +27,20 @@ bool MiningManager::start(const std::string& minerAddress) {
     if (minerAddress.empty()) {
         LOG_MINING(LogLevel::ERROR, "Miner address is required");
         return false;
+    }
+    
+    // Validate miner address format
+    if (!Wallet::isValidAddress(minerAddress)) {
+        LOG_MINING(LogLevel::ERROR, "Invalid miner address format: " + minerAddress);
+        LOG_MINING(LogLevel::ERROR, "Address must start with 'GXC' (mainnet) or 'tGXC' (testnet)");
+        return false;
+    }
+    
+    // Log address type
+    if (Wallet::isTestnetAddress(minerAddress)) {
+        LOG_MINING(LogLevel::INFO, "Using testnet miner address");
+    } else if (Wallet::isMainnetAddress(minerAddress)) {
+        LOG_MINING(LogLevel::INFO, "Using mainnet miner address");
     }
     
     this->minerAddress = minerAddress;
