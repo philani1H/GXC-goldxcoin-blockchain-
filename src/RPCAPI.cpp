@@ -202,8 +202,11 @@ void RPCAPI::registerMethods() {
         }
         
         JsonValue utxos(JsonValue::array());
-        // Get UTXOs from blockchain
-        auto utxoSet = blockchain->getUtxoSet();
+        // Use getBalance to ensure proper locking, then get UTXOs
+        double balance = blockchain->getBalance(address);
+        
+        // Get UTXOs from blockchain with proper locking
+        const auto& utxoSet = blockchain->getUtxoSet();
         for (const auto& [key, output] : utxoSet) {
             if (output.address == address) {
                 JsonValue utxo;
@@ -213,9 +216,14 @@ void RPCAPI::registerMethods() {
                 utxo["txid"] = key.substr(0, key.find('_'));
                 utxo["vout"] = 0;
                 utxo["scriptPubKey"] = output.script;
+                utxo["confirmations"] = 1;
                 utxos.push_back(utxo);
             }
         }
+        
+        LOG_API(LogLevel::INFO, "listunspent for " + address.substr(0, 16) + "...: " + 
+                std::to_string(utxos.size()) + " UTXOs, balance: " + std::to_string(balance));
+        
         return utxos;
     };
     rpcMethods["listunspent"] = [this](const JsonValue& params) {
@@ -1298,13 +1306,23 @@ Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
 }
 
 JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
-    JsonValue result;
-    
-    uint32_t currentHeight = blockchain->getHeight();
-    double blockReward = calculateBlockReward(currentHeight);
-    
-    result["version"] = 1;
-    result["previousblockhash"] = blockchain->getLatestBlock().getHash();
+    try {
+        JsonValue result;
+        
+        uint32_t currentHeight = blockchain->getHeight();
+        Block latestBlock = blockchain->getLatestBlock();
+        
+        if (latestBlock.getHash().empty()) {
+            throw RPCException(RPCException::RPC_INTERNAL_ERROR, "No blocks in chain");
+        }
+        
+        double blockReward = calculateBlockReward(currentHeight);
+        
+        LOG_API(LogLevel::DEBUG, "getBlockTemplate: height=" + std::to_string(currentHeight) + 
+                ", reward=" + std::to_string(blockReward) + ", prevHash=" + latestBlock.getHash().substr(0, 16) + "...");
+        
+        result["version"] = 1;
+        result["previousblockhash"] = latestBlock.getHash();
     result["transactions"] = JsonValue(JsonValue::array());
     result["coinbaseaux"] = JsonValue(JsonValue::object());
     result["coinbasevalue"] = static_cast<uint64_t>(blockReward * 100000000); // Convert to satoshis
@@ -1323,6 +1341,11 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
     result["difficulty"] = blockchain->getDifficulty();
     
     return result;
+    
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "getBlockTemplate error: " + std::string(e.what()));
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to get block template: " + std::string(e.what()));
+    }
 }
 
 // Network methods

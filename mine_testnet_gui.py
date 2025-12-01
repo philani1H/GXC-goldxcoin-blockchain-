@@ -450,15 +450,21 @@ class TestnetMinerGUI:
             
             # Check if valid (testnet - easy difficulty)
             if block_hash.startswith('0'):
-                # Get block reward from template or blockchain info
-                block_reward = template.get('coinbasevalue') or template.get('coinbase_value') or 12.5
+                # Get block reward from template (prefer GXC values over satoshis)
+                block_reward = template.get('block_reward') or template.get('reward') or template.get('coinbase_value')
+                
+                # If coinbasevalue is in satoshis, convert to GXC
+                if not block_reward and template.get('coinbasevalue'):
+                    block_reward = template.get('coinbasevalue') / 100000000.0
+                
+                # Fallback to blockchain info or network default
                 if not block_reward:
                     try:
                         blockchain_info = self.rpc_call("getblockchaininfo", [], show_errors=False)
                         if blockchain_info:
-                            block_reward = blockchain_info.get('block_reward') or blockchain_info.get('reward') or CURRENT_NETWORK.get('block_reward', 12.5)
+                            block_reward = blockchain_info.get('block_reward') or blockchain_info.get('reward') or CURRENT_NETWORK.get('block_reward', 50.0)
                     except:
-                        block_reward = CURRENT_NETWORK.get('block_reward', 12.5)
+                        block_reward = CURRENT_NETWORK.get('block_reward', 50.0)
                 
                 # Create coinbase transaction to pay the miner
                 coinbase_tx = {
