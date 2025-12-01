@@ -181,6 +181,7 @@ void RPCAPI::registerMethods() {
     
     // Wallet methods
     rpcMethods["getbalance"] = [this](const JsonValue& params) { return getBalance(params); };
+    rpcMethods["gxc_getBalance"] = [this](const JsonValue& params) { return getBalance(params); };
     rpcMethods["getaddressbalance"] = [this](const JsonValue& params) { return getBalance(params); };
     rpcMethods["getaccountbalance"] = [this](const JsonValue& params) { return getBalance(params); };
     rpcMethods["listunspent"] = [this](const JsonValue& params) {
@@ -208,7 +209,9 @@ void RPCAPI::registerMethods() {
     rpcMethods["getmininginfo"] = [this](const JsonValue& params) { return getMiningInfo(params); };
     rpcMethods["getnetworkhashps"] = [this](const JsonValue& params) { return getNetworkHashPS(params); };
     rpcMethods["submitblock"] = [this](const JsonValue& params) { return submitBlock(params); };
+    rpcMethods["gxc_submitBlock"] = [this](const JsonValue& params) { return submitBlock(params); };
     rpcMethods["getblocktemplate"] = [this](const JsonValue& params) { return getBlockTemplate(params); };
+    rpcMethods["gxc_getBlockTemplate"] = [this](const JsonValue& params) { return getBlockTemplate(params); };
     
     // Traceability methods
     rpcMethods["tracetransaction"] = [this](const JsonValue& params) {

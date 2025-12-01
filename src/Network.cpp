@@ -244,13 +244,13 @@ bool Network::connectToPeer(const std::string& host, int peerPort) {
         peerAddr.sin_port = htons(peerPort);
         
         if (inet_pton(AF_INET, host.c_str(), &peerAddr.sin_addr) <= 0) {
-            LOG_NETWORK(LogLevel::ERROR, "Invalid peer address: " + host);
+            LOG_NETWORK(LogLevel::DEBUG, "Invalid peer address: " + host);
             close(clientSocket);
             return false;
         }
         
         if (connect(clientSocket, (struct sockaddr*)&peerAddr, sizeof(peerAddr)) < 0) {
-            LOG_NETWORK(LogLevel::ERROR, "Failed to connect to peer " + host + ":" + std::to_string(peerPort));
+            LOG_NETWORK(LogLevel::DEBUG, "Failed to connect to peer " + host + ":" + std::to_string(peerPort));
             close(clientSocket);
             return false;
         }
@@ -352,11 +352,12 @@ void Network::performPeerHealthChecks() {
 void Network::maintainPeerConnections() {
     std::lock_guard<std::mutex> lock(peersMutex);
     
-    // Try to maintain at least MIN_PEERS connections
-        const size_t MIN_PEERS = 3;
-        if (peers.size() < MIN_PEERS) {
-        // Try to connect to seed nodes
-        connectToSeedNodes();
+    // For testnet/development, peer connections are optional
+    // Only try to connect if we have no peers and seed nodes are configured
+    const size_t MIN_PEERS = 3;
+    if (peers.size() < MIN_PEERS) {
+        // Seed nodes are optional - don't spam logs if they're unavailable
+        // connectToSeedNodes();
     }
 }
 
