@@ -183,8 +183,11 @@ bool Blockchain::addBlock(const Block& block) {
         }
         
         // Validate block
+        // NOTE: We already hold chainMutex, so we can't call methods that try to lock it
+        // Pass chain.size() directly instead of calling getHeight()
         LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Starting block validation...");
-        bool validationResult = validateBlock(blockToAdd);
+        uint32_t expectedIndex = chain.size(); // This is getHeight() without the lock
+        bool validationResult = validateBlockInternal(blockToAdd, expectedIndex);
         LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Block validation result: " + std::string(validationResult ? "PASS" : "FAIL"));
         
         if (!validationResult) {
@@ -432,19 +435,27 @@ void Blockchain::updateUtxoSet(const Block& block) {
 }
 
 bool Blockchain::validateBlock(const Block& block) {
-    // Basic block validation
-    uint32_t expectedIndex = getHeight();
+    std::lock_guard<std::mutex> lock(chainMutex);
+    return validateBlockInternal(block, chain.size());
+}
+
+bool Blockchain::validateBlockInternal(const Block& block, uint32_t expectedIndex) {
+    // Internal validation that doesn't lock mutex (caller must hold lock)
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Checking block index...");
     if (block.getIndex() != expectedIndex) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid block index: got " + std::to_string(block.getIndex()) + 
                       ", expected " + std::to_string(expectedIndex));
         return false;
     }
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Index OK (" + std::to_string(block.getIndex()) + ")");
     
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Checking previous block...");
     if (!lastBlock) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "No previous block (lastBlock is null). Chain size: " + std::to_string(chain.size()));
         return false;
     }
     
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Checking previous hash...");
     std::string blockPrevHash = block.getPreviousHash();
     std::string lastBlockHash = lastBlock->getHash();
     if (blockPrevHash != lastBlockHash) {
@@ -452,20 +463,26 @@ bool Blockchain::validateBlock(const Block& block) {
                       "..., lastBlock has " + lastBlockHash.substr(0, 16) + "...");
         return false;
     }
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Previous hash OK");
     
     // Validate proof of work
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Validating proof of work...");
     if (!validateProofOfWork(block)) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid proof of work for block at index " + std::to_string(block.getIndex()));
         return false;
     }
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Proof of work OK");
     
     // Validate transactions
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Validating " + std::to_string(block.getTransactions().size()) + " transactions...");
     for (const auto& tx : block.getTransactions()) {
         if (!validateTransaction(tx)) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid transaction in block: " + tx.getHash().substr(0, 16) + "...");
             return false;
         }
     }
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: All transactions valid");
+
     
     // Validate merkle root - Note: For blocks submitted by miners, the merkle root might differ
     // if we added a coinbase transaction, but we still accept the miner's hash as proof of work
