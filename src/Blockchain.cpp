@@ -208,7 +208,17 @@ bool Blockchain::addBlock(const Block& block) {
                       ", Hash: " + blockPtr->getHash().substr(0, 16) + "...");
         
         // Update UTXO set (add outputs, remove inputs)
+        // This must be called BEFORE any balance queries to ensure wallet is updated
         updateUtxoSet(blockToAdd);
+        
+        // Log coinbase reward if present
+        for (const auto& tx : blockToAdd.getTransactions()) {
+            if (tx.isCoinbaseTransaction() && !tx.getOutputs().empty()) {
+                const auto& coinbaseOutput = tx.getOutputs()[0];
+                LOG_BLOCKCHAIN(LogLevel::INFO, "Coinbase reward: " + std::to_string(coinbaseOutput.amount) + 
+                              " GXC to " + coinbaseOutput.address.substr(0, 16) + "...");
+            }
+        }
         
         // Update traceability index for new transactions
         for (const auto& tx : blockToAdd.getTransactions()) {
@@ -366,23 +376,43 @@ double Blockchain::calculateNextDifficulty() const {
 
 // Update UTXO set when block is added
 void Blockchain::updateUtxoSet(const Block& block) {
+    // Note: This function is called from addBlock() which already holds chainMutex
+    // So we don't need to lock here to avoid deadlock
+    
+    uint32_t outputsAdded = 0;
+    uint32_t inputsRemoved = 0;
+    
     for (const auto& tx : block.getTransactions()) {
-        // Remove inputs (spent outputs)
+        // Remove inputs (spent outputs) - mark UTXOs as spent
         if (!tx.isCoinbaseTransaction()) {
             for (const auto& input : tx.getInputs()) {
                 std::string utxoKey = input.txHash + "_" + std::to_string(input.outputIndex);
-                utxoSet.erase(utxoKey);
+                if (utxoSet.find(utxoKey) != utxoSet.end()) {
+                    utxoSet.erase(utxoKey);
+                    inputsRemoved++;
+                }
             }
         }
         
-        // Add outputs (new UTXOs)
+        // Add outputs (new UTXOs) - these become spendable
         uint32_t outputIndex = 0;
         for (const auto& output : tx.getOutputs()) {
             std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
             utxoSet[utxoKey] = output;
             outputIndex++;
+            outputsAdded++;
+            
+            // Log coinbase outputs for debugging
+            if (tx.isCoinbaseTransaction()) {
+                LOG_BLOCKCHAIN(LogLevel::DEBUG, "Added coinbase UTXO: " + std::to_string(output.amount) + 
+                              " GXC to " + output.address.substr(0, 16) + "...");
+            }
         }
     }
+    
+    LOG_BLOCKCHAIN(LogLevel::DEBUG, "UTXO set updated: +" + std::to_string(outputsAdded) + 
+                  " outputs, -" + std::to_string(inputsRemoved) + " inputs. Total UTXOs: " + 
+                  std::to_string(utxoSet.size()));
 }
 
 bool Blockchain::validateBlock(const Block& block) {
@@ -814,15 +844,18 @@ double Blockchain::getBalance(const std::string& address) const {
     std::lock_guard<std::mutex> lock(chainMutex);
     
     double balance = 0.0;
+    uint32_t utxoCount = 0;
     
     // Sum all UTXOs for this address
     for (const auto& [utxoKey, output] : utxoSet) {
         if (output.address == address) {
             balance += output.amount;
+            utxoCount++;
         }
     }
     
-    LOG_BLOCKCHAIN(LogLevel::INFO, "Balance for " + address.substr(0, 16) + "...: " + std::to_string(balance) + " GXC (" + std::to_string(utxoSet.size()) + " total UTXOs)");
+    // Only log at DEBUG level to avoid spam, but log important balance changes
+    LOG_BLOCKCHAIN(LogLevel::DEBUG, "Balance for " + address.substr(0, 16) + "...: " + std::to_string(balance) + " GXC (" + std::to_string(utxoCount) + " UTXOs, " + std::to_string(utxoSet.size()) + " total UTXOs)");
     
     return balance;
 }

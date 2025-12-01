@@ -167,10 +167,15 @@ if __name__ == "__main__":
     height = rpc_call("getblockcount")
     if height is None:
         print("\n❌ Cannot connect to blockchain node!")
-        print("\n💡 To start the node:")
+        print("\n💡 To start the C++ testnet node:")
+        print("   # Build first:")
+        print("   mkdir -p build && cd build")
+        print("   cmake .. -DCMAKE_BUILD_TYPE=Release")
+        print("   make -j$(nproc) gxc-node")
+        print("   # Then run:")
+        print("   ./build/gxc-node --testnet --rpc-port=18332")
+        print("\n   Or use Python fallback node:")
         print("   python3 testnet_blockchain_node.py")
-        print("\n   Or in background:")
-        print("   nohup python3 testnet_blockchain_node.py > node.log 2>&1 &")
         sys.exit(1)
     
     print(f"✅ Node is running! Current height: {height}\n")
