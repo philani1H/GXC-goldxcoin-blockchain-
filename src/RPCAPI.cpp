@@ -226,22 +226,7 @@ void RPCAPI::registerMethods() {
         
         return utxos;
     };
-    rpcMethods["listunspent"] = [this](const JsonValue& params) {
-        std::string address = params.size() > 0 ? params[0].get<std::string>() : "";
-        JsonValue result(JsonValue::array());
-        if (!address.empty()) {
-            // Return UTXOs for address (simplified - would need UTXO access)
-            double balance = blockchain->getBalance(address);
-            if (balance > 0) {
-                JsonValue utxo;
-                utxo["address"] = address;
-                utxo["amount"] = balance;
-                utxo["confirmations"] = 1;
-                result.push_back(utxo);
-            }
-        }
-        return result;
-    };
+    // listunspent is already registered above with full UTXO access
     rpcMethods["getnewaddress"] = [this](const JsonValue& params) { return getNewAddress(params); };
     rpcMethods["sendtoaddress"] = [this](const JsonValue& params) { return sendToAddress(params); };
     rpcMethods["validateaddress"] = [this](const JsonValue& params) { return validateAddress(params); };
