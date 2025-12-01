@@ -1,5 +1,7 @@
 #include "../include/Wallet.h"
 #include "../include/HashUtils.h"
+#include "../include/Crypto.h"
+
 #include <random>
 #include <sstream>
 #include <iomanip>
@@ -9,25 +11,15 @@ Wallet::Wallet() {
 }
 
 void Wallet::generateKeyPair() {
-    // Generate a random private key (256 bits)
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<uint64_t> dis;
+    // Use proper secp256k1 ECDSA key generation
+    Crypto::KeyPair keyPair = Crypto::generateKeyPair();
     
-    std::stringstream ss;
-    for (int i = 0; i < 4; i++) {
-        ss << std::hex << std::setw(16) << std::setfill('0') << dis(gen);
-    }
+    privateKey = keyPair.privateKey;
+    publicKey = keyPair.publicKey;
     
-    privateKey = ss.str();
-    
-    // In a real implementation, we would derive the public key from the private key
-    // using elliptic curve cryptography (secp256k1)
-    publicKey = "PUBLIC_KEY_FOR_" + privateKey;
-    
-    // Generate address from public key
-    std::string hash = ripemd160(sha256(publicKey));
-    address = "GXC" + hash.substr(0, 34); // Simplified address format
+    // Generate address from public key (testnet detection would be done elsewhere)
+    // For now, generate mainnet address
+    address = Crypto::generateAddress(publicKey, false);
     
     // Initialize last transaction hash
     lastTxHash = "";

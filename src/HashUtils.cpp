@@ -4,6 +4,7 @@
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
 
+#include "../include/Crypto.h"
 // Simple SHA-256 implementation using OpenSSL
 std::string sha256(const std::string& data) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
@@ -48,11 +49,10 @@ std::string ripemd160(const std::string& data) {
     return ss.str();
 }
 
-// Simplified Keccak-256 (for demonstration)
+// Proper Keccak-256 implementation
 std::string keccak256(const std::string& data) {
-    // In a real implementation, we would use a proper Keccak-256 library
-    // For simplicity, we'll just use SHA-256 as a placeholder
-    return sha256(data);
+    // Use the proper Keccak-256 from Crypto namespace
+    return Crypto::keccak256(data);
 }
 
 // Calculate Merkle root from a list of transaction hashes

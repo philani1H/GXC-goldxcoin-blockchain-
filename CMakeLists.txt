@@ -720,6 +720,7 @@ set(CORE_SOURCES
     src/ProofOfPrice.cpp
     src/CrossChainBridge.cpp
     src/HashUtils.cpp
+    src/Crypto.cpp
     src/Database.cpp
     src/Config.cpp
     src/Logger.cpp

@@ -1,6 +1,7 @@
 #include "../include/transaction.h"
 #include "../include/HashUtils.h"
 #include "../include/Utils.h"
+#include "../include/Crypto.h"
 #include <sstream>
 #include <algorithm>
 #include <cmath>
@@ -229,20 +230,28 @@ bool Transaction::validateSignatures() const {
             return false;
         }
         
-        // In a real implementation, would verify cryptographic signature
-        // For now, just check that signature exists
+        // Verify ECDSA signature
+        std::string message = input.txHash + std::to_string(input.outputIndex) + std::to_string(input.amount);
+        if (!Crypto::verifySignature(message, input.signature, input.publicKey)) {
+            return false;
+        }
     }
     
     return true;
 }
 
 void Transaction::signInputs(const std::string& privateKey) {
-    // Simplified signing - in practice would use proper cryptographic signing
+    // Proper ECDSA signing with secp256k1
+    // Derive public key from private key
+    std::string publicKey = Crypto::derivePublicKey(privateKey);
+    
     for (auto& input : inputs) {
+        // Create message to sign (transaction data)
         std::string message = input.txHash + std::to_string(input.outputIndex) + std::to_string(input.amount);
-        input.signature = sha256(message + privateKey);
-        // In real implementation, would derive public key from private key
-        input.publicKey = "PUBKEY_" + privateKey.substr(0, 10);
+        
+        // Sign with ECDSA
+        input.signature = Crypto::signData(message, privateKey);
+        input.publicKey = publicKey;
     }
 }
 
