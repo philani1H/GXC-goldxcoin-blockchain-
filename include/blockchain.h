@@ -63,6 +63,7 @@ private:
     void updateUtxoSet(const Block& block);
     double calculateBlockReward(uint32_t height) const;
     double calculateObservedInflation(uint32_t window) const;
+    double calculateNextDifficulty() const;
     void processHalving(uint32_t blockNumber);
     bool validateConsensus(const Block& block) const;
     std::shared_ptr<Block> lastBlock;

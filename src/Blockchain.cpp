@@ -253,20 +253,104 @@ double Blockchain::calculateBlockReward(uint32_t height) const {
     const uint32_t HALVING_INTERVAL = 1051200; // ~4 years
     const double INITIAL_REWARD = 50.0;
     
+    // 1. Base reward with halving (like Bitcoin)
     uint32_t halvings = height / HALVING_INTERVAL;
-    double reward = INITIAL_REWARD;
+    double baseReward = INITIAL_REWARD;
     
-    // Apply halving
     for (uint32_t i = 0; i < halvings; i++) {
-        reward /= 2.0;
+        baseReward /= 2.0;
     }
     
-    // Minimum reward is 0.00000001 GXC
-    if (reward < 0.00000001) {
-        reward = 0.00000001;
+    // 2. Difficulty adjustment factor
+    // Higher difficulty = slightly higher reward (incentivize mining)
+    double difficultyMultiplier = 1.0;
+    if (difficulty > 1.0) {
+        // Max 10% bonus for high difficulty
+        difficultyMultiplier = 1.0 + std::min(0.1, (difficulty - 1.0) / 100.0);
     }
     
-    return reward;
+    // 3. Transaction fee component
+    // Miners get transaction fees on top of base reward
+    double transactionFees = 0.0;
+    for (const auto& tx : pendingTransactions) {
+        transactionFees += tx.getFee();
+    }
+    
+    // 4. Network health bonus
+    // If blocks are being mined slower than target, increase reward slightly
+    double timeBonus = 1.0;
+    if (chain.size() >= 10) {
+        // Calculate average block time for last 10 blocks
+        uint64_t timeDiff = chain.back()->getTimestamp() - chain[chain.size() - 10]->getTimestamp();
+        double avgBlockTime = timeDiff / 10.0;
+        double targetBlockTime = 120.0; // 2 minutes
+        
+        if (avgBlockTime > targetBlockTime * 1.5) {
+            // Blocks too slow, increase reward by up to 5%
+            timeBonus = 1.0 + std::min(0.05, (avgBlockTime - targetBlockTime) / targetBlockTime);
+        }
+    }
+    
+    // 5. Supply cap enforcement
+    double finalReward = baseReward * difficultyMultiplier * timeBonus;
+    
+    // Check if we're approaching max supply
+    if (totalSupply + finalReward > MAX_SUPPLY) {
+        finalReward = MAX_SUPPLY - totalSupply;
+    }
+    
+    // Minimum reward for security (even after cap)
+    if (finalReward < 0.00000001) {
+        finalReward = 0.00000001;
+    }
+    
+    // Add transaction fees (not subject to cap)
+    finalReward += transactionFees;
+    
+    return finalReward;
+}
+
+// Difficulty adjustment (like Bitcoin's 2016 block adjustment)
+double Blockchain::calculateNextDifficulty() const {
+    const uint32_t DIFFICULTY_ADJUSTMENT_INTERVAL = 2016; // ~2 weeks
+    const double TARGET_BLOCK_TIME = 120.0; // 2 minutes
+    
+    uint32_t currentHeight = chain.size();
+    
+    // Only adjust every DIFFICULTY_ADJUSTMENT_INTERVAL blocks
+    if (currentHeight % DIFFICULTY_ADJUSTMENT_INTERVAL != 0) {
+        return difficulty;
+    }
+    
+    // Need at least DIFFICULTY_ADJUSTMENT_INTERVAL blocks
+    if (currentHeight < DIFFICULTY_ADJUSTMENT_INTERVAL) {
+        return difficulty;
+    }
+    
+    // Calculate actual time taken for last DIFFICULTY_ADJUSTMENT_INTERVAL blocks
+    uint64_t startTime = chain[currentHeight - DIFFICULTY_ADJUSTMENT_INTERVAL]->getTimestamp();
+    uint64_t endTime = chain.back()->getTimestamp();
+    uint64_t actualTime = endTime - startTime;
+    
+    // Calculate expected time
+    uint64_t expectedTime = DIFFICULTY_ADJUSTMENT_INTERVAL * TARGET_BLOCK_TIME;
+    
+    // Calculate new difficulty
+    double newDifficulty = difficulty * (static_cast<double>(expectedTime) / actualTime);
+    
+    // Limit adjustment to 4x increase or 1/4 decrease (like Bitcoin)
+    if (newDifficulty > difficulty * 4.0) {
+        newDifficulty = difficulty * 4.0;
+    } else if (newDifficulty < difficulty / 4.0) {
+        newDifficulty = difficulty / 4.0;
+    }
+    
+    // Minimum difficulty
+    if (newDifficulty < 0.001) {
+        newDifficulty = 0.001;
+    }
+    
+    return newDifficulty;
 }
 
 // Update UTXO set when block is added
