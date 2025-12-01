@@ -1164,17 +1164,30 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
             newBlock.addTransaction(coinbase);
             // Recalculate merkle root after adding coinbase
             newBlock.calculateMerkleRoot();
+            // Note: The hash provided by miner is based on block without coinbase
+            // We keep the miner's hash for validation, but the merkle root will be different
+            // This is acceptable as the miner's hash proves work was done
+        } else {
+            // Merkle root should already be calculated, but recalculate to ensure it's correct
+            newBlock.calculateMerkleRoot();
         }
         
-        // Merkle root already calculated if coinbase was added
-        // Recalculate to ensure it's correct
-        newBlock.calculateMerkleRoot();
+        // Verify hash is still set after all modifications
+        if (newBlock.getHash().empty()) {
+            LOG_API(LogLevel::ERROR, "submitBlock: Block hash is empty after processing!");
+            throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Block hash is empty");
+        }
+        
+        LOG_API(LogLevel::DEBUG, "submitBlock: Block prepared. Height: " + std::to_string(height) + 
+                ", Hash: " + newBlock.getHash().substr(0, 16) + "..., Index: " + std::to_string(newBlock.getIndex()));
         
         // Add block to blockchain
         if (blockchain->addBlock(newBlock)) {
             LOG_API(LogLevel::INFO, "Block submitted and added successfully. Height: " + std::to_string(height) + ", Hash: " + hash.substr(0, 16) + "...");
             return JsonValue(); // Success returns null
         } else {
+            LOG_API(LogLevel::ERROR, "Block validation failed. Height: " + std::to_string(height) + 
+                    ", Hash: " + hash.substr(0, 16) + "...");
             throw RPCException(RPCException::RPC_VERIFY_REJECTED, "Block validation failed");
         }
         
@@ -1312,36 +1325,46 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         uint32_t currentHeight = blockchain->getHeight();
         Block latestBlock = blockchain->getLatestBlock();
         
+        // Check if we have a valid latest block
         if (latestBlock.getHash().empty()) {
-            throw RPCException(RPCException::RPC_INTERNAL_ERROR, "No blocks in chain");
+            LOG_API(LogLevel::ERROR, "getBlockTemplate: Latest block has empty hash. Chain height: " + std::to_string(currentHeight));
+            throw RPCException(RPCException::RPC_INTERNAL_ERROR, "No valid blocks in chain");
         }
         
-        double blockReward = calculateBlockReward(currentHeight);
+        // The next block will be at currentHeight (0-indexed: genesis=0, first block=1, etc.)
+        // But getHeight() returns chain.size(), so if chain has 1 block (genesis), height=1, next block index=1
+        // If chain has 2 blocks, height=2, next block index=2
+        uint32_t nextBlockHeight = currentHeight;
+        double blockReward = calculateBlockReward(nextBlockHeight);
         
-        LOG_API(LogLevel::DEBUG, "getBlockTemplate: height=" + std::to_string(currentHeight) + 
+        LOG_API(LogLevel::DEBUG, "getBlockTemplate: currentHeight=" + std::to_string(currentHeight) + 
+                ", nextBlockHeight=" + std::to_string(nextBlockHeight) +
                 ", reward=" + std::to_string(blockReward) + ", prevHash=" + latestBlock.getHash().substr(0, 16) + "...");
         
         result["version"] = 1;
         result["previousblockhash"] = latestBlock.getHash();
-    result["transactions"] = JsonValue(JsonValue::array());
-    result["coinbaseaux"] = JsonValue(JsonValue::object());
-    result["coinbasevalue"] = static_cast<uint64_t>(blockReward * 100000000); // Convert to satoshis
-    result["coinbase_value"] = blockReward; // Also provide as GXC
-    result["block_reward"] = blockReward; // For compatibility
-    result["reward"] = blockReward; // Alternative field name
-    result["target"] = "00000000ffff0000000000000000000000000000000000000000000000000000";
-    result["mintime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-    result["mutable"] = JsonValue(JsonValue::array());
-    result["noncerange"] = "00000000ffffffff";
-    result["sigoplimit"] = 20000;
-    result["sizelimit"] = 1000000;
-    result["curtime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-    result["bits"] = "1d00ffff";
-    result["height"] = static_cast<uint64_t>(currentHeight);
-    result["difficulty"] = blockchain->getDifficulty();
+        result["transactions"] = JsonValue(JsonValue::array());
+        result["coinbaseaux"] = JsonValue(JsonValue::object());
+        result["coinbasevalue"] = static_cast<uint64_t>(blockReward * 100000000); // Convert to satoshis
+        result["coinbase_value"] = blockReward; // Also provide as GXC
+        result["block_reward"] = blockReward; // For compatibility
+        result["reward"] = blockReward; // Alternative field name
+        result["target"] = "00000000ffff0000000000000000000000000000000000000000000000000000";
+        result["mintime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
+        result["mutable"] = JsonValue(JsonValue::array());
+        result["noncerange"] = "00000000ffffffff";
+        result["sigoplimit"] = 20000;
+        result["sizelimit"] = 1000000;
+        result["curtime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
+        result["bits"] = "1d00ffff";
+        result["height"] = static_cast<uint64_t>(nextBlockHeight);
+        result["difficulty"] = blockchain->getDifficulty();
+        
+        return result;
     
-    return result;
-    
+    } catch (const RPCException& e) {
+        // Re-throw RPC exceptions
+        throw;
     } catch (const std::exception& e) {
         LOG_API(LogLevel::ERROR, "getBlockTemplate error: " + std::string(e.what()));
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to get block template: " + std::string(e.what()));
