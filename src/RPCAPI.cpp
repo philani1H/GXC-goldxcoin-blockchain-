@@ -683,11 +683,19 @@ JsonValue RPCAPI::getBlock(const JsonValue& params) {
     result["miner_address"] = block.getMinerAddress();
     result["block_reward"] = block.getBlockReward();
     result["reward"] = block.getBlockReward();
-    result["size"] = 0; // Would calculate actual size
+    
+    // Calculate block size (approximate: hash + merkle root + timestamp + nonce + transactions)
+    uint32_t estimatedSize = 64 + 64 + 8 + 8 + (static_cast<uint32_t>(block.getTransactions().size()) * 256);
+    result["size"] = estimatedSize;
+    
     result["gas_used"] = 0;
     result["gas_limit"] = 0;
-    result["total_difficulty"] = 0.0;
-    result["totalDifficulty"] = 0.0;
+    
+    // Calculate total difficulty (sum of all block difficulties up to this point)
+    // For now, use current difficulty as approximation
+    double totalDifficulty = block.getDifficulty() * (height + 1);
+    result["total_difficulty"] = totalDifficulty;
+    result["totalDifficulty"] = totalDifficulty;
     
     // Block type/consensus
     std::string consensusType = "pow";
@@ -701,6 +709,14 @@ JsonValue RPCAPI::getBlock(const JsonValue& params) {
     result["consensus_type"] = consensusType;
     result["consensusType"] = consensusType;
     result["block_type"] = consensusType;
+    
+    // PoS and advanced fields
+    result["validator_signature"] = block.getValidatorSignature();
+    result["validatorSignature"] = block.getValidatorSignature();
+    result["fee_burn_rate"] = block.getFeeBurnRate();
+    result["feeBurnRate"] = block.getFeeBurnRate();
+    result["pop_reference"] = block.getPopReference();
+    result["popReference"] = block.getPopReference();
     
     // Get all transactions with full data if verbose
     JsonValue transactions = JsonValue(JsonValue::array());
@@ -783,6 +799,45 @@ JsonValue RPCAPI::transactionToJson(const Transaction& tx, uint32_t blockHeight,
     txJson["input"] = "";
     txJson["data"] = "";
     
+    // Traceability fields (GXC specific)
+    txJson["prev_tx_hash"] = tx.getPrevTxHash();
+    txJson["previousTxHash"] = tx.getPrevTxHash();
+    txJson["referenced_amount"] = tx.getReferencedAmount();
+    txJson["referencedAmount"] = tx.getReferencedAmount();
+    
+    // Traceability validation
+    bool traceabilityValid = tx.isTraceabilityValid();
+    txJson["traceability_valid"] = traceabilityValid;
+    txJson["traceabilityValid"] = traceabilityValid;
+    
+    // Transaction metadata
+    txJson["memo"] = tx.getMemo();
+    txJson["lock_time"] = tx.getLockTime();
+    txJson["lockTime"] = tx.getLockTime();
+    
+    // Gold-backed and PoP fields
+    txJson["is_gold_backed"] = tx.isGoldBackedTransaction();
+    txJson["isGoldBacked"] = tx.isGoldBackedTransaction();
+    txJson["pop_reference"] = tx.getPopReference();
+    txJson["popReference"] = tx.getPopReference();
+    
+    // Signature (from first input if available)
+    std::string signature = "";
+    if (!tx.getInputs().empty() && !tx.getInputs()[0].signature.empty()) {
+        signature = tx.getInputs()[0].signature;
+    }
+    txJson["signature"] = signature;
+    
+    // Contract address (empty for regular transactions)
+    txJson["contract_address"] = "";
+    txJson["contractAddress"] = "";
+    
+    // Transaction type (more detailed)
+    std::string txType = tx.isCoinbaseTransaction() ? "coinbase" : 
+                        (tx.isGoldBackedTransaction() ? "gold_backed" : "transfer");
+    txJson["tx_type"] = txType;
+    txJson["transaction_type"] = txType;
+    
     // Inputs
     JsonValue inputs = JsonValue(JsonValue::array());
     for (const auto& input : tx.getInputs()) {
@@ -792,6 +847,8 @@ JsonValue RPCAPI::transactionToJson(const Transaction& tx, uint32_t blockHeight,
         inputJson["outputIndex"] = input.outputIndex;
         inputJson["output_index"] = input.outputIndex;
         inputJson["amount"] = input.amount;
+        inputJson["signature"] = input.signature;
+        inputJson["publicKey"] = input.publicKey;
         inputs.push_back(inputJson);
     }
     txJson["inputs"] = inputs;
@@ -804,6 +861,7 @@ JsonValue RPCAPI::transactionToJson(const Transaction& tx, uint32_t blockHeight,
         outputJson["address"] = output.address;
         outputJson["amount"] = output.amount;
         outputJson["value"] = output.amount;
+        outputJson["script"] = output.script;
         outputs.push_back(outputJson);
     }
     txJson["outputs"] = outputs;
