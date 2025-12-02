@@ -824,16 +824,17 @@
             const labels = JSON.parse(localStorage.getItem('gxc_labels') || '{}');
             return labels[address] || null;
         }
-        
+    </script>
+    
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="/static/realtime.js"></script>
     <script>
         // Real-time updates for transaction detail
-        const txHash = '{{ transaction[0]|default("") }}';
+        const txHashDetail = '{{ transaction[0]|default("") }}';
         const realtime = new GXCRealtime({
             onTransaction: function(tx) {
                 // Update confirmations if this is the transaction being viewed
-                if ((tx.hash || tx.tx_hash) === txHash) {
+                if ((tx.hash || tx.tx_hash) === txHashDetail) {
                     fetch(`/api/v1/stats`)
                         .then(r => r.json())
                         .then(stats => {
@@ -868,8 +869,8 @@
         
         // Add label buttons to addresses
         function addLabelButtons() {
-            const fromAddr = '{{ transaction[3] }}';
-            const toAddr = '{{ transaction[4] }}';
+            const fromAddr = '{{ transaction[3]|default("") }}';
+            const toAddr = '{{ transaction[4]|default("") }}';
             
             // Add label display and button to from address
             const fromElements = document.querySelectorAll('a[href="/address/' + fromAddr + '"]');

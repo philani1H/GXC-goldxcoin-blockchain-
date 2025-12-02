@@ -3666,7 +3666,8 @@ def transaction_detail(tx_hash):
                              traceability_chain=traceability_chain,
                              network_info=network_info,
                              confirmations=confirmations,
-                             current_height=current_height)
+                             current_height=current_height,
+                             forum_url=FORUM_URL)
         
     finally:
         conn.close()
@@ -3910,7 +3911,8 @@ def blocks_list():
     return render_template('blocks.html', 
                          blocks=blocks, 
                          blockchain_node_url=BLOCKCHAIN_NODE_URL,
-                         network_info=network_info)
+                         network_info=network_info,
+                         forum_url=FORUM_URL)
 
 @app.route('/transactions')
 def transactions_list():
