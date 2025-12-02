@@ -72,7 +72,9 @@ public:
     
     // Setters
     void setIndex(uint32_t idx) { index = idx; }
+    void setHash(const std::string& h) { hash = h; }
     void setPreviousHash(const std::string& prevHash) { previousHash = prevHash; }
+    void setMerkleRoot(const std::string& root) { merkleRoot = root; }
     void setTimestamp(std::time_t ts) { timestamp = ts; }
     void setDifficulty(double diff) { difficulty = diff; }
     void setNonce(uint64_t n) { nonce = n; }
