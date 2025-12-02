@@ -107,7 +107,7 @@ public:
     bool saveTransaction(const Transaction& tx, const std::string& blockHash, size_t blockIndex);
     bool saveTransactionInputs(const Transaction& tx);
     bool saveTransactionOutputs(const Transaction& tx);
-    bool updateUtxoSet(const Transaction& tx);
+    bool updateUtxoSet(const Transaction& tx, size_t blockHeight);
     bool saveTraceabilityRecord(const Transaction& tx, size_t blockIndex);
     std::vector<Transaction> getTransactionsByBlockHash(const std::string& blockHash) const;
     std::vector<TransactionInput> getTransactionInputs(const std::string& txHash) const;

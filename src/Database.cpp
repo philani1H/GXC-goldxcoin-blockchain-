@@ -418,7 +418,7 @@ bool Database::saveBlock(const Block& block) {
             return false;
         }
         
-        // Save transactions
+        // Save transactions (this also updates UTXO set)
         for (const auto& tx : block.getTransactions()) {
             if (!saveTransaction(tx, block.getHash(), block.getIndex())) {
                 LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction in block");
@@ -426,6 +426,10 @@ bool Database::saveBlock(const Block& block) {
                 return false;
             }
         }
+        
+        LOG_DATABASE(LogLevel::DEBUG, "Saved " + std::to_string(block.getTransactions().size()) + 
+                    " transactions and updated UTXO set for block at height " + 
+                    std::to_string(block.getIndex()));
         
         // Commit transaction
         if (!executeSQL("COMMIT;")) {
@@ -504,8 +508,9 @@ bool Database::saveTransaction(const Transaction& tx, const std::string& blockHa
             return false;
         }
         
-        // Update UTXO set
-        if (!updateUtxoSet(tx)) {
+        // Update UTXO set (pass block height for proper tracking)
+        if (!updateUtxoSet(tx, blockHeight)) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to update UTXO set");
             return false;
         }
         
@@ -595,8 +600,8 @@ bool Database::saveTransactionOutputs(const Transaction& tx) {
     return true;
 }
 
-bool Database::updateUtxoSet(const Transaction& tx) {
-    // Remove spent UTXOs
+bool Database::updateUtxoSet(const Transaction& tx, size_t blockHeight) {
+    // Remove spent UTXOs (inputs consume previous outputs)
     for (const auto& input : tx.getInputs()) {
         std::string sql = "DELETE FROM utxo WHERE tx_hash = ? AND output_index = ?";
         
@@ -612,13 +617,13 @@ bool Database::updateUtxoSet(const Transaction& tx) {
         }
     }
     
-    // Add new UTXOs
+    // Add new UTXOs (outputs become new unspent outputs)
     const auto& outputs = tx.getOutputs();
     for (size_t i = 0; i < outputs.size(); i++) {
         const auto& output = outputs[i];
         
         std::string sql = R"(
-            INSERT INTO utxo (tx_hash, output_index, address, amount, block_height)
+            INSERT OR REPLACE INTO utxo (tx_hash, output_index, address, amount, block_height)
             VALUES (?, ?, ?, ?, ?)
         )";
         
@@ -626,6 +631,7 @@ bool Database::updateUtxoSet(const Transaction& tx) {
         int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
         
         if (rc != SQLITE_OK) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare UTXO insert statement");
             return false;
         }
         
@@ -633,15 +639,20 @@ bool Database::updateUtxoSet(const Transaction& tx) {
         sqlite3_bind_int(stmt, 2, static_cast<int>(i));
         sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_double(stmt, 4, output.amount);
-        sqlite3_bind_int(stmt, 5, 0); // Would need actual block height
+        sqlite3_bind_int(stmt, 5, static_cast<int>(blockHeight)); // Use actual block height
         
         rc = sqlite3_step(stmt);
         sqlite3_finalize(stmt);
         
         if (rc != SQLITE_DONE) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to insert UTXO: " + std::string(sqlite3_errmsg(db)));
             return false;
         }
     }
+    
+    LOG_DATABASE(LogLevel::DEBUG, "Updated UTXO set: removed " + std::to_string(tx.getInputs().size()) + 
+                " inputs, added " + std::to_string(outputs.size()) + " outputs at block height " + 
+                std::to_string(blockHeight));
     
     return true;
 }

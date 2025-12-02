@@ -1,4 +1,5 @@
 #include "../include/blockchain.h"
+#include "../include/Database.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
 #include "../include/HashUtils.h"
@@ -301,6 +302,24 @@ bool Blockchain::addBlock(const Block& block) {
         
         // Update transaction pool (remove confirmed transactions)
         updateTransactionPool(blockToAdd);
+        
+        // CRITICAL: Save block to database for persistence
+        try {
+            Database& db = Database::getInstance();
+            if (!db.saveBlock(blockToAdd)) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to save block to database! Block: " + 
+                              blockToAdd.getHash().substr(0, 16) + "...");
+                // Don't fail the block addition, but log the error
+                // The block is already in memory, database save failure is non-critical
+            } else {
+                LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Block saved to database successfully. Height: " + 
+                              std::to_string(blockToAdd.getIndex()) + ", Hash: " + 
+                              blockToAdd.getHash().substr(0, 16) + "...");
+            }
+        } catch (const std::exception& e) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Exception saving block to database: " + std::string(e.what()));
+            // Don't fail the block addition, but log the error
+        }
         
         LOG_BLOCKCHAIN(LogLevel::INFO, "Block added successfully. Height: " + 
                       std::to_string(chain.size()) + ", Hash: " + blockToAdd.getHash().substr(0, 16) + "...");
