@@ -270,7 +270,7 @@
             </div>
             <div class="col-md-4">
                 <div class="stat-card">
-                    <div class="stat-value">{{ transaction[2]|default(0) }}</div>
+                    <div class="stat-value">{{ transaction[3]|default(0) }}</div>
                     <div class="stat-label"><i class="fas fa-list-ol me-1"></i>Transaction Index</div>
                 </div>
             </div>
@@ -448,10 +448,12 @@
                             {% if transaction[23] %}  <!-- is_gold_backed -->
                             <span class="badge bg-success me-2">Gold-Backed</span>
                             {% endif %}
-                            {% if transaction[19] %}  <!-- traceability_valid -->
+                            {% if transaction[20] is not none %}  <!-- traceability_valid -->
+                            {% if transaction[20] %}
                             <span class="badge bg-info me-2">Traceability Valid</span>
                             {% else %}
                             <span class="badge bg-danger me-2">Traceability Invalid</span>
+                            {% endif %}
                             {% endif %}
                         </div>
                     </div>
@@ -482,12 +484,86 @@
                 </div>
                 {% endif %}
                 
-                {% if transaction[20] %}  <!-- memo -->
+                {% if transaction[20] %}  <!-- traceability_valid -->
+                <div class="info-row">
+                    <div class="row">
+                        <div class="col-md-3 info-label">Traceability Status</div>
+                        <div class="col-md-9 info-value">
+                            {% if transaction[20] %}
+                            <span class="badge bg-success">Valid</span>
+                            {% else %}
+                            <span class="badge bg-danger">Invalid</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if transaction[21] %}  <!-- memo -->
                 <div class="info-row">
                     <div class="row">
                         <div class="col-md-3 info-label">Memo</div>
                         <div class="col-md-9 info-value">
-                            {{ transaction[20] }}
+                            {{ transaction[21] }}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if transaction[22] and transaction[22] > 0 %}  <!-- lock_time -->
+                <div class="info-row">
+                    <div class="row">
+                        <div class="col-md-3 info-label">Lock Time</div>
+                        <div class="col-md-9 info-value">
+                            {{ transaction[22] }}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if transaction[15] %}  <!-- contract_address -->
+                <div class="info-row">
+                    <div class="row">
+                        <div class="col-md-3 info-label">Contract Address</div>
+                        <div class="col-md-9 info-value">
+                            <a href="/address/{{ transaction[15] }}" class="text-decoration-none">
+                                <div class="hash-text">{{ transaction[15] }}</div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if transaction[16] %}  <!-- signature -->
+                <div class="info-row">
+                    <div class="row">
+                        <div class="col-md-3 info-label">Signature</div>
+                        <div class="col-md-9 info-value">
+                            <div class="hash-text" style="max-height: 100px; overflow-y: auto; font-size: 0.8rem;">
+                                {{ transaction[16] }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if transaction[2] %}  <!-- block_hash -->
+                <div class="info-row">
+                    <div class="row">
+                        <div class="col-md-3 info-label">Block Hash</div>
+                        <div class="col-md-9 info-value">
+                            <div class="hash-text">{{ transaction[2] }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if transaction[24] %}  <!-- pop_reference -->
+                <div class="info-row">
+                    <div class="row">
+                        <div class="col-md-3 info-label">PoP Reference</div>
+                        <div class="col-md-9 info-value">
+                            <div class="hash-text">{{ transaction[24] }}</div>
                         </div>
                     </div>
                 </div>
@@ -717,7 +793,7 @@
                         {% endif %}
                     </div>
                     <div class="mt-3">
-                        {% if transaction[19] %}  <!-- traceability_valid -->
+                        {% if transaction[20] is not none %}  <!-- traceability_valid -->
                         <span class="badge bg-success me-2">
                             <i class="fas fa-check-circle me-1"></i>Traceability Valid
                         </span>
