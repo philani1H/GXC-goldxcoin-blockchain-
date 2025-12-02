@@ -326,15 +326,23 @@ def test_connection():
     return False, None
 
 def check_balance():
-    """Check balance at miner address from blockchain"""
-    # Get REAL balance from blockchain
-    balance = rpc_call("getbalance", [MINER_ADDRESS], show_errors=False)
-    if balance is not None:
-        if isinstance(balance, dict):
-            balance = balance.get('balance', 0.0)
-        print(f"\n💰 Balance from blockchain: {balance} GXC")
-    else:
-        print(f"\n💰 Use 'getbalance' RPC to check actual balance from blockchain")
+    """Check balance at miner address from blockchain (use RPC methods)"""
+    # Try RPC methods first (more reliable)
+    balance = None
+    for method in ["gxc_getBalance", "getbalance", "getaddressbalance"]:
+        result = rpc_call(method, [MINER_ADDRESS], show_errors=False)
+        if result is not None:
+            if isinstance(result, (int, float)):
+                balance = float(result)
+                print(f"\n💰 Balance from blockchain ({method}): {balance} GXC")
+                break
+            elif isinstance(result, dict):
+                balance = result.get('balance') or result.get('amount') or 0.0
+                print(f"\n💰 Balance from blockchain ({method}): {balance} GXC")
+                break
+    
+    if balance is None:
+        print(f"\n💰 Could not get balance from blockchain")
 
 def main():
     print("\n" + "="*70)

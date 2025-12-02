@@ -89,6 +89,26 @@ def mine_block():
             
             elapsed = time.time() - start_time
             
+            # Wait for block to be processed
+            time.sleep(3)
+            
+            # Verify block is confirmed
+            try:
+                current_height = rpc_call("getblockcount") or 0
+                if current_height > 0:
+                    confirmations = current_height - height + 1
+                    if confirmations < 6:
+                        print(f"   ⚠️  Block has {confirmations} confirmations (needs 6+ for full confirmation)")
+                    else:
+                        print(f"   ✅ Block confirmed ({confirmations} confirmations)")
+                    
+                    # Verify block exists on chain
+                    block_check = rpc_call("getblock", [block_hash])
+                    if not block_check:
+                        print(f"   ⚠️  Block not yet found on chain")
+            except:
+                pass
+            
             # Handle different result types
             if result is None:
                 # None typically means success in RPC implementations

@@ -565,10 +565,29 @@ class TestnetMinerGUI:
                         try:
                             # Wait a bit for block to be processed
                             time.sleep(3)
+                            
+                            # Verify block is confirmed (at least 6 blocks deep)
+                            current_height = self.rpc_call("getblockcount", [], show_errors=False) or 0
+                            if current_height == 0:
+                                self.log(f"⚠️ Could not get current height to verify block", "WARNING")
+                                return
+                            
+                            if current_height < height + 6:
+                                confirmations = current_height - height + 1
+                                self.log(f"⚠️ Block {height} has {confirmations} confirmations (needs 6+ for full confirmation)", "WARNING")
+                            
                             # Try to get the block from chain
-                            block_check = self.rpc_call("getblock", [height, False], show_errors=False)
+                            block_check = self.rpc_call("getblock", [block_hash], show_errors=False)
                             if block_check:
-                                self.log(f"✅ Block {height} confirmed on blockchain", "SUCCESS")
+                                block_height_from_node = block_check.get('height') or block_check.get('block_number') or 0
+                                if block_height_from_node == height:
+                                    confirmations = current_height - height + 1
+                                    if confirmations >= 6:
+                                        self.log(f"✅ Block {height} confirmed on blockchain ({confirmations} confirmations)", "SUCCESS")
+                                    else:
+                                        self.log(f"⚠️ Block {height} found but only {confirmations} confirmations (needs 6+)", "WARNING")
+                                else:
+                                    self.log(f"⚠️ Block found but height mismatch: expected {height}, got {block_height_from_node}", "WARNING")
                                 # Check if block has our address in coinbase
                                 block_full = self.rpc_call("getblock", [height, True], show_errors=False)
                                 if block_full and isinstance(block_full, dict):
@@ -835,14 +854,14 @@ class TestnetMinerGUI:
             self.tx_tree.set(item, "Type", "💰 Mining Reward")
     
     def calculate_total_earned_from_blockchain(self, transactions: List[Dict]) -> float:
-        """Calculate total earned from actual blockchain coinbase transactions"""
+        """Calculate total earned from actual blockchain coinbase transactions (only confirmed)"""
         total = 0.0
         for tx in transactions:
             # Only count confirmed coinbase transactions (mining rewards)
             if tx.get('type') == 'coinbase' or tx.get('is_coinbase') or tx.get('isCoinbase'):
                 confirmations = tx.get('confirmations', 0)
-                # Only count if confirmed (1+ confirmations)
-                if confirmations >= 1:
+                # Only count if confirmed (6+ confirmations for real blockchain)
+                if confirmations >= 6:
                     amount = tx.get('amount') or tx.get('value') or 0.0
                     if amount > 0:
                         total += amount
@@ -878,10 +897,11 @@ class TestnetMinerGUI:
             self.total_earned_label.config(text=f"{total_earned:.8f} GXC")
     
     def get_address_transactions(self, address: str, limit: int = 100) -> List[Dict]:
-        """Get transactions for an address from blockchain"""
+        """Get transactions for an address from blockchain (use RPC methods)"""
         try:
-            # Try multiple RPC methods
+            # Try RPC methods first (more reliable) - prioritize gxc_getTransactionsByAddress
             methods = [
+                ("gxc_getTransactionsByAddress", [address, limit]),
                 ("getaddresstransactions", [address, limit]),
                 ("listtransactions", [address, limit]),
                 ("gettransactions", [address, limit]),
@@ -927,9 +947,10 @@ class TestnetMinerGUI:
         
         def fetch():
             try:
-                # Try multiple methods to get balance
+                # Try RPC methods first (more reliable) - prioritize gxc_getBalance
                 balance = 0.0
                 balance_methods = [
+                    ("gxc_getBalance", [address]),
                     ("getbalance", [address]),
                     ("getaddressbalance", [address]),
                     ("getaccountbalance", [address]),
@@ -938,12 +959,20 @@ class TestnetMinerGUI:
                 for method, params in balance_methods:
                     result = self.rpc_call(method, params, show_errors=False)
                     if result is not None:
-                        if isinstance(result, dict):
-                            balance = float(result.get('balance', result.get('amount', 0.0)))
-                        else:
-                            balance = float(result) if result else 0.0
-                        if balance > 0:
+                        if isinstance(result, (int, float)):
+                            balance = float(result)
                             break
+                        elif isinstance(result, dict):
+                            balance = float(result.get('balance', result.get('amount', 0.0)))
+                            if balance > 0:
+                                break
+                        else:
+                            try:
+                                balance = float(result) if result else 0.0
+                                if balance > 0:
+                                    break
+                            except:
+                                pass
                 
                 # Also try to get balance from UTXOs
                 if balance == 0.0:

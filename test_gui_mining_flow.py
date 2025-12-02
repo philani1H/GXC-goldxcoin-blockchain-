@@ -37,10 +37,17 @@ print("=" * 60)
 print("GUI Mining Flow Test")
 print("=" * 60)
 
-# Step 1: Check initial balance
+# Step 1: Check initial balance (use RPC methods)
 print("\n📊 Step 1: Check initial balance")
-balance = rpc_call("getbalance", [ADDRESS])
-print(f"   Balance: {balance} GXC")
+balance = None
+for method in ["gxc_getBalance", "getbalance", "getaddressbalance"]:
+    balance = rpc_call(method, [ADDRESS])
+    if balance is not None:
+        print(f"   ✅ Balance ({method}): {balance} GXC")
+        break
+if balance is None:
+    print("   ❌ Failed to get balance")
+    balance = 0.0
 
 # Step 2: Get block template
 print("\n📦 Step 2: Get block template")
@@ -76,10 +83,18 @@ else:
 
 time.sleep(2)
 
-# Step 4: Check balance after mining
+# Step 4: Check balance after mining (use RPC methods)
 print("\n💰 Step 4: Check balance after mining")
-balance_after = rpc_call("getbalance", [ADDRESS])
-print(f"   Balance: {balance_after} GXC")
+time.sleep(3)  # Wait for block to be processed
+balance_after = None
+for method in ["gxc_getBalance", "getbalance", "getaddressbalance"]:
+    balance_after = rpc_call(method, [ADDRESS])
+    if balance_after is not None:
+        print(f"   ✅ Balance ({method}): {balance_after} GXC")
+        break
+if balance_after is None:
+    print("   ❌ Failed to get balance")
+    balance_after = balance
 
 # Step 5: Try all balance methods
 print("\n🔍 Step 5: Try all balance query methods")
@@ -105,13 +120,30 @@ if utxos:
 else:
     print("   No UTXOs found")
 
-# Step 7: Check transactions
+# Step 7: Check transactions (use RPC methods, only count confirmed)
 print("\n📜 Step 7: Check transactions")
-txs = rpc_call("listtransactions", [ADDRESS, 10])
+txs = None
+for method in ["gxc_getTransactionsByAddress", "getaddresstransactions", "listtransactions"]:
+    txs = rpc_call(method, [ADDRESS, 10])
+    if txs:
+        break
+
 if txs:
     print(f"   Transaction count: {len(txs)}")
-    total_earned = sum(tx.get('amount', 0) for tx in txs if tx.get('amount', 0) > 0)
-    print(f"   Total earned: {total_earned} GXC")
+    # Only count confirmed transactions (6+ confirmations)
+    current_height = rpc_call("getblockcount") or rpc_call("getblockchaininfo", []).get('blocks', 0) if rpc_call("getblockchaininfo", []) else 0
+    confirmed_txs = []
+    for tx in txs:
+        confirmations = tx.get('confirmations', 0)
+        block_number = tx.get('block_number') or tx.get('block') or 0
+        if confirmations == 0 and block_number > 0 and current_height > 0:
+            confirmations = max(0, current_height - block_number + 1)
+        if confirmations >= 6:
+            confirmed_txs.append(tx)
+    
+    total_earned = sum(tx.get('amount', 0) for tx in confirmed_txs if tx.get('amount', 0) > 0)
+    print(f"   Confirmed transactions: {len(confirmed_txs)}")
+    print(f"   Total earned (confirmed only): {total_earned} GXC")
 else:
     print("   No transactions found")
 

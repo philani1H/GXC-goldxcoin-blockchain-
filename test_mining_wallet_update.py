@@ -40,15 +40,19 @@ def test_mining_and_wallet():
     print("🧪 TESTING MINING AND WALLET UPDATES")
     print("="*70)
     
-    # Step 1: Check initial balance
+    # Step 1: Check initial balance (use RPC methods)
     print("\n1️⃣  Checking initial balance...")
-    initial_balance = rpc_call("getbalance", [MINER_ADDRESS])
+    initial_balance = None
+    for method in ["gxc_getBalance", "getbalance", "getaddressbalance"]:
+        initial_balance = rpc_call(method, [MINER_ADDRESS])
+        if initial_balance is not None:
+            print(f"   ✅ Initial balance ({method}): {initial_balance} GXC")
+            break
+    
     if initial_balance is None:
         print("   ⚠️  Could not get balance - node may not be running")
         print("   💡 Start node: python3 testnet_blockchain_node.py")
         return False
-    
-    print(f"   ✅ Initial balance: {initial_balance} GXC")
     
     # Step 2: Get current block height
     print("\n2️⃣  Getting current block height...")
@@ -122,14 +126,27 @@ def test_mining_and_wallet():
     print("\n5️⃣  Waiting for block to be processed...")
     time.sleep(3)
     
-    # Step 6: Check new balance
+    # Step 6: Check new balance (use RPC methods, verify block confirmed)
     print("\n6️⃣  Checking updated balance...")
-    new_balance = rpc_call("getbalance", [MINER_ADDRESS])
+    time.sleep(3)  # Wait for block to be processed
+    
+    # Verify block is confirmed
+    current_height = rpc_call("getblockcount")
+    if current_height:
+        confirmations = current_height - height_val + 1
+        if confirmations < 6:
+            print(f"   ⚠️  Block has {confirmations} confirmations (needs 6+ for full confirmation)")
+    
+    new_balance = None
+    for method in ["gxc_getBalance", "getbalance", "getaddressbalance"]:
+        new_balance = rpc_call(method, [MINER_ADDRESS])
+        if new_balance is not None:
+            print(f"   ✅ New balance ({method}): {new_balance} GXC")
+            break
+    
     if new_balance is None:
         print("   ❌ Could not get updated balance")
         return False
-    
-    print(f"   ✅ New balance: {new_balance} GXC")
     
     # Step 7: Verify balance increased
     print("\n7️⃣  Verifying balance update...")
