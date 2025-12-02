@@ -142,7 +142,27 @@ class BlockchainClient:
         return None
     
     def get_address_balance(self, address: str) -> float:
-        """Get balance for an address"""
+        """Get balance for an address - Use RPC for reliability"""
+        # Try RPC methods first (more reliable)
+        methods = [
+            ("gxc_getBalance", [address]),
+            ("getbalance", [address]),
+            ("getaddressbalance", [address]),
+        ]
+        
+        for method, params in methods:
+            try:
+                result = self.rpc_call(method, params)
+                if result is not None:
+                    if isinstance(result, (int, float)):
+                        return float(result)
+                    elif isinstance(result, dict):
+                        balance = result.get('balance') or result.get('amount') or 0.0
+                        return float(balance)
+            except:
+                continue
+        
+        # Fallback to REST API
         try:
             result = self.rest_call(f"/api/v1/address/{address}/balance")
             if result:
@@ -151,8 +171,36 @@ class BlockchainClient:
             pass
         return 0.0
     
+    def get_current_block_height(self) -> int:
+        """Get current blockchain height"""
+        info = self.get_blockchain_info()
+        if info:
+            return info.get('blocks') or info.get('height') or 0
+        return 0
+    
     def get_address_transactions(self, address: str, limit: int = 50) -> List[Dict]:
-        """Get transactions for an address"""
+        """Get transactions for an address - Use RPC for reliability"""
+        # Try RPC methods first (more reliable)
+        methods = [
+            ("gxc_getTransactionsByAddress", [address, limit]),
+            ("getaddresstransactions", [address, limit]),
+            ("listtransactions", [address, limit]),
+        ]
+        
+        for method, params in methods:
+            try:
+                result = self.rpc_call(method, params)
+                if result is not None:
+                    if isinstance(result, list):
+                        return result
+                    elif isinstance(result, dict):
+                        txs = result.get('transactions') or result.get('txs') or []
+                        if isinstance(txs, list):
+                            return txs
+            except:
+                continue
+        
+        # Fallback to REST API
         try:
             result = self.rest_call(f"/api/v1/address/{address}/transactions?limit={limit}")
             if isinstance(result, list):
@@ -162,6 +210,30 @@ class BlockchainClient:
         except:
             pass
         return []
+    
+    def verify_block_confirmed(self, block_hash: str, block_height: int) -> bool:
+        """Verify that a block is confirmed on the blockchain"""
+        try:
+            # Get current blockchain height
+            current_height = self.get_current_block_height()
+            if current_height == 0:
+                return False
+            
+            # Check if block is at least 6 blocks deep (confirmed)
+            if current_height < block_height + 6:
+                return False
+            
+            # Try to get the block by hash to verify it exists
+            block_info = self.rpc_call("getblock", [block_hash])
+            if block_info:
+                # Verify block height matches
+                block_height_from_node = block_info.get('height') or block_info.get('block_number') or 0
+                if block_height_from_node == block_height:
+                    confirmations = current_height - block_height + 1
+                    return confirmations >= 6
+            return False
+        except:
+            return False
 
 
 class GXCMiner:
@@ -511,7 +583,7 @@ class GXCMiner:
         self.log_text.see("end")
     
     def refresh_transactions(self):
-        """Refresh transactions from blockchain"""
+        """Refresh transactions and balance from blockchain - REAL DATA ONLY"""
         if not self.wallet_address.get() or not self.client:
             return
         
@@ -519,23 +591,63 @@ class GXCMiner:
         if not address:
             return
         
-        self.log("🔄 Refreshing transactions...", "INFO")
+        self.log("🔄 Refreshing balance and transactions from blockchain...", "INFO")
         
         def fetch():
             try:
+                # Get current blockchain height to detect resets
+                current_height = self.client.get_current_block_height()
+                
+                # Get balance from blockchain - REAL DATA ONLY
+                balance = self.client.get_address_balance(address)
+                if balance is None:
+                    balance = 0.0
+                
+                # Check for significant balance drop (possible chain reset)
+                if hasattr(self, 'last_known_balance') and self.last_known_balance > 0:
+                    balance_drop = self.last_known_balance - balance
+                    if balance_drop > 100:  # Significant drop (>100 GXC)
+                        self.root.after(0, lambda: self.log(
+                            f"⚠️ WARNING: Balance dropped from {self.last_known_balance:.8f} to {balance:.8f} GXC "
+                            f"(drop: {balance_drop:.8f} GXC). Possible chain reorganization or node reset!",
+                            "WARNING"))
+                        self.root.after(0, lambda: self.log(
+                            f"⚠️ Current blockchain height: {current_height}. Check if node reset or chain reorganized.",
+                            "WARNING"))
+                
+                self.last_known_balance = balance
+                
+                # Update balance display with REAL blockchain data
+                self.root.after(0, lambda: self.update_balance_display(balance))
+                self.root.after(0, lambda: self.log(f"💵 Balance from blockchain: {balance:.8f} GXC", "INFO"))
+                
+                # Get transactions from blockchain - REAL DATA ONLY
                 transactions = self.client.get_address_transactions(address, limit=100)
                 
-                # Calculate total earned from ACTUAL blockchain transactions
+                # Calculate total earned from ACTUAL blockchain transactions (only confirmed)
                 total_earned = self.calculate_total_earned_from_blockchain(transactions)
+                
+                # Check for transaction count drop (possible chain reset)
+                if hasattr(self, 'last_transaction_count') and self.last_transaction_count > 0:
+                    tx_drop = self.last_transaction_count - len(transactions)
+                    if tx_drop > 5:  # Significant drop (>5 transactions)
+                        self.root.after(0, lambda: self.log(
+                            f"⚠️ WARNING: Transaction count dropped from {self.last_transaction_count} to {len(transactions)}. "
+                            f"Possible chain reorganization or node reset!",
+                            "WARNING"))
+                
+                self.last_transaction_count = len(transactions)
                 
                 # Update UI with REAL earnings from blockchain
                 self.root.after(0, lambda: self.update_earnings_display(total_earned))
-                balance = self.client.get_address_balance(address)
-                
                 self.root.after(0, lambda: self.update_transactions_display(transactions))
-                self.root.after(0, lambda: self.update_balance_display(balance))
+                self.root.after(0, lambda: self.log(f"📊 Loaded {len(transactions)} transactions", "INFO"))
+                self.root.after(0, lambda: self.log(f"💰 Total earned (from blockchain, confirmed only): {total_earned:.8f} GXC", "INFO"))
+                self.root.after(0, lambda: self.log(f"📏 Current blockchain height: {current_height}", "INFO"))
             except Exception as e:
-                self.root.after(0, lambda: self.log(f"❌ Failed to fetch transactions: {e}", "ERROR"))
+                self.root.after(0, lambda: self.log(f"❌ Failed to fetch from blockchain: {e}", "ERROR"))
+                import traceback
+                self.root.after(0, lambda: self.log(f"❌ Error details: {traceback.format_exc()}", "ERROR"))
         
         threading.Thread(target=fetch, daemon=True).start()
     
@@ -611,15 +723,24 @@ class GXCMiner:
     def calculate_total_earned_from_blockchain(self, transactions: List[Dict]) -> float:
         """Calculate total earned from actual blockchain coinbase transactions"""
         total = 0.0
+        current_height = self.client.get_current_block_height() if self.client else 0
+        
         for tx in transactions:
             # Only count confirmed coinbase transactions (mining rewards)
             if tx.get('type') == 'coinbase' or tx.get('is_coinbase') or tx.get('isCoinbase'):
                 confirmations = tx.get('confirmations', 0)
-                # Only count if confirmed (6+ confirmations) or at least 1 confirmation for recent
-                if confirmations >= 1:
+                block_number = tx.get('block_number') or tx.get('block') or 0
+                
+                # Calculate confirmations if not provided
+                if confirmations == 0 and block_number > 0 and current_height > 0:
+                    confirmations = max(0, current_height - block_number + 1)
+                
+                # Only count if confirmed (6+ confirmations for safety)
+                if confirmations >= 6:
                     amount = tx.get('amount') or tx.get('value') or 0.0
                     if amount > 0:
                         total += amount
+                        self.log(f"✅ Confirmed coinbase: {amount} GXC (block {block_number}, {confirmations} confirmations)", "SUCCESS")
         return total
     
     def update_earnings_display(self, total_earned: float):
@@ -783,11 +904,29 @@ class GXCMiner:
                     self.shares_accepted += 1
                     # DO NOT increment total_earned locally - get from blockchain
                     
+                    self.root.after(0, lambda: self.log("✅ Block submitted and accepted!", "SUCCESS"))
+                    self.root.after(0, lambda: self.log(f"⏳ Waiting for blockchain confirmation...", "INFO"))
+                    if reward_amount > 0:
+                        self.root.after(0, lambda: self.log(f"💰 Expected reward: {reward_amount} GXC (will verify from blockchain)", "INFO"))
+                    
+                    # Show explorer link
+                    explorer_url = f"{self.explorer_url}/tx/{tx_hash}"
+                    self.root.after(0, lambda: self.show_explorer_link(tx_hash, explorer_url, reward_amount))
+                    
                     # Refresh balance and transactions from blockchain to get REAL data
                     # Wait a bit for block to be processed, then verify from blockchain
+                    import time
+                    time.sleep(2)  # Wait for block to be processed
+                    
+                    # Verify block confirmation
+                    block_hash = block_data.get('hash') or block_data.get('blockHash')
+                    if block_hash and block_height:
+                        is_confirmed = self.client.verify_block_confirmed(block_hash, block_height)
+                        if not is_confirmed:
+                            self.root.after(0, lambda: self.log(f"⚠️ Block {block_height} not yet confirmed (may be orphaned)", "WARNING"))
+                    
                     self.root.after(5000, self.refresh_transactions)  # Wait 5 seconds for block processing
-                    self.root.after(15000, self.refresh_transactions)  # Refresh again after 15 seconds to get confirmed data after a delay
-                    self.root.after(3000, self.refresh_transactions)
+                    self.root.after(15000, self.refresh_transactions)  # Refresh again after 15 seconds to get confirmed data
                 else:
                     self.shares_rejected += 1
                     self.root.after(0, lambda: self.log("❌ Block rejected", "ERROR"))
