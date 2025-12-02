@@ -23,9 +23,9 @@ NETWORK = os.environ.get('GXC_NETWORK', 'testnet').lower()  # 'testnet' or 'main
 NETWORK_CONFIG = {
     'testnet': {
         'address_prefix': 'tGXC',
-        'block_time': 60,
+        'block_time': 120,  # 2 minutes
         'difficulty': 0.1,
-        'block_reward': 12.5,
+        'block_reward': 50.0,  # Initial reward (halves every 1,051,200 blocks)
         'rpc_port': 18332,
         'railway_url': 'https://gxc-chain112-blockchain-node-production.up.railway.app',
         'local_url': 'http://localhost:18332',

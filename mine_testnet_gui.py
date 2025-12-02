@@ -92,11 +92,14 @@ class TestnetMinerGUI:
             global RPC_URL, ACTIVE_NODE_TYPE
             
             # Test LOCAL first (since user says it's running) - same as command miner
-            # Try multiple times with different URLs
+            # Try multiple times with different URLs and ports
             local_urls = [
                 LOCAL_NODE_URL,
                 LOCAL_NODE_URL.replace('localhost', '127.0.0.1'),
-                'http://127.0.0.1:18332'
+                'http://localhost:8080',  # Railway PORT
+                'http://127.0.0.1:8080',  # Railway PORT with IP
+                'http://localhost:18332',  # Standard testnet port
+                'http://127.0.0.1:18332'   # Standard testnet port with IP
             ]
             
             for url in local_urls:
