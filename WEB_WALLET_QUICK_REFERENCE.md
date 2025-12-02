@@ -64,8 +64,44 @@ fetch('http://localhost:18332', {
 })
 ```
 
-#### Send Coins
+#### Estimate Fee (Get Recommended Fee)
 ```javascript
+fetch('http://localhost:18332', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'estimateFee',
+    params: [],
+    id: 1
+  })
+})
+// Returns: { fee: 0.001, recommended_fee: 0.001, pending_transactions: 5, ... }
+```
+
+#### Send Coins (with Fee)
+```javascript
+// Step 1: Get recommended fee from blockchain
+const feeResponse = await fetch('http://localhost:18332', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'estimateFee',
+    params: [],
+    id: 1
+  })
+});
+const feeData = await feeResponse.json();
+const fee = feeData.result.recommended_fee; // e.g., 0.001
+
+// Step 2: Check balance includes amount + fee
+const balance = await getBalance('from_address');
+if (balance < (100.0 + fee)) {
+  throw new Error('Insufficient balance (need amount + fee)');
+}
+
+// Step 3: Send transaction (fee is automatically included)
 fetch('http://localhost:18332', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -149,7 +185,22 @@ class GXCRPC {
     return this.call('listtransactions', [address, limit]);
   }
 
+  async estimateFee() {
+    return this.call('estimateFee', []);
+  }
+
   async sendCoins(from, to, amount) {
+    // Get recommended fee from blockchain
+    const feeInfo = await this.estimateFee();
+    const fee = feeInfo.recommended_fee || feeInfo.fee || 0.001;
+    
+    // Check balance includes amount + fee
+    const balance = await this.getBalance(from);
+    if (balance < (amount + fee)) {
+      throw new Error(`Insufficient balance. Need ${amount + fee} GXC (amount: ${amount} + fee: ${fee})`);
+    }
+    
+    // Send transaction (fee handled automatically by blockchain)
     return this.call('sendtoaddress', [from, to, amount]);
   }
 
@@ -208,12 +259,27 @@ function useGXCWallet(rpcUrl = 'http://localhost:18332') {
     }
   };
 
+  const sendCoins = async (to, amount) => {
+    // Get fee first
+    const feeInfo = await rpc.estimateFee();
+    const fee = feeInfo.recommended_fee || feeInfo.fee || 0.001;
+    
+    // Check balance
+    const bal = await rpc.getBalance(address);
+    if (bal < (amount + fee)) {
+      throw new Error(`Insufficient balance. Need ${amount + fee} GXC`);
+    }
+    
+    return rpc.sendCoins(address, to, amount);
+  };
+
   return {
     address,
     balance,
     loading,
     refreshBalance,
-    sendCoins: (to, amount) => rpc.sendCoins(address, to, amount),
+    sendCoins,
+    estimateFee: () => rpc.estimateFee(),
     stake: (amount, days) => rpc.stake(address, amount, days),
   };
 }
@@ -286,7 +352,8 @@ const refreshBalance = async () => {
 - `getnewaddress` - Generate address
 - `getbalance` - Get balance
 - `listtransactions` - Get transactions
-- `sendtoaddress` - Send coins
+- `estimateFee` - Get recommended transaction fee (IMPORTANT: Use before sending)
+- `sendtoaddress` - Send coins (fee handled automatically)
 - `validateaddress` - Validate address
 - `gettransaction` - Get transaction details
 
@@ -316,6 +383,8 @@ const refreshBalance = async () => {
 - [ ] Handle errors gracefully
 - [ ] Validate addresses before sending
 - [ ] Check balance before transactions
+- [ ] Get fee from blockchain using `estimateFee` before sending
+- [ ] Verify balance >= amount + fee before transaction
 
 ---
 

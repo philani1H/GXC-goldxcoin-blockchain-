@@ -107,9 +107,12 @@ All RPC calls use JSON-RPC 2.0 format:
 | `getnewaddress` | Generate new address | `[]` | `["getnewaddress", []]` |
 | `getbalance` | Get balance | `[address]` | `["getbalance", ["tGXC...123"]]` |
 | `listtransactions` | Get transactions | `[address, limit]` | `["listtransactions", ["tGXC...123", 100]]` |
+| `estimateFee` | **Get recommended fee** | `[]` | `["estimateFee", []]` |
 | `sendtoaddress` | Send coins | `[from, to, amount]` | `["sendtoaddress", ["from", "to", 100.0]]` |
 | `validateaddress` | Validate address | `[address]` | `["validateaddress", ["tGXC...123"]]` |
 | `gettransaction` | Get transaction details | `[txid]` | `["gettransaction", ["abc123..."]]` |
+
+**⚠️ Important:** Always call `estimateFee` before `sendtoaddress` to get the current recommended fee and ensure sufficient balance.
 
 ### Staking Methods
 
@@ -142,6 +145,77 @@ All RPC calls use JSON-RPC 2.0 format:
 | `/address/{address}/transactions` | GET | Get address transactions |
 | `/block/{height}` | GET | Get block by height |
 | `/transaction/{txid}` | GET | Get transaction details |
+
+### Transaction Fees
+
+**⚠️ IMPORTANT:** GXC uses dynamic transaction fees that adjust based on network activity. Always get the fee from the blockchain before sending transactions.
+
+#### Fee Estimation
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "estimateFee",
+  "params": [],
+  "id": 1
+}
+```
+
+**Response:**
+```json
+{
+  "result": {
+    "fee": 0.001,
+    "recommended_fee": 0.001,
+    "base_fee": 0.001,
+    "max_fee": 0.01,
+    "pending_transactions": 5,
+    "dynamic_fees_enabled": true,
+    "fee_tiers": {
+      "low": 0.001,
+      "medium": 0.0015,
+      "high": 0.002,
+      "very_high": 0.003
+    },
+    "current_tier": "low"
+  }
+}
+```
+
+#### Fee Tiers
+
+| Network Activity | Pending Transactions | Fee Multiplier | Example Fee |
+|-----------------|---------------------|----------------|-------------|
+| Low | < 10 | 1.0x | 0.001 GXC |
+| Medium | 10-49 | 1.5x | 0.0015 GXC |
+| High | 50-99 | 2.0x | 0.002 GXC |
+| Very High | 100+ | 3.0x | 0.003 GXC (max 0.01) |
+
+#### Sending Transactions with Fees
+
+**Always follow these steps:**
+
+1. **Get recommended fee:**
+   ```javascript
+   const feeInfo = await rpcClient.estimateFee();
+   const fee = feeInfo.recommended_fee;
+   ```
+
+2. **Check balance:**
+   ```javascript
+   const balance = await rpcClient.getBalance(fromAddress);
+   if (balance < (amount + fee)) {
+     throw new Error('Insufficient balance');
+   }
+   ```
+
+3. **Send transaction:**
+   ```javascript
+   // Fee is automatically handled by blockchain
+   await rpcClient.sendCoins(fromAddress, toAddress, amount);
+   ```
+
+**Note:** The blockchain automatically applies the recommended fee when processing transactions. You don't need to specify the fee in `sendtoaddress`, but you must ensure the sender has sufficient balance to cover both the amount and the fee.
 
 ---
 
@@ -284,7 +358,26 @@ export class GXCRPCClient {
     return this.call<any[]>('listtransactions', [address, limit]);
   }
 
+  async estimateFee(): Promise<any> {
+    return this.call('estimateFee', []);
+  }
+
   async sendCoins(fromAddress: string, toAddress: string, amount: number): Promise<any> {
+    // Step 1: Get recommended fee from blockchain
+    const feeInfo = await this.estimateFee();
+    const fee = feeInfo.recommended_fee || feeInfo.fee || 0.001;
+    
+    // Step 2: Check balance includes amount + fee
+    const balance = await this.getBalance(fromAddress);
+    if (balance < (amount + fee)) {
+      throw new Error(
+        `Insufficient balance. Need ${amount + fee} GXC ` +
+        `(amount: ${amount} + fee: ${fee}), but have ${balance} GXC`
+      );
+    }
+    
+    // Step 3: Send transaction (fee is automatically handled by blockchain)
+    // The blockchain will use the recommended fee when processing the transaction
     return this.call('sendtoaddress', [fromAddress, toAddress, amount]);
   }
 
@@ -647,7 +740,9 @@ import {
   Button,
   Typography,
   Alert,
+  CircularProgress,
 } from '@mui/material';
+import { rpcClient } from '../services/rpcClient';
 
 export const SendCoins: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -655,8 +750,33 @@ export const SendCoins: React.FC = () => {
   
   const [toAddress, setToAddress] = useState('');
   const [amount, setAmount] = useState('');
+  const [fee, setFee] = useState<number | null>(null);
+  const [loadingFee, setLoadingFee] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Load fee when component mounts or amount changes
+  React.useEffect(() => {
+    const loadFee = async () => {
+      if (!address) return;
+      
+      setLoadingFee(true);
+      try {
+        const feeInfo = await rpcClient.estimateFee();
+        setFee(feeInfo.recommended_fee || feeInfo.fee || 0.001);
+      } catch (err) {
+        console.error('Failed to load fee:', err);
+        setFee(0.001); // Fallback to base fee
+      } finally {
+        setLoadingFee(false);
+      }
+    };
+    
+    loadFee();
+    // Refresh fee every 30 seconds
+    const interval = setInterval(loadFee, 30000);
+    return () => clearInterval(interval);
+  }, [address]);
 
   const handleSend = async () => {
     setError('');
@@ -674,13 +794,21 @@ export const SendCoins: React.FC = () => {
       return;
     }
 
-    if (amountNum > balance) {
-      setError('Insufficient balance');
+    if (!address) {
+      setError('No wallet address');
       return;
     }
 
-    if (!address) {
-      setError('No wallet address');
+    // Get current fee
+    const currentFee = fee || 0.001;
+    const totalNeeded = amountNum + currentFee;
+
+    if (totalNeeded > balance) {
+      setError(
+        `Insufficient balance. Need ${totalNeeded.toFixed(6)} GXC ` +
+        `(amount: ${amountNum} + fee: ${currentFee.toFixed(6)}), ` +
+        `but have ${balance.toFixed(6)} GXC`
+      );
       return;
     }
 
@@ -730,6 +858,14 @@ export const SendCoins: React.FC = () => {
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
+            helperText={
+              fee !== null
+                ? `Transaction fee: ${fee.toFixed(6)} GXC | Total needed: ${(parseFloat(amount || '0') + fee).toFixed(6)} GXC | Available: ${balance.toFixed(6)} GXC`
+                : loadingFee ? 'Loading fee...' : 'Fee: 0.001 GXC (estimated)'
+            }
+            InputProps={{
+              endAdornment: loadingFee ? <CircularProgress size={20} /> : null,
+            }}
             fullWidth
             inputProps={{ min: 0, step: 0.00000001 }}
             helperText={`Available: ${balance.toFixed(8)} GXC`}
@@ -1132,7 +1268,59 @@ export const validateAmount = (amount: number): boolean => {
 };
 ```
 
-### 3. Error Handling
+### 3. Fee Handling Best Practices
+
+**Always get fee from blockchain before sending:**
+
+```typescript
+// utils/feeHandler.ts
+export const getRecommendedFee = async (rpcClient: GXCRPCClient): Promise<number> => {
+  try {
+    const feeInfo = await rpcClient.estimateFee();
+    return feeInfo.recommended_fee || feeInfo.fee || 0.001;
+  } catch (error) {
+    console.error('Failed to get fee, using default:', error);
+    return 0.001; // Fallback to base fee
+  }
+};
+
+export const validateBalanceForTransaction = (
+  balance: number,
+  amount: number,
+  fee: number
+): { valid: boolean; error?: string } => {
+  const totalNeeded = amount + fee;
+  
+  if (balance < totalNeeded) {
+    return {
+      valid: false,
+      error: `Insufficient balance. Need ${totalNeeded.toFixed(6)} GXC ` +
+             `(amount: ${amount} + fee: ${fee.toFixed(6)}), ` +
+             `but have ${balance.toFixed(6)} GXC`
+    };
+  }
+  
+  return { valid: true };
+};
+```
+
+**Usage in transaction flow:**
+
+```typescript
+// Before sending transaction
+const fee = await getRecommendedFee(rpcClient);
+const balance = await rpcClient.getBalance(fromAddress);
+
+const validation = validateBalanceForTransaction(balance, amount, fee);
+if (!validation.valid) {
+  throw new Error(validation.error);
+}
+
+// Now safe to send
+await rpcClient.sendCoins(fromAddress, toAddress, amount);
+```
+
+### 4. Error Handling
 
 ```typescript
 // utils/errorHandler.ts
@@ -1147,7 +1335,7 @@ export const handleRPCError = (error: any): string => {
 };
 ```
 
-### 4. Rate Limiting
+### 5. Rate Limiting
 
 ```typescript
 // utils/rateLimiter.ts
