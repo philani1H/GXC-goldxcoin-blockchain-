@@ -349,6 +349,10 @@ class BlockchainExplorer:
         # Add timeout to prevent database locking issues
         conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
+        # Enable WAL mode for better concurrency
+        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.execute('PRAGMA synchronous=NORMAL')
+        cursor.execute('PRAGMA busy_timeout=30000')
         
         # Blocks table (enhanced to match blockchain structure)
         cursor.execute('''
@@ -1216,6 +1220,10 @@ class BlockchainExplorer:
         # Use timeout to handle database locking
         conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
+        # Enable WAL mode for better concurrency
+        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.execute('PRAGMA synchronous=NORMAL')
+        cursor.execute('PRAGMA busy_timeout=30000')
         
         try:
             # Normalize transaction data - handle various field name formats
@@ -1279,8 +1287,14 @@ class BlockchainExplorer:
             # Convert datetime to string for Python 3.12 compatibility (fixes deprecation warning)
             if isinstance(tx_timestamp, datetime):
                 tx_timestamp_str = tx_timestamp.isoformat()
+            elif isinstance(tx_timestamp, (int, float)):
+                # Handle Unix timestamp
+                tx_timestamp_str = datetime.fromtimestamp(tx_timestamp).isoformat()
             else:
-                tx_timestamp_str = str(tx_timestamp)
+                tx_timestamp_str = str(tx_timestamp) if tx_timestamp else datetime.utcnow().isoformat()
+            
+            # Use WAL mode for better concurrency and reduce locking
+            cursor.execute('PRAGMA journal_mode=WAL')
             
             cursor.execute('''
                 INSERT OR REPLACE INTO transactions (
