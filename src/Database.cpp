@@ -905,6 +905,108 @@ size_t Database::getBlockCount() const {
     return count;
 }
 
+std::vector<Block> Database::getAllBlocks() const {
+    std::vector<Block> blocks;
+    
+    if (!db) {
+        return blocks;
+    }
+    
+    std::string sql = R"(
+        SELECT height, hash, previous_hash, merkle_root, timestamp, difficulty, 
+               nonce, miner_address, block_type, transaction_count, size_bytes
+        FROM blocks
+        ORDER BY height ASC
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare getAllBlocks statement");
+        return blocks;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        uint32_t index = sqlite3_column_int(stmt, 0);
+        std::string hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        std::string prevHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        BlockType blockType = static_cast<BlockType>(sqlite3_column_int(stmt, 8));
+        
+        // Construct block with proper type
+        Block block(index, prevHash, blockType);
+        block.setHash(hash);
+        block.setMerkleRoot(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
+        block.setTimestamp(sqlite3_column_int64(stmt, 4));
+        block.setDifficulty(sqlite3_column_double(stmt, 5));
+        block.setNonce(sqlite3_column_int64(stmt, 6));
+        block.setMinerAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)));
+        
+        // Load transactions for this block
+        auto transactions = getTransactionsByBlockHash(hash);
+        for (const auto& tx : transactions) {
+            block.addTransaction(tx);
+        }
+        
+        blocks.push_back(block);
+    }
+    
+    sqlite3_finalize(stmt);
+    LOG_DATABASE(LogLevel::INFO, "Loaded " + std::to_string(blocks.size()) + " blocks from database");
+    return blocks;
+}
+
+std::vector<Block> Database::getBlocksByRange(uint32_t startHeight, uint32_t endHeight) const {
+    std::vector<Block> blocks;
+    
+    if (!db) {
+        return blocks;
+    }
+    
+    std::string sql = R"(
+        SELECT height, hash, previous_hash, merkle_root, timestamp, difficulty, 
+               nonce, miner_address, block_type, transaction_count, size_bytes
+        FROM blocks
+        WHERE height >= ? AND height <= ?
+        ORDER BY height ASC
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        return blocks;
+    }
+    
+    sqlite3_bind_int(stmt, 1, static_cast<int>(startHeight));
+    sqlite3_bind_int(stmt, 2, static_cast<int>(endHeight));
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        uint32_t index = sqlite3_column_int(stmt, 0);
+        std::string hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        std::string prevHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        BlockType blockType = static_cast<BlockType>(sqlite3_column_int(stmt, 8));
+        
+        Block block(index, prevHash, blockType);
+        block.setHash(hash);
+        block.setMerkleRoot(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
+        block.setTimestamp(sqlite3_column_int64(stmt, 4));
+        block.setDifficulty(sqlite3_column_double(stmt, 5));
+        block.setNonce(sqlite3_column_int64(stmt, 6));
+        block.setMinerAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)));
+        
+        auto transactions = getTransactionsByBlockHash(hash);
+        for (const auto& tx : transactions) {
+            block.addTransaction(tx);
+        }
+        
+        blocks.push_back(block);
+    }
+    
+    sqlite3_finalize(stmt);
+    return blocks;
+}
+
 bool Database::isConnected() const {
     return db != nullptr;
 }

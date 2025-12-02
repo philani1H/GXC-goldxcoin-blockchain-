@@ -241,7 +241,25 @@ int main(int argc, char* argv[]) {
         }
         
         // Initialize database
-        if (!Database::initialize(dbPath)) {
+        // CRITICAL: Ensure database path includes network type for persistence
+        // Database will validate this and refuse to open if mismatch
+        std::string finalDbPath = dbPath;
+        bool isTestnet = Config::isTestnet();
+        
+        // Ensure database path contains "testnet" for testnet mode
+        if (isTestnet && finalDbPath.find("testnet") == std::string::npos) {
+            // Insert "testnet" before filename
+            size_t lastSlash = finalDbPath.find_last_of("/\\");
+            if (lastSlash != std::string::npos) {
+                finalDbPath = finalDbPath.substr(0, lastSlash + 1) + "testnet_" + 
+                             finalDbPath.substr(lastSlash + 1);
+            } else {
+                finalDbPath = "testnet_" + finalDbPath;
+            }
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Adjusted database path for testnet: " + finalDbPath);
+        }
+        
+        if (!Database::initialize(finalDbPath)) {
             LOG_CORE(LogLevel::ERROR, "Failed to initialize database");
             return 1;
         }

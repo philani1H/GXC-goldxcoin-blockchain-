@@ -86,6 +86,8 @@ public:
     Blockchain();
     ~Blockchain();
     bool initialize();
+    bool loadBlocksFromDatabase();
+    void rebuildUtxoSet();
     void shutdown();
     void createGenesisBlock();
     bool addBlock(const Block& block);

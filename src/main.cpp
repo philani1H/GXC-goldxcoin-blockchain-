@@ -42,7 +42,16 @@ Version 2.0.0
         
         // Initialize database
         std::string dataDir = Config::get("data_dir", "./gxc_data");
-        if (!Database::initialize(dataDir + "/blockchain.db")) {
+        bool isTestnet = Config::isTestnet();
+        
+        // CRITICAL: Ensure database path includes network type for persistence
+        std::string dbPath = dataDir + "/blockchain.db";
+        if (isTestnet) {
+            dbPath = dataDir + "/testnet_blockchain.db";
+        }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Initializing database at: " + dbPath);
+        if (!Database::initialize(dbPath)) {
             LOG_CORE(LogLevel::ERROR, "Failed to initialize database");
             return 1;
         }

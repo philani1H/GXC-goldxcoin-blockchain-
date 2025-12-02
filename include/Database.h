@@ -45,6 +45,8 @@ public:
     bool deleteBlock(uint32_t index);
     uint32_t getLatestBlockIndex() const;
     std::string getLatestBlockHash() const;
+    std::vector<Block> getAllBlocks() const;
+    std::vector<Block> getBlocksByRange(uint32_t startHeight, uint32_t endHeight) const;
     
     // Transaction storage
     bool storeTransaction(const Transaction& tx);

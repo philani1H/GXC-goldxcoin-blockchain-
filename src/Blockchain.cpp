@@ -30,9 +30,21 @@ bool Blockchain::initialize() {
     try {
         LOG_BLOCKCHAIN(LogLevel::INFO, "Initializing blockchain");
         
-        // Create genesis block if blockchain is empty
+        // CRITICAL: Load blocks from database FIRST before checking if chain is empty
+        // This ensures that mined blocks persist across restarts
+        if (!loadBlocksFromDatabase()) {
+            LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to load blocks from database, starting fresh");
+        }
+        
+        // Create genesis block ONLY if blockchain is still empty after loading from database
         if (chain.empty()) {
+            LOG_BLOCKCHAIN(LogLevel::INFO, "No blocks found in database, creating genesis block");
             createGenesisBlock();
+        } else {
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Loaded " + std::to_string(chain.size()) + 
+                          " blocks from database, rebuilding UTXO set...");
+            // Rebuild UTXO set from loaded blocks
+            rebuildUtxoSet();
         }
         
         // Validate existing chain
@@ -436,6 +448,78 @@ double Blockchain::calculateNextDifficulty() const {
     }
     
     return newDifficulty;
+}
+
+// Load blocks from database on startup
+bool Blockchain::loadBlocksFromDatabase() {
+    try {
+        Database& db = Database::getInstance();
+        
+        // Get all blocks from database
+        std::vector<Block> blocks = db.getAllBlocks();
+        
+        if (blocks.empty()) {
+            LOG_BLOCKCHAIN(LogLevel::INFO, "No blocks found in database");
+            return true; // Not an error, just empty database
+        }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Loading " + std::to_string(blocks.size()) + 
+                      " blocks from database...");
+        
+        // Clear current chain
+        chain.clear();
+        utxoSet.clear();
+        
+        // Load blocks into chain (in order)
+        for (const auto& block : blocks) {
+            std::shared_ptr<Block> blockPtr = std::make_shared<Block>(block);
+            chain.push_back(blockPtr);
+            lastBlock = blockPtr;
+        }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Successfully loaded " + std::to_string(chain.size()) + 
+                      " blocks from database");
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Error loading blocks from database: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// Rebuild UTXO set from all loaded blocks
+void Blockchain::rebuildUtxoSet() {
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Rebuilding UTXO set from " + std::to_string(chain.size()) + " blocks...");
+    
+    // Clear UTXO set
+    utxoSet.clear();
+    
+    // Process all blocks in order to rebuild UTXO set
+    for (const auto& blockPtr : chain) {
+        if (!blockPtr) continue;
+        
+        const Block& block = *blockPtr;
+        
+        // Process all transactions in block
+        for (const auto& tx : block.getTransactions()) {
+            // Remove spent outputs (inputs)
+            for (const auto& input : tx.getInputs()) {
+                std::string utxoKey = input.txHash + "_" + std::to_string(input.outputIndex);
+                utxoSet.erase(utxoKey);
+            }
+            
+            // Add new outputs (UTXOs)
+            uint32_t outputIndex = 0;
+            for (const auto& output : tx.getOutputs()) {
+                std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
+                utxoSet[utxoKey] = output;
+                outputIndex++;
+            }
+        }
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "UTXO set rebuilt: " + std::to_string(utxoSet.size()) + " UTXOs");
 }
 
 // Update UTXO set when block is added
