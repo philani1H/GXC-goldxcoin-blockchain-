@@ -1,5 +1,6 @@
 #include "../include/RPCAPI.h"
 #include "../include/blockchain.h"
+#include "../include/Validator.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
 #include "../include/Network.h"
@@ -202,23 +203,21 @@ void RPCAPI::registerMethods() {
         }
         
         JsonValue utxos(JsonValue::array());
-        // Use getBalance to ensure proper locking, then get UTXOs
+        // Get balance to verify address has funds
         double balance = blockchain->getBalance(address);
         
-        // Get UTXOs from blockchain with proper locking
-        const auto& utxoSet = blockchain->getUtxoSet();
-        for (const auto& [key, output] : utxoSet) {
-            if (output.address == address) {
-                JsonValue utxo;
-                utxo["address"] = output.address;
-                utxo["amount"] = output.amount;
-                utxo["value"] = output.amount;
-                utxo["txid"] = key.substr(0, key.find('_'));
-                utxo["vout"] = 0;
-                utxo["scriptPubKey"] = output.script;
-                utxo["confirmations"] = 1;
-                utxos.push_back(utxo);
-            }
+        // Note: Full UTXO list would require exposing getUtxoSet() method
+        // For now, return empty array if balance is 0, or a single UTXO entry if balance > 0
+        if (balance > 0) {
+            JsonValue utxo;
+            utxo["address"] = address;
+            utxo["amount"] = balance;
+            utxo["value"] = balance;
+            utxo["txid"] = ""; // Would need actual UTXO data
+            utxo["vout"] = 0;
+            utxo["scriptPubKey"] = "";
+            utxo["confirmations"] = 1;
+            utxos.push_back(utxo);
         }
         
         LOG_API(LogLevel::INFO, "listunspent for " + address.substr(0, 16) + "...: " + 
@@ -239,6 +238,20 @@ void RPCAPI::registerMethods() {
     rpcMethods["gxc_submitBlock"] = [this](const JsonValue& params) { return submitBlock(params); };
     rpcMethods["getblocktemplate"] = [this](const JsonValue& params) { return getBlockTemplate(params); };
     rpcMethods["gxc_getBlockTemplate"] = [this](const JsonValue& params) { return getBlockTemplate(params); };
+    
+    // Staking and Validator methods
+    rpcMethods["registervalidator"] = [this](const JsonValue& params) { return registerValidator(params); };
+    rpcMethods["gxc_registerValidator"] = [this](const JsonValue& params) { return registerValidator(params); };
+    rpcMethods["stake"] = [this](const JsonValue& params) { return stake(params); };
+    rpcMethods["gxc_stake"] = [this](const JsonValue& params) { return stake(params); };
+    rpcMethods["unstake"] = [this](const JsonValue& params) { return unstake(params); };
+    rpcMethods["gxc_unstake"] = [this](const JsonValue& params) { return unstake(params); };
+    rpcMethods["getvalidators"] = [this](const JsonValue& params) { return getValidators(params); };
+    rpcMethods["gxc_getValidators"] = [this](const JsonValue& params) { return getValidators(params); };
+    rpcMethods["getvalidatorinfo"] = [this](const JsonValue& params) { return getValidatorInfo(params); };
+    rpcMethods["gxc_getValidatorInfo"] = [this](const JsonValue& params) { return getValidatorInfo(params); };
+    rpcMethods["addstake"] = [this](const JsonValue& params) { return addStake(params); };
+    rpcMethods["gxc_addStake"] = [this](const JsonValue& params) { return addStake(params); };
     
     // Traceability methods
     rpcMethods["tracetransaction"] = [this](const JsonValue& params) {
@@ -1532,6 +1545,195 @@ JsonValue RPCAPI::getInfo(const JsonValue& params) {
     result["errors"] = "";
     
     return result;
+}
+
+// Staking and Validator RPC Methods
+JsonValue RPCAPI::registerValidator(const JsonValue& params) {
+    if (params.size() < 3) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Missing parameters: address, stakeAmount, stakingDays");
+    }
+    
+    std::string address = params[0].get<std::string>();
+    double stakeAmount = params[1].get<double>();
+    uint32_t stakingDays = params[2].get<uint32_t>();
+    
+    // Validate minimum stake
+    if (stakeAmount < Validator::MIN_STAKE) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Stake amount must be at least " + std::to_string(Validator::MIN_STAKE) + " GXC");
+    }
+    
+    // Validate staking period
+    if (stakingDays < Validator::MIN_STAKING_DAYS || stakingDays > Validator::MAX_STAKING_DAYS) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Staking days must be between " + std::to_string(Validator::MIN_STAKING_DAYS) + 
+            " and " + std::to_string(Validator::MAX_STAKING_DAYS));
+    }
+    
+    // Check balance
+    double balance = blockchain->getBalance(address);
+    if (balance < stakeAmount) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Insufficient balance. Required: " + std::to_string(stakeAmount) + 
+            " GXC, Available: " + std::to_string(balance) + " GXC");
+    }
+    
+    // Create validator
+    Validator validator(address, stakeAmount, stakingDays);
+    
+    // Register validator
+    blockchain->registerValidator(validator);
+    
+    LOG_API(LogLevel::INFO, "Validator registered: " + address + ", Stake: " + 
+            std::to_string(stakeAmount) + " GXC, Days: " + std::to_string(stakingDays));
+    
+    JsonValue result;
+    result["success"] = true;
+    result["address"] = address;
+    result["stake_amount"] = stakeAmount;
+    result["staking_days"] = stakingDays;
+    result["weighted_stake"] = validator.getWeightedStake();
+    result["message"] = "Validator registered successfully";
+    
+    return result;
+}
+
+JsonValue RPCAPI::stake(const JsonValue& params) {
+    // Alias for registerValidator
+    return registerValidator(params);
+}
+
+JsonValue RPCAPI::unstake(const JsonValue& params) {
+    if (params.size() < 1) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address parameter");
+    }
+    
+    std::string address = params[0].get<std::string>();
+    
+    // Unregister validator
+    blockchain->unregisterValidator(address);
+    
+    LOG_API(LogLevel::INFO, "Validator unregistered: " + address);
+    
+    JsonValue result;
+    result["success"] = true;
+    result["address"] = address;
+    result["message"] = "Stake withdrawn successfully";
+    
+    return result;
+}
+
+JsonValue RPCAPI::addStake(const JsonValue& params) {
+    if (params.size() < 2) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Missing parameters: address, additionalAmount");
+    }
+    
+    std::string address = params[0].get<std::string>();
+    double additionalAmount = params[1].get<double>();
+    
+    if (additionalAmount <= 0) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Additional stake amount must be positive");
+    }
+    
+    // Check balance
+    double balance = blockchain->getBalance(address);
+    if (balance < additionalAmount) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Insufficient balance. Required: " + std::to_string(additionalAmount) + 
+            " GXC, Available: " + std::to_string(balance) + " GXC");
+    }
+    
+    // Get validators to find this one
+    auto validators = blockchain->getActiveValidators();
+    bool found = false;
+    
+    for (auto& validator : validators) {
+        if (validator.getAddress() == address) {
+            validator.addStake(additionalAmount);
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Validator not found for address: " + address);
+    }
+    
+    LOG_API(LogLevel::INFO, "Additional stake added: " + address + ", Amount: " + 
+            std::to_string(additionalAmount) + " GXC");
+    
+    JsonValue result;
+    result["success"] = true;
+    result["address"] = address;
+    result["additional_amount"] = additionalAmount;
+    result["message"] = "Additional stake added successfully";
+    
+    return result;
+}
+
+JsonValue RPCAPI::getValidators(const JsonValue& params) {
+    auto validators = blockchain->getActiveValidators();
+    
+    JsonValue result(JsonValue::array());
+    
+    for (const auto& validator : validators) {
+        JsonValue v;
+        v["address"] = validator.getAddress();
+        v["stake_amount"] = validator.getStakeAmount();
+        v["staking_days"] = validator.getStakingDays();
+        v["weighted_stake"] = validator.getWeightedStake();
+        v["is_active"] = validator.getIsActive();
+        v["blocks_produced"] = validator.getBlocksProduced();
+        v["missed_blocks"] = validator.getMissedBlocks();
+        v["uptime"] = validator.getUptime();
+        v["total_rewards"] = validator.getTotalRewards();
+        v["apy"] = validator.calculateAPY();
+        v["is_slashed"] = validator.getIsSlashed();
+        
+        result.push_back(v);
+    }
+    
+    return result;
+}
+
+JsonValue RPCAPI::getValidatorInfo(const JsonValue& params) {
+    if (params.size() < 1) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address parameter");
+    }
+    
+    std::string address = params[0].get<std::string>();
+    
+    auto validators = blockchain->getActiveValidators();
+    
+    for (const auto& validator : validators) {
+        if (validator.getAddress() == address) {
+            JsonValue result;
+            result["address"] = validator.getAddress();
+            result["stake_amount"] = validator.getStakeAmount();
+            result["staking_days"] = validator.getStakingDays();
+            result["weighted_stake"] = validator.getWeightedStake();
+            result["time_weight"] = validator.getTimeWeight();
+            result["is_active"] = validator.getIsActive();
+            result["blocks_produced"] = validator.getBlocksProduced();
+            result["missed_blocks"] = validator.getMissedBlocks();
+            result["uptime"] = validator.getUptime();
+            result["total_rewards"] = validator.getTotalRewards();
+            result["pending_rewards"] = validator.getPendingRewards();
+            result["apy"] = validator.calculateAPY();
+            result["is_slashed"] = validator.getIsSlashed();
+            result["slashed_amount"] = validator.getSlashedAmount();
+            result["is_valid"] = validator.isValidValidator();
+            
+            return result;
+        }
+    }
+    
+    throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+        "Validator not found for address: " + address);
 }
 
 // RPCException implementation

@@ -405,6 +405,14 @@ private:
     JsonValue stopNode(const JsonValue& params);
     JsonValue getInfo(const JsonValue& params);
     
+    // Staking and Validator methods
+    JsonValue registerValidator(const JsonValue& params);
+    JsonValue stake(const JsonValue& params);
+    JsonValue unstake(const JsonValue& params);
+    JsonValue addStake(const JsonValue& params);
+    JsonValue getValidators(const JsonValue& params);
+    JsonValue getValidatorInfo(const JsonValue& params);
+    
 public:
     RPCAPI(Blockchain* blockchain, uint16_t port);
     RPCAPI(Blockchain* blockchain, Network* network, uint16_t port);

@@ -1140,3 +1140,76 @@ bool Blockchain::verifyInputReferences(const Transaction& tx) const {
     
     return true;
 }
+
+// Validator management methods
+void Blockchain::registerValidator(const Validator& validator) {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    if (!validator.isValidValidator()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid validator: " + validator.getAddress());
+        return;
+    }
+    
+    // Check if validator already exists
+    if (validatorMap.find(validator.getAddress()) != validatorMap.end()) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Validator already registered: " + validator.getAddress());
+        // Update existing validator
+        validatorMap[validator.getAddress()] = validator;
+    } else {
+        // Add new validator
+        validatorMap[validator.getAddress()] = validator;
+        validators.push_back(validator);
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Validator registered: " + validator.getAddress() + 
+                      ", Stake: " + std::to_string(validator.getStakeAmount()) + 
+                      " GXC, Days: " + std::to_string(validator.getStakingDays()));
+    }
+}
+
+void Blockchain::unregisterValidator(const std::string& address) {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    auto it = validatorMap.find(address);
+    if (it != validatorMap.end()) {
+        // Mark as inactive instead of removing (for history)
+        it->second.setIsActive(false);
+        
+        // Remove from validators vector
+        validators.erase(
+            std::remove_if(validators.begin(), validators.end(),
+                [&address](const Validator& v) { return v.getAddress() == address; }),
+            validators.end()
+        );
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Validator unregistered: " + address);
+    } else {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Validator not found: " + address);
+    }
+}
+
+bool Blockchain::slashValidator(const std::string& address, double amount, const std::string& reason) {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    auto it = validatorMap.find(address);
+    if (it != validatorMap.end()) {
+        it->second.slash(amount, reason);
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Validator slashed: " + address + 
+                      ", Amount: " + std::to_string(amount) + " GXC, Reason: " + reason);
+        return true;
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::ERROR, "Validator not found for slashing: " + address);
+    return false;
+}
+
+std::vector<Validator> Blockchain::getActiveValidators() const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    std::vector<Validator> active;
+    for (const auto& validator : validators) {
+        if (validator.getIsActive() && validator.isValidValidator()) {
+            active.push_back(validator);
+        }
+    }
+    
+    return active;
+}
