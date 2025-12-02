@@ -187,7 +187,6 @@ public:
     std::vector<PriceData> getPriceHistory(uint32_t blocks) const;
     
     // Wallet integration
-    double getBalance(const std::string& address) const;
     double getGoldBalance(const std::string& address) const;
     std::vector<Transaction> getTransactionHistory(const std::string& address) const;
     
@@ -220,7 +219,4 @@ public:
     static const uint32_t HALVING_INTERVAL = 1051200; // ~4 years
     static const uint32_t DIFFICULTY_ADJUSTMENT_INTERVAL = 2016; // ~2 weeks
     static constexpr double INITIAL_BLOCK_REWARD = 50.0;
-    
-    // UTXO access for RPC
-    const std::unordered_map<std::string, TransactionOutput>& getUtxoSet() const;
 };
