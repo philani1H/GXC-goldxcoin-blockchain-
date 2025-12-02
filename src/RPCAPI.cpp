@@ -1102,6 +1102,53 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         uint64_t timestamp = blockData.value("timestamp", Utils::getCurrentTimestamp());
         double difficulty = blockData.value("difficulty", 1.0);
         
+        // Input validation for production security
+        // Validate hash format (should be 64 hex characters)
+        if (hash.empty()) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Block hash is required");
+        }
+        if (hash.length() != 64) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid hash length: expected 64 hex characters, got " + std::to_string(hash.length()));
+        }
+        // Validate hash contains only hex characters
+        for (char c : hash) {
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+                throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid hash format: contains non-hexadecimal characters");
+            }
+        }
+        
+        // Validate previous hash format
+        if (!prevHash.empty() && prevHash.length() != 64) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid previous hash length: expected 64 hex characters");
+        }
+        
+        // Validate block height (reasonable bounds)
+        uint32_t currentHeight = blockchain->getHeight();
+        if (height > currentHeight + 1000) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Block height too far in future: " + std::to_string(height) + " (current: " + std::to_string(currentHeight) + ")");
+        }
+        
+        // Validate timestamp (not too far in past or future)
+        uint64_t currentTime = Utils::getCurrentTimestamp();
+        if (timestamp > currentTime + 7200) { // 2 hours in future max
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Block timestamp too far in future");
+        }
+        if (timestamp < currentTime - 86400) { // 24 hours in past max
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Block timestamp too far in past");
+        }
+        
+        // Validate difficulty (reasonable bounds)
+        if (difficulty <= 0 || difficulty > 1000000) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid difficulty: " + std::to_string(difficulty) + " (must be between 0 and 1000000)");
+        }
+        
+        // Validate miner address format if provided
+        if (!minerAddress.empty()) {
+            if (minerAddress.length() < 26 || minerAddress.length() > 62) {
+                throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid miner address length");
+            }
+        }
+        
         // Get transactions from block
         std::vector<Transaction> blockTransactions;
         if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
