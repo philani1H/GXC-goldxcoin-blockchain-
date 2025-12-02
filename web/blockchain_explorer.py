@@ -1450,8 +1450,8 @@ class BlockchainExplorer:
                     'tx_count': row[5] if len(row) > 5 and row[5] is not None else 0,
                     'transaction_count': row[5] if len(row) > 5 and row[5] is not None else 0,
                     'reward': row[6] if len(row) > 6 and row[6] is not None else 12.5,
-                    'consensus_type': row[7] if len(row) > 7 and row[7] else 'pow',
-                    'consensusType': row[7] if len(row) > 7 and row[7] else 'pow',
+                    'consensus_type': (row[7] if len(row) > 7 and row[7] else 'pow')[:3],  # Ensure max 3 chars (pow/pos)
+                    'consensusType': (row[7] if len(row) > 7 and row[7] else 'pow')[:3],  # Ensure max 3 chars
                     'difficulty': row[8] if len(row) > 8 and row[8] is not None else 0.1,
                     'total_difficulty': row[9] if len(row) > 9 and row[9] is not None else (row[8] if len(row) > 8 and row[8] is not None else 0.1),
                     'size': row[10] if len(row) > 10 and row[10] is not None else 0,
@@ -1476,6 +1476,10 @@ class BlockchainExplorer:
         # Add timeout to prevent database locking issues
         conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
+        # Enable WAL mode for better concurrency
+        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.execute('PRAGMA synchronous=NORMAL')
+        cursor.execute('PRAGMA busy_timeout=30000')
         
         try:
             # Get all available fields from blocks table
