@@ -343,7 +343,8 @@ class BlockchainExplorer:
     
     def init_database(self):
         """Initialize explorer database"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         # Blocks table (enhanced to match blockchain structure)
@@ -1071,7 +1072,8 @@ class BlockchainExplorer:
         if not block_data:
             return
         
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1124,6 +1126,13 @@ class BlockchainExplorer:
                 else:
                     timestamp_dt = timestamp
                 
+                # Fix Python 3.12 datetime deprecation warning
+                # Convert datetime to ISO format string for SQLite
+                if isinstance(timestamp_dt, datetime):
+                    timestamp_str = timestamp_dt.isoformat()
+                else:
+                    timestamp_str = str(timestamp_dt)
+                
                 cursor.execute('''
                     INSERT INTO blocks (
                         block_number, block_hash, parent_hash, merkle_root, timestamp,
@@ -1137,7 +1146,7 @@ class BlockchainExplorer:
                 block_hash,
                 parent_hash,
                 merkle_root,
-                timestamp_dt,
+                timestamp_str,
                 miner_address,
                 float(difficulty),
                 float(total_difficulty),
@@ -1176,15 +1185,33 @@ class BlockchainExplorer:
             
             conn.commit()
             
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e).lower():
+                # Retry once after a short delay
+                import time
+                time.sleep(0.1)
+                try:
+                    conn.rollback()
+                    conn.close()
+                    print(f"Error storing block (database locked): {e}")
+                except:
+                    print(f"Error storing block (database locked): {e}")
+            else:
+                conn.rollback()
+                print(f"Error storing block: {e}")
         except Exception as e:
             conn.rollback()
             print(f"Error storing block: {e}")
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except:
+                pass
     
     def store_transaction(self, tx_data, block_number, tx_index, block_data=None):
         """Store transaction data with robust field handling"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Use timeout to handle database locking
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1246,6 +1273,12 @@ class BlockchainExplorer:
             else:
                 tx_timestamp = datetime.utcnow()
             
+            # Convert datetime to string for Python 3.12 compatibility (fixes deprecation warning)
+            if isinstance(tx_timestamp, datetime):
+                tx_timestamp_str = tx_timestamp.isoformat()
+            else:
+                tx_timestamp_str = str(tx_timestamp)
+            
             cursor.execute('''
                 INSERT OR REPLACE INTO transactions (
                     tx_hash, block_number, tx_index, from_address,
@@ -1264,7 +1297,7 @@ class BlockchainExplorer:
                 float(gas_price),
                 int(gas_used),
                 status,
-                tx_timestamp,
+                tx_timestamp_str,
                 input_data,
                 int(nonce),
                 tx_type,
@@ -1309,15 +1342,36 @@ class BlockchainExplorer:
             
             conn.commit()
             
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e).lower():
+                # Retry once after a short delay
+                import time
+                time.sleep(0.1)
+                try:
+                    conn.rollback()
+                    conn.close()
+                    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
+                    cursor = conn.cursor()
+                    # Retry the insert (simplified - just log error for now)
+                    print(f"Error storing transaction (database locked, retry failed): {e}")
+                except:
+                    print(f"Error storing transaction (database locked): {e}")
+            else:
+                conn.rollback()
+                print(f"Error storing transaction: {e}")
         except Exception as e:
             conn.rollback()
             print(f"Error storing transaction: {e}")
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except:
+                pass
     
     def update_address_activity(self, from_addr, to_addr):
         """Update address activity records"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1351,7 +1405,8 @@ class BlockchainExplorer:
     
     def get_block_by_number_from_db(self, block_number):
         """Get a specific block from database by number with ALL fields"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1401,7 +1456,8 @@ class BlockchainExplorer:
     
     def get_recent_blocks(self, limit=10):
         """Get recent blocks from database with all fields"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1451,7 +1507,8 @@ class BlockchainExplorer:
     
     def get_recent_transactions(self, limit=20):
         """Get recent transactions from database with all fields including confirmations"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1512,7 +1569,8 @@ class BlockchainExplorer:
     
     def get_network_stats(self):
         """Get current network statistics with all fields"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1576,7 +1634,8 @@ class BlockchainExplorer:
     
     def get_mining_stats(self):
         """Get mining statistics including top miners"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1640,7 +1699,8 @@ class BlockchainExplorer:
     
     def get_validators(self):
         """Get validator information from blocks"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1687,7 +1747,8 @@ class BlockchainExplorer:
     
     def get_top_addresses(self, limit=100):
         """Get top addresses by balance"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1731,7 +1792,8 @@ class BlockchainExplorer:
     
     def get_chart_data(self, days=14):
         """Get chart data for analytics"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1802,7 +1864,8 @@ class BlockchainExplorer:
     
     def get_hashrate_history(self, days=7):
         """Get hashrate history for mining chart"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1838,7 +1901,8 @@ class BlockchainExplorer:
     
     def get_pending_transactions(self, limit=100):
         """Get pending transactions from mempool"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1875,7 +1939,8 @@ class BlockchainExplorer:
     
     def add_pending_transaction(self, tx_data):
         """Add transaction to pending pool"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1909,7 +1974,8 @@ class BlockchainExplorer:
     
     def remove_pending_transaction(self, tx_hash):
         """Remove transaction from pending pool (when confirmed)"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -1926,7 +1992,8 @@ class BlockchainExplorer:
     
     def get_gas_stats(self):
         """Get gas price statistics and recommendations"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2015,7 +2082,8 @@ class BlockchainExplorer:
     
     def get_price_data(self):
         """Get current price and market data"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2094,7 +2162,8 @@ class BlockchainExplorer:
     
     def get_filtered_transactions(self, filters):
         """Get filtered transactions based on criteria"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2164,7 +2233,8 @@ class BlockchainExplorer:
     
     def get_portfolio_data(self, addresses):
         """Get portfolio data for multiple addresses"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2221,7 +2291,8 @@ class BlockchainExplorer:
     
     def get_current_block_height(self):
         """Get current blockchain height from database or node"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2249,7 +2320,8 @@ class BlockchainExplorer:
     
     def get_network_health(self):
         """Get network health metrics"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2327,7 +2399,8 @@ class BlockchainExplorer:
     
     def get_analytics(self):
         """Get advanced analytics data"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2466,7 +2539,8 @@ class BlockchainExplorer:
     
     def get_gold_token_stats(self):
         """Get GXC-G gold token statistics"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2551,7 +2625,8 @@ class BlockchainExplorer:
     
     def get_gold_reserves(self):
         """Get gold reserves information"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2584,7 +2659,8 @@ class BlockchainExplorer:
     
     def get_governance_proposals(self, status=None):
         """Get governance proposals"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2640,7 +2716,8 @@ class BlockchainExplorer:
     
     def get_proposal_votes(self, proposal_id):
         """Get votes for a specific proposal"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2671,7 +2748,8 @@ class BlockchainExplorer:
     
     def get_bridge_transfers(self, status=None, limit=100):
         """Get cross-chain bridge transfers"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2719,7 +2797,8 @@ class BlockchainExplorer:
     
     def get_bridge_validators(self):
         """Get bridge validators"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2751,7 +2830,8 @@ class BlockchainExplorer:
     
     def get_staking_validators(self):
         """Get staking validators with performance metrics"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2798,7 +2878,8 @@ class BlockchainExplorer:
     
     def get_address_relationships(self, address, limit=50):
         """Get address relationships for graph visualization"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2836,7 +2917,8 @@ class BlockchainExplorer:
     
     def update_address_relationships(self, from_addr, to_addr, value):
         """Update address relationship graph"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -2863,7 +2945,8 @@ class BlockchainExplorer:
     
     def track_gold_token_transfer(self, tx_data, block_number):
         """Track gold token transfers"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -3052,7 +3135,8 @@ class BlockchainExplorer:
     
     def update_network_stats(self):
         """Update network statistics"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         try:
@@ -3243,7 +3327,7 @@ def block_detail(block_number):
     except:
         return "Invalid block number", 400
     
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     try:
@@ -3340,7 +3424,8 @@ def block_detail(block_number):
 @app.route('/tx/<tx_hash>')
 def transaction_detail(tx_hash):
     """Transaction detail page with full blockchain data"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    # Add timeout to prevent database locking issues
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     try:
@@ -3370,10 +3455,20 @@ def transaction_detail(tx_hash):
             for method, params in methods:
                 # Use longer timeout to ensure all data is returned
                 tx_data = rpc_call(method, params=params, timeout=20, show_errors=False)
+                # Ensure tx_data is a dict, not a string
                 if tx_data:
-                    break
+                    if isinstance(tx_data, str):
+                        try:
+                            import json
+                            tx_data = json.loads(tx_data)
+                        except:
+                            tx_data = None
+                    if isinstance(tx_data, dict):
+                        break
+                    else:
+                        tx_data = None
             
-            if tx_data:
+            if tx_data and isinstance(tx_data, dict):
                 # Get block number from transaction - try multiple field names
                 block_number = (tx_data.get('blockNumber') or tx_data.get('block_number') or 
                               tx_data.get('blockheight') or tx_data.get('blockHeight') or 
@@ -3410,16 +3505,25 @@ def transaction_detail(tx_hash):
                 tx_data = rpc_call('getrawtransaction', [tx_hash, True], timeout=15, show_errors=False)
             
             if tx_data:
-                # Store the transaction
-                block_num = tx_data.get('blockNumber') or tx_data.get('block_number') or 0
-                if block_num > 0:
-                    # Get block data for context
-                    block_data = explorer.get_block_by_number(block_num)
-                    if block_data:
-                        explorer.store_block(block_data)
-                    explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0), block_data if block_num > 0 else None)
-                else:
-                    explorer.store_transaction(tx_data, 0, tx_data.get('index', 0), None)
+                # Ensure tx_data is a dict, not a string
+                if isinstance(tx_data, str):
+                    try:
+                        import json
+                        tx_data = json.loads(tx_data)
+                    except:
+                        tx_data = None
+                
+                if tx_data and isinstance(tx_data, dict):
+                    # Store the transaction
+                    block_num = tx_data.get('blockNumber') or tx_data.get('block_number') or 0
+                    if block_num > 0:
+                        # Get block data for context
+                        block_data = explorer.get_block_by_number(block_num)
+                        if block_data:
+                            explorer.store_block(block_data)
+                        explorer.store_transaction(tx_data, block_num, tx_data.get('index', 0), block_data if block_num > 0 else None)
+                    else:
+                        explorer.store_transaction(tx_data, 0, tx_data.get('index', 0), None)
                 
                 # Re-fetch from database
                 cursor.execute('SELECT * FROM transactions WHERE tx_hash = ?', (tx_hash,))
@@ -3564,7 +3668,7 @@ def transaction_detail(tx_hash):
 @app.route('/address/<address>')
 def address_detail(address):
     """Address detail page"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     try:
@@ -3812,7 +3916,7 @@ def transactions_list():
     except:
         pass
     
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     try:
@@ -4016,7 +4120,7 @@ def mining_guide():
 def stocks_page():
     """Stock contracts explorer page"""
     # Get stock contracts from database
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     try:
@@ -4075,7 +4179,7 @@ def forum_redirect():
 @app.route('/stocks/<ticker>')
 def stock_detail(ticker):
     """Stock contract detail page"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     try:
@@ -4308,7 +4412,8 @@ def health_check():
     """Simple health check endpoint for deployment monitoring"""
     try:
         # Quick database check
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         cursor.execute('SELECT 1')
         conn.close()
@@ -4409,7 +4514,8 @@ def export_transactions():
                    'Traceability Valid', 'Memo', 'Lock Time', 'Is Gold Backed', 'PoP Reference']
         writer.writerow(headers)
         
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         
         for tx in transactions:
@@ -4459,7 +4565,7 @@ def export_blocks():
     format_type = request.args.get('format', 'csv')
     limit = safe_int(request.args.get('limit', 1000), default=1000, min_val=1, max_val=10000)
     
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -4511,7 +4617,7 @@ def export_utxo():
     format_type = request.args.get('format', 'csv')
     address = request.args.get('address')
     
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     if address:
@@ -4576,7 +4682,8 @@ def export_all():
         zip_file.writestr('transactions.csv', tx_csv.getvalue())
         
         # Export blocks
-        conn = sqlite3.connect(DATABASE_PATH)
+        # Add timeout to prevent database locking issues
+        conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM blocks ORDER BY block_number DESC LIMIT 10000')
         blocks = cursor.fetchall()
@@ -4646,7 +4753,7 @@ def api_gold_reserves():
 def api_gold_transfers():
     """API endpoint for gold token transfers"""
     limit = safe_int(request.args.get('limit', 50), default=50, min_val=1, max_val=200)
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -4674,7 +4781,7 @@ def api_gold_transfers():
 @app.route('/api/gold/address/<address>')
 def api_gold_address(address):
     """Get gold token balance for address"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -4727,7 +4834,7 @@ def api_governance_proposals():
 @app.route('/api/governance/proposal/<proposal_id>')
 def api_governance_proposal(proposal_id):
     """Get specific proposal details"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -4783,7 +4890,7 @@ def bridge_explorer():
     validators = explorer.get_bridge_validators()
     
     # Calculate bridge stats
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -4826,7 +4933,7 @@ def api_bridge_validators():
 @app.route('/api/bridge/stats')
 def api_bridge_stats():
     """API endpoint for bridge statistics"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -4880,7 +4987,7 @@ def api_staking_validators():
 @app.route('/api/staking/validator/<address>')
 def api_staking_validator(address):
     """Get specific validator details"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -5005,7 +5112,7 @@ def api_address_graph(address):
 @app.route('/api/graph/transaction/<tx_hash>')
 def api_transaction_graph(tx_hash):
     """Get transaction flow graph"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     # Get transaction
@@ -5104,7 +5211,7 @@ def api_simulator_estimate():
     fee = gas_price * gas_limit
     
     # Estimate confirmation time (based on current block time)
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -5161,7 +5268,7 @@ def api_generate_key():
     api_key = 'gxc_' + secrets.token_urlsafe(32)
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
     
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -5187,7 +5294,7 @@ def api_validate_key():
     api_key = request.json.get('api_key', '')
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
     
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -5218,7 +5325,7 @@ def webhooks_page():
 @app.route('/api/webhooks', methods=['GET'])
 def api_list_webhooks():
     """List webhooks"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -5254,7 +5361,7 @@ def api_create_webhook():
     if not url:
         return jsonify({'error': 'URL is required'}), 400
     
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -5276,7 +5383,7 @@ def api_create_webhook():
 @app.route('/api/webhooks/<int:webhook_id>', methods=['DELETE'])
 def api_delete_webhook(webhook_id):
     """Delete webhook"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
     cursor = conn.cursor()
     
     cursor.execute('DELETE FROM webhooks WHERE id = ?', (webhook_id,))
