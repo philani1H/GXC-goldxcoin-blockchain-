@@ -760,6 +760,18 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
     double outputTotal = tx.getTotalOutputAmount();
     double fee = tx.getFee();
     
+    // Validate minimum fee (only for non-coinbase transactions)
+    if (!tx.isCoinbaseTransaction()) {
+        double baseFee = Config::getDouble("base_transaction_fee", 0.001);
+        double minFee = Config::getDouble("min_tx_fee", baseFee);
+        
+        if (fee < minFee) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction fee too low: " + std::to_string(fee) + 
+                          " (minimum: " + std::to_string(minFee) + ")");
+            return false;
+        }
+    }
+    
     if (inputTotal < outputTotal + fee) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input/output amount mismatch");
         return false;
@@ -943,6 +955,58 @@ std::vector<Transaction> Blockchain::getPendingTransactions(size_t maxCount) {
     }
     
     return result;
+}
+
+double Blockchain::calculateRecommendedFee() const {
+    // Check if dynamic fees are enabled
+    bool dynamicFeesEnabled = Config::getBool("enable_dynamic_fees", true);
+    
+    if (!dynamicFeesEnabled) {
+        // Return base fee if dynamic fees disabled
+        return Config::getDouble("base_transaction_fee", 0.001);
+    }
+    
+    // Get pending transaction count
+    std::lock_guard<std::mutex> lock(transactionMutex);
+    size_t pendingTxCount = pendingTransactions.size();
+    
+    // Get configuration values
+    double baseFee = Config::getDouble("base_transaction_fee", 0.001);
+    double maxFee = Config::getDouble("max_transaction_fee", 0.01);
+    
+    size_t lowThreshold = Config::getInt("fee_low_threshold", 10);
+    size_t mediumThreshold = Config::getInt("fee_medium_threshold", 50);
+    size_t highThreshold = Config::getInt("fee_high_threshold", 100);
+    
+    double lowMultiplier = Config::getDouble("fee_low_multiplier", 1.0);
+    double mediumMultiplier = Config::getDouble("fee_medium_multiplier", 1.5);
+    double highMultiplier = Config::getDouble("fee_high_multiplier", 2.0);
+    double veryHighMultiplier = Config::getDouble("fee_very_high_multiplier", 3.0);
+    
+    // Calculate fee based on pending transaction count
+    double fee;
+    if (pendingTxCount < lowThreshold) {
+        // Low activity: base fee
+        fee = baseFee * lowMultiplier;
+    } else if (pendingTxCount < mediumThreshold) {
+        // Medium activity: 1.5x base fee
+        fee = baseFee * mediumMultiplier;
+    } else if (pendingTxCount < highThreshold) {
+        // High activity: 2x base fee
+        fee = baseFee * highMultiplier;
+    } else {
+        // Very high activity: 3x base fee (capped at maxFee)
+        fee = baseFee * veryHighMultiplier;
+        fee = std::min(fee, maxFee);
+    }
+    
+    // Ensure fee is at least base fee
+    fee = std::max(fee, baseFee);
+    
+    LOG_BLOCKCHAIN(LogLevel::DEBUG, "Calculated recommended fee: " + std::to_string(fee) + 
+                   " GXC (pending tx: " + std::to_string(pendingTxCount) + ")");
+    
+    return fee;
 }
 
 Block Blockchain::getLatestBlock() const {

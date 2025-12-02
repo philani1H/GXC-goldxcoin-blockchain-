@@ -5,6 +5,7 @@
 #include "../include/Logger.h"
 #include "../include/Utils.h"
 #include "../include/Network.h"
+#include "../include/Config.h"
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
@@ -229,6 +230,9 @@ void RPCAPI::registerMethods() {
     // listunspent is already registered above with full UTXO access
     rpcMethods["getnewaddress"] = [this](const JsonValue& params) { return getNewAddress(params); };
     rpcMethods["sendtoaddress"] = [this](const JsonValue& params) { return sendToAddress(params); };
+    rpcMethods["estimatefee"] = [this](const JsonValue& params) { return estimateFee(params); };
+    rpcMethods["estimateFee"] = [this](const JsonValue& params) { return estimateFee(params); };
+    rpcMethods["gxc_estimateFee"] = [this](const JsonValue& params) { return estimateFee(params); };
     rpcMethods["validateaddress"] = [this](const JsonValue& params) { return validateAddress(params); };
     rpcMethods["listaccounts"] = [this](const JsonValue& params) { return listAccounts(params); };
     
@@ -1023,10 +1027,61 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount");
     }
     
-    // In a real implementation, would create and send transaction
-    LOG_API(LogLevel::INFO, "Sending " + std::to_string(amount) + " GXC to " + address);
+    // Calculate recommended fee (dynamic fees)
+    double recommendedFee = blockchain->calculateRecommendedFee();
+    
+    // In a real implementation, would create and send transaction with fee
+    LOG_API(LogLevel::INFO, "Sending " + std::to_string(amount) + " GXC to " + address + 
+            " (recommended fee: " + std::to_string(recommendedFee) + " GXC)");
     
     return "transaction_hash";
+}
+
+JsonValue RPCAPI::estimateFee(const JsonValue& params) {
+    // Get recommended fee from blockchain
+    double recommendedFee = blockchain->calculateRecommendedFee();
+    
+    // Get pending transaction count for context
+    auto pendingTxs = blockchain->getPendingTransactions(1000);
+    size_t pendingCount = pendingTxs.size();
+    
+    // Get configuration values for response
+    double baseFee = Config::getDouble("base_transaction_fee", 0.001);
+    double maxFee = Config::getDouble("max_transaction_fee", 0.01);
+    bool dynamicFeesEnabled = Config::getBool("enable_dynamic_fees", true);
+    
+    // Build response
+    JsonValue result;
+    result["fee"] = recommendedFee;
+    result["recommended_fee"] = recommendedFee;
+    result["base_fee"] = baseFee;
+    result["max_fee"] = maxFee;
+    result["pending_transactions"] = static_cast<uint64_t>(pendingCount);
+    result["dynamic_fees_enabled"] = dynamicFeesEnabled;
+    
+    // Fee tiers for reference
+    JsonValue tiers;
+    tiers["low"] = baseFee * Config::getDouble("fee_low_multiplier", 1.0);
+    tiers["medium"] = baseFee * Config::getDouble("fee_medium_multiplier", 1.5);
+    tiers["high"] = baseFee * Config::getDouble("fee_high_multiplier", 2.0);
+    tiers["very_high"] = baseFee * Config::getDouble("fee_very_high_multiplier", 3.0);
+    result["fee_tiers"] = tiers;
+    
+    // Current tier
+    std::string currentTier = "low";
+    if (pendingCount >= Config::getInt("fee_high_threshold", 100)) {
+        currentTier = "very_high";
+    } else if (pendingCount >= Config::getInt("fee_medium_threshold", 50)) {
+        currentTier = "high";
+    } else if (pendingCount >= Config::getInt("fee_low_threshold", 10)) {
+        currentTier = "medium";
+    }
+    result["current_tier"] = currentTier;
+    
+    LOG_API(LogLevel::DEBUG, "Fee estimation: " + std::to_string(recommendedFee) + 
+            " GXC (pending: " + std::to_string(pendingCount) + ", tier: " + currentTier + ")");
+    
+    return result;
 }
 
 JsonValue RPCAPI::validateAddress(const JsonValue& params) {

@@ -386,6 +386,7 @@ private:
     JsonValue getBalance(const JsonValue& params);
     JsonValue getNewAddress(const JsonValue& params);
     JsonValue sendToAddress(const JsonValue& params);
+    JsonValue estimateFee(const JsonValue& params);
     JsonValue validateAddress(const JsonValue& params);
     JsonValue listAccounts(const JsonValue& params);
     JsonValue getMiningInfo(const JsonValue& params);

@@ -101,6 +101,7 @@ public:
     bool addTransaction(const Transaction& tx);
     void processTransactions();
     std::vector<Transaction> getPendingTransactions(size_t maxCount);
+    double calculateRecommendedFee() const;
     Block getLatestBlock() const;
     Block getBlock(const std::string& hash) const;
     Block getBlock(size_t index) const;

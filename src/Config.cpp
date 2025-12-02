@@ -69,6 +69,19 @@ void Config::setDefaults() {
     configMap["transaction_fee"] = "0.001";
     configMap["min_confirmations"] = "6";
     
+    // Dynamic fee settings
+    configMap["enable_dynamic_fees"] = "true";
+    configMap["base_transaction_fee"] = "0.001";
+    configMap["min_tx_fee"] = "0.001";  // Minimum fee (same as base)
+    configMap["max_transaction_fee"] = "0.01";
+    configMap["fee_low_threshold"] = "10";
+    configMap["fee_medium_threshold"] = "50";
+    configMap["fee_high_threshold"] = "100";
+    configMap["fee_low_multiplier"] = "1.0";
+    configMap["fee_medium_multiplier"] = "1.5";
+    configMap["fee_high_multiplier"] = "2.0";
+    configMap["fee_very_high_multiplier"] = "3.0";
+    
     // Logging settings
     configMap["log_level"] = "INFO";
     configMap["log_file"] = "gxc.log";
