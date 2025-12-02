@@ -8,6 +8,7 @@
 #include <numeric>
 #include <sstream>
 #include <unordered_set>
+#include <random>
 
 Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0) {
     // Set difficulty based on network type
@@ -512,13 +513,24 @@ bool Blockchain::validateBlockInternal(const Block& block, uint32_t expectedInde
     }
     LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Previous hash OK");
     
-    // Validate proof of work
-    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Validating proof of work...");
-    if (!validateProofOfWork(block)) {
-        LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid proof of work for block at index " + std::to_string(block.getIndex()));
-        return false;
+    // Validate consensus (PoW or PoS)
+    BlockType blockType = block.getBlockType();
+    if (blockType == BlockType::POS) {
+        LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Validating proof of stake...");
+        if (!validateProofOfStake(block)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid proof of stake for block at index " + std::to_string(block.getIndex()));
+            return false;
+        }
+        LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Proof of stake OK");
+    } else {
+        // PoW blocks (POW_SHA256, POW_ETHASH)
+        LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Validating proof of work...");
+        if (!validateProofOfWork(block)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid proof of work for block at index " + std::to_string(block.getIndex()));
+            return false;
+        }
+        LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Proof of work OK");
     }
-    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Proof of work OK");
     
     // Validate transactions
     LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Validating " + std::to_string(block.getTransactions().size()) + " transactions...");
@@ -578,6 +590,147 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
     }
     
     return isValid;
+}
+
+bool Blockchain::validateProofOfStake(const Block& block) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    // Check if block is PoS type
+    if (block.getBlockType() != BlockType::POS) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block is not PoS type");
+        return false;
+    }
+    
+    // Get validator address from miner address
+    std::string validatorAddress = block.getMinerAddress();
+    if (validatorAddress.empty()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block missing validator address");
+        return false;
+    }
+    
+    // Check if validator exists and is active
+    auto it = validatorMap.find(validatorAddress);
+    if (it == validatorMap.end()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Validator not found: " + validatorAddress);
+        return false;
+    }
+    
+    const Validator& validator = it->second;
+    if (!validator.getIsActive() || !validator.isValidValidator()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Validator is not active or invalid: " + validatorAddress);
+        return false;
+    }
+    
+    // Verify validator signature
+    std::string validatorSignature = block.getValidatorSignature();
+    if (validatorSignature.empty()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block missing validator signature");
+        return false;
+    }
+    
+    // Verify signature matches validator
+    std::string blockHash = block.getHash();
+    if (!validator.verifySignature(blockHash, validatorSignature)) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Invalid validator signature");
+        return false;
+    }
+    
+    // Verify block hash is valid (should meet a basic target for PoS)
+    // PoS blocks still need a valid hash, but difficulty is much lower
+    if (blockHash.empty()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block hash is empty");
+        return false;
+    }
+    
+    // PoS blocks require minimal hash difficulty (much easier than PoW)
+    double posDifficulty = 0.01; // Very easy for PoS
+    if (!meetsTarget(blockHash, posDifficulty)) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block hash does not meet PoS target");
+        return false;
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateProofOfStake: Valid PoS block from validator " + validatorAddress);
+    return true;
+}
+
+Validator Blockchain::selectValidatorForBlock() const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    
+    // Get all active validators
+    std::vector<Validator> activeValidators;
+    for (const auto& validator : validators) {
+        if (validator.getIsActive() && validator.isValidValidator()) {
+            activeValidators.push_back(validator);
+        }
+    }
+    
+    if (activeValidators.empty()) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "selectValidatorForBlock: No active validators");
+        return Validator(); // Return invalid validator
+    }
+    
+    // Calculate total weighted stake
+    double totalWeightedStake = 0.0;
+    for (const auto& validator : activeValidators) {
+        totalWeightedStake += validator.getWeightedStake();
+    }
+    
+    if (totalWeightedStake <= 0.0) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "selectValidatorForBlock: Total weighted stake is 0");
+        return Validator(); // Return invalid validator
+    }
+    
+    // Select validator based on weighted stake (proportional selection)
+    // Use block height as seed for deterministic selection
+    uint32_t currentHeight = getHeight();
+    std::mt19937 rng(currentHeight); // Seed with block height for determinism
+    std::uniform_real_distribution<> dis(0.0, totalWeightedStake);
+    double randomValue = dis(rng);
+    
+    double cumulativeWeight = 0.0;
+    for (const auto& validator : activeValidators) {
+        cumulativeWeight += validator.getWeightedStake();
+        if (randomValue <= cumulativeWeight) {
+            LOG_BLOCKCHAIN(LogLevel::INFO, "selectValidatorForBlock: Selected validator " + validator.getAddress() + 
+                          " (weighted stake: " + std::to_string(validator.getWeightedStake()) + ")");
+            return validator;
+        }
+    }
+    
+    // Fallback: return first validator
+    LOG_BLOCKCHAIN(LogLevel::WARNING, "selectValidatorForBlock: Fallback to first validator");
+    return activeValidators[0];
+}
+
+BlockType Blockchain::getNextBlockType() const {
+    // Hybrid consensus: Alternate between PoW and PoS blocks
+    // Even heights = PoW, Odd heights = PoS (or vice versa)
+    uint32_t currentHeight = getHeight();
+    
+    // Alternate: PoW for even heights, PoS for odd heights
+    // But only if we have validators for PoS blocks
+    if (currentHeight % 2 == 0) {
+        // Even height: PoW block
+        return BlockType::POW_SHA256;
+    } else {
+        // Odd height: PoS block (if validators exist)
+        std::lock_guard<std::mutex> lock(chainMutex);
+        bool hasValidators = false;
+        for (const auto& validator : validators) {
+            if (validator.getIsActive() && validator.isValidValidator()) {
+                hasValidators = true;
+                break;
+            }
+        }
+        
+        if (hasValidators) {
+            return BlockType::POS;
+        } else {
+            // Fallback to PoW if no validators
+            LOG_BLOCKCHAIN(LogLevel::WARNING, "getNextBlockType: No validators, using PoW");
+            return BlockType::POW_SHA256;
+        }
+    }
 }
 
 bool Blockchain::validateTransaction(const Transaction& tx) {

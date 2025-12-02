@@ -392,6 +392,8 @@ private:
     JsonValue getNetworkHashPS(const JsonValue& params);
     JsonValue submitBlock(const JsonValue& params);
     JsonValue getBlockTemplate(const JsonValue& params);
+    JsonValue createPoSBlock(const JsonValue& params);
+    JsonValue submitPoSBlock(const JsonValue& params);
     
     // Helper functions
     double calculateBlockReward(uint32_t height);

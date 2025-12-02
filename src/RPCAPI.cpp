@@ -1,5 +1,6 @@
 #include "../include/RPCAPI.h"
 #include "../include/blockchain.h"
+#include "../include/Block.h"
 #include "../include/Validator.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
@@ -238,6 +239,12 @@ void RPCAPI::registerMethods() {
     rpcMethods["gxc_submitBlock"] = [this](const JsonValue& params) { return submitBlock(params); };
     rpcMethods["getblocktemplate"] = [this](const JsonValue& params) { return getBlockTemplate(params); };
     rpcMethods["gxc_getBlockTemplate"] = [this](const JsonValue& params) { return getBlockTemplate(params); };
+    
+    // PoS block creation methods
+    rpcMethods["createposblock"] = [this](const JsonValue& params) { return createPoSBlock(params); };
+    rpcMethods["gxc_createPoSBlock"] = [this](const JsonValue& params) { return createPoSBlock(params); };
+    rpcMethods["submitposblock"] = [this](const JsonValue& params) { return submitPoSBlock(params); };
+    rpcMethods["gxc_submitPoSBlock"] = [this](const JsonValue& params) { return submitPoSBlock(params); };
     
     // Staking and Validator methods
     rpcMethods["registervalidator"] = [this](const JsonValue& params) { return registerValidator(params); };
@@ -1172,14 +1179,44 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         // Calculate block reward with halving
         double blockReward = calculateBlockReward(height);
         
+        // Determine block type from block data or use default
+        BlockType blockType = BlockType::POW_SHA256;
+        if (blockData.contains("consensus_type")) {
+            std::string consensusType = blockData["consensus_type"].get<std::string>();
+            if (consensusType == "pos") {
+                blockType = BlockType::POS;
+            } else if (consensusType == "pow_ethash") {
+                blockType = BlockType::POW_ETHASH;
+            } else {
+                blockType = BlockType::POW_SHA256;
+            }
+        } else if (blockData.contains("block_type")) {
+            std::string blockTypeStr = blockData["block_type"].get<std::string>();
+            if (blockTypeStr == "pos") {
+                blockType = BlockType::POS;
+            } else if (blockTypeStr == "pow_ethash") {
+                blockType = BlockType::POW_ETHASH;
+            } else {
+                blockType = BlockType::POW_SHA256;
+            }
+        }
+        
         // Create Block object
-        Block newBlock(height, prevHash, BlockType::POW_SHA256);
+        Block newBlock(height, prevHash, blockType);
         newBlock.setHash(hash);
         newBlock.setNonce(nonce);
         newBlock.setTimestamp(timestamp);
         newBlock.setDifficulty(difficulty);
         newBlock.setMinerAddress(minerAddress);
         newBlock.setBlockReward(blockReward);
+        
+        // For PoS blocks, set validator signature
+        if (blockType == BlockType::POS) {
+            std::string validatorSignature = blockData.value("validator_signature", "");
+            if (!validatorSignature.empty()) {
+                newBlock.setValidatorSignature(validatorSignature);
+            }
+        }
         
         // Check if coinbase transaction exists in submitted block
         bool hasCoinbase = false;
@@ -1394,14 +1431,14 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
             throw RPCException(RPCException::RPC_INTERNAL_ERROR, "No valid blocks in chain");
         }
         
-        // The next block will be at currentHeight (0-indexed: genesis=0, first block=1, etc.)
-        // But getHeight() returns chain.size(), so if chain has 1 block (genesis), height=1, next block index=1
-        // If chain has 2 blocks, height=2, next block index=2
+        // Determine next block type (PoW or PoS)
+        BlockType nextBlockType = blockchain->getNextBlockType();
         uint32_t nextBlockHeight = currentHeight;
         double blockReward = calculateBlockReward(nextBlockHeight);
         
         LOG_API(LogLevel::DEBUG, "getBlockTemplate: currentHeight=" + std::to_string(currentHeight) + 
                 ", nextBlockHeight=" + std::to_string(nextBlockHeight) +
+                ", blockType=" + (nextBlockType == BlockType::POS ? "PoS" : "PoW") +
                 ", reward=" + std::to_string(blockReward) + ", prevHash=" + latestBlock.getHash().substr(0, 16) + "...");
         
         result["version"] = 1;
@@ -1422,6 +1459,30 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         result["bits"] = "1d00ffff";
         result["height"] = static_cast<uint64_t>(nextBlockHeight);
         result["difficulty"] = blockchain->getDifficulty();
+        
+        // Add block type information
+        std::string consensusType = "pow";
+        if (nextBlockType == BlockType::POS) {
+            consensusType = "pos";
+            result["consensus_type"] = "pos";
+            result["block_type"] = "pos";
+            
+            // For PoS blocks, include validator selection info
+            Validator selectedValidator = blockchain->selectValidatorForBlock();
+            if (selectedValidator.getAddress().empty()) {
+                LOG_API(LogLevel::WARNING, "getBlockTemplate: No validators available for PoS block");
+                // Fallback to PoW
+                result["consensus_type"] = "pow";
+                result["block_type"] = "pow";
+            } else {
+                result["validator_address"] = selectedValidator.getAddress();
+                result["validator_stake"] = selectedValidator.getStakeAmount();
+                result["validator_weighted_stake"] = selectedValidator.getWeightedStake();
+            }
+        } else {
+            result["consensus_type"] = "pow";
+            result["block_type"] = "pow";
+        }
         
         return result;
     
@@ -1734,6 +1795,145 @@ JsonValue RPCAPI::getValidatorInfo(const JsonValue& params) {
     
     throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
         "Validator not found for address: " + address);
+}
+
+// PoS Block Creation Methods
+JsonValue RPCAPI::createPoSBlock(const JsonValue& params) {
+    if (params.size() < 1) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing validator address parameter");
+    }
+    
+    std::string validatorAddress = params[0].get<std::string>();
+    
+    // Get validator info
+    auto validators = blockchain->getActiveValidators();
+    Validator validator;
+    bool found = false;
+    
+    for (const auto& v : validators) {
+        if (v.getAddress() == validatorAddress) {
+            validator = v;
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Validator not found or not active: " + validatorAddress);
+    }
+    
+    // Get blockchain state
+    uint32_t currentHeight = blockchain->getHeight();
+    Block latestBlock = blockchain->getLatestBlock();
+    
+    if (latestBlock.getHash().empty()) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "No valid blocks in chain");
+    }
+    
+    // Check if next block should be PoS
+    BlockType nextBlockType = blockchain->getNextBlockType();
+    if (nextBlockType != BlockType::POS) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Next block should be PoW, not PoS. Current height: " + std::to_string(currentHeight));
+    }
+    
+    // Check if this validator should create the block
+    Validator selectedValidator = blockchain->selectValidatorForBlock();
+    if (selectedValidator.getAddress() != validatorAddress) {
+        LOG_API(LogLevel::WARNING, "createPoSBlock: Validator " + validatorAddress + 
+                " not selected. Selected: " + selectedValidator.getAddress());
+        // Still allow creation, but warn
+    }
+    
+    uint32_t nextBlockHeight = currentHeight;
+    double blockReward = calculateBlockReward(nextBlockHeight);
+    
+    // Create PoS block template
+    Block posBlock(nextBlockHeight, latestBlock.getHash(), BlockType::POS);
+    posBlock.setTimestamp(Utils::getCurrentTimestamp());
+    posBlock.setDifficulty(0.01); // Low difficulty for PoS
+    posBlock.setMinerAddress(validatorAddress);
+    posBlock.setBlockReward(blockReward);
+    
+    // Get pending transactions
+    auto pendingTxs = blockchain->getPendingTransactions(100);
+    for (const auto& tx : pendingTxs) {
+        posBlock.addTransaction(tx);
+    }
+    
+    // Create coinbase transaction
+    Transaction coinbase(validatorAddress, blockReward);
+    posBlock.addTransaction(coinbase);
+    
+    // Calculate merkle root
+    posBlock.calculateMerkleRoot();
+    
+    // Calculate block hash (PoS blocks need minimal hash work)
+    std::string blockHash = posBlock.calculateHash();
+    posBlock.setHash(blockHash);
+    
+    // Sign block with validator (in production, would use actual cryptographic signing)
+    // For now, create a signature based on block hash and validator address
+    std::string validatorSignature = validator.signBlock(blockHash, ""); // Private key would be used here
+    posBlock.setValidatorSignature(validatorSignature);
+    
+    // Return block template
+    JsonValue result;
+    result["height"] = nextBlockHeight;
+    result["hash"] = blockHash;
+    result["previousblockhash"] = latestBlock.getHash();
+    result["timestamp"] = static_cast<uint64_t>(posBlock.getTimestamp());
+    result["difficulty"] = posBlock.getDifficulty();
+    result["validator_address"] = validatorAddress;
+    result["validator_signature"] = validatorSignature;
+    result["block_reward"] = blockReward;
+    result["consensus_type"] = "pos";
+    result["block_type"] = "pos";
+    result["merkle_root"] = posBlock.getMerkleRoot();
+    
+    // Include transactions
+    JsonValue transactions(JsonValue::array());
+    for (const auto& tx : posBlock.getTransactions()) {
+        JsonValue txJson = transactionToJson(tx, nextBlockHeight, blockHash);
+        transactions.push_back(txJson);
+    }
+    result["transactions"] = transactions;
+    
+    LOG_API(LogLevel::INFO, "createPoSBlock: Created PoS block template for validator " + validatorAddress);
+    
+    return result;
+}
+
+JsonValue RPCAPI::submitPoSBlock(const JsonValue& params) {
+    // PoS block submission uses the same submitBlock method
+    // but with block_type set to "pos"
+    if (params.size() < 1) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing block data parameter");
+    }
+    
+    JsonValue blockData;
+    if (params[0].is_string()) {
+        try {
+            blockData = JsonValue::parse(params[0].get<std::string>());
+        } catch (...) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Failed to parse block JSON");
+        }
+    } else if (params[0].is_object()) {
+        blockData = params[0];
+    } else {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid block data format");
+    }
+    
+    // Ensure block type is set to PoS
+    blockData["consensus_type"] = "pos";
+    blockData["block_type"] = "pos";
+    
+    // Use submitBlock with modified params
+    JsonValue submitParams(JsonValue::array());
+    submitParams.push_back(blockData);
+    
+    return submitBlock(submitParams);
 }
 
 // RPCException implementation

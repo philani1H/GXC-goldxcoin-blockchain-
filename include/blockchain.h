@@ -111,10 +111,9 @@ public:
     std::string getStats() const;
     
     // Hybrid consensus
-    // bool validatePoWBlock(const Block& block) const;
-    // bool validatePoSBlock(const Block& block) const;
-    // Validator selectValidator() const;
-    // BlockType getNextBlockType() const;
+    bool validateProofOfStake(const Block& block) const;
+    Validator selectValidatorForBlock() const;
+    BlockType getNextBlockType() const;
     
     // Adaptive monetary policy
     // double calculateBlockReward(uint32_t blockNumber) const;
