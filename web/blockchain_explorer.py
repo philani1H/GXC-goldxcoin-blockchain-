@@ -855,17 +855,18 @@ class BlockchainExplorer:
                         return block
             
             # Try multiple methods for compatibility - ALWAYS request verbose/full data
+            # Use correct RPC endpoints: getblock with verbose=true returns full transaction data
             methods = [
-                ('gxc_getLatestBlock', [True]),  # verbose
-                ('gxc_getLatestBlock', []),
-                ('getlatestblock', [True]),  # verbose
-                ('getlatestblock', []),
-                ('getblock', ['latest', 2]),  # verbosity level 2 = full data
-                ('getblock', ['latest', True]),  # verbose
-                ('getblock', ['latest']),
-                ('getblock', [-1, 2]),  # verbosity level 2
-                ('getblock', [-1, True]),  # verbose
-                ('getblock', [-1])
+                ('getblock', ['latest', True]),  # verbose=true returns full transactions
+                ('getblock', ['latest', 2]),  # verbosity=2 returns full transactions
+                ('getblock', ['latest']),  # defaults to verbose=true
+                ('getblock', [-1, True]),  # verbose=true
+                ('getblock', [-1, 2]),  # verbosity=2
+                ('getblock', [-1]),  # defaults to verbose=true
+                ('gxc_getLatestBlock', [True]),  # verbose (alias)
+                ('gxc_getLatestBlock', []),  # defaults to verbose
+                ('getlatestblock', [True]),  # verbose (alias)
+                ('getlatestblock', [])  # defaults to verbose
             ]
             
             for method, params in methods:
@@ -874,36 +875,20 @@ class BlockchainExplorer:
                 if result:
                     # Normalize the block data to ensure consistent field names
                     normalized = self._normalize_block_data(result)
-                    # ALWAYS ensure transactions are included with FULL data
-                    if not normalized.get('transactions') or len(normalized['transactions']) == 0:
-                        # Try to fetch transactions separately with verbose flags
-                        block_num = normalized.get('number') or normalized.get('height') or 0
-                        if block_num > 0:
-                            tx_methods = [
-                                ('getblocktransactions', [block_num, True]),  # verbose
-                                ('getblocktransactions', [block_num]),
-                                ('getblocktxs', [block_num, True]),  # verbose
-                                ('getblocktxs', [block_num]),
-                                ('gxc_getBlockTransactions', [block_num, True]),  # verbose
-                                ('gxc_getBlockTransactions', [block_num])
-                            ]
-                            for tx_method, tx_params in tx_methods:
-                                tx_result = rpc_call(tx_method, params=tx_params, timeout=20, show_errors=False)
-                                if tx_result:
-                                    normalized['transactions'] = tx_result if isinstance(tx_result, list) else [tx_result]
-                                    break
                     
-                    # If transactions are just hashes, fetch full data
+                    # If transactions are just hashes, fetch full data using gettransaction
                     if normalized.get('transactions'):
                         full_transactions = []
                         for tx in normalized['transactions']:
                             if isinstance(tx, str):
+                                # Transaction is just a hash, fetch full data
                                 tx_full = self._get_full_transaction_data(tx)
                                 if tx_full:
                                     full_transactions.append(tx_full)
                                 else:
                                     full_transactions.append({'hash': tx})
                             else:
+                                # Already has full transaction data
                                 full_transactions.append(tx)
                         normalized['transactions'] = full_transactions
                     
@@ -975,19 +960,19 @@ class BlockchainExplorer:
     def get_block_by_number(self, block_number):
         """Get block by number from the node with full transaction data - ensures ALL data is fetched"""
         try:
+            # Use correct RPC endpoints: getblock with verbose=true returns full transaction data
             # Try multiple methods for compatibility, ALWAYS use verbose flag to get ALL transaction data
-            # Use longer timeout for testnet nodes to ensure all data is fetched
             methods = [
-                ('gxc_getBlockByNumber', [block_number, True, True]),  # block_number, verbose, include_tx_data
-                ('gxc_getBlockByNumber', [block_number, True]),  # block_number, verbose
-                ('getblockbynumber', [block_number, True, True]),  # verbose + include_tx_data
-                ('getblockbynumber', [block_number, True]),  # verbose
-                ('getblock', [int(block_number), 2]),  # verbosity level 2 = full data
-                ('getblock', [int(block_number), True]),  # verbose
-                ('getblock', [str(block_number), 2]),  # verbosity level 2
-                ('getblock', [str(block_number), True]),  # verbose
-                ('getblock', [int(block_number)]),  # Fallback without verbose
-                ('getblock', [str(block_number)])
+                ('getblock', [int(block_number), True]),  # verbose=true returns full transactions
+                ('getblock', [int(block_number), 2]),  # verbosity=2 returns full transactions
+                ('getblock', [int(block_number)]),  # defaults to verbose=true
+                ('getblock', [str(block_number), True]),  # verbose=true
+                ('getblock', [str(block_number), 2]),  # verbosity=2
+                ('getblock', [str(block_number)]),  # defaults to verbose=true
+                ('getblockbynumber', [block_number, True]),  # verbose (alias)
+                ('getblockbynumber', [block_number]),  # defaults to verbose
+                ('gxc_getBlockByNumber', [block_number, True]),  # verbose (alias)
+                ('gxc_getBlockByNumber', [block_number])  # defaults to verbose
             ]
             
             for method, params in methods:
@@ -997,37 +982,7 @@ class BlockchainExplorer:
                     # Normalize the block data to ensure consistent field names
                     normalized = self._normalize_block_data(result)
                     
-                    # ALWAYS try to fetch transactions separately if not included or incomplete
-                    # This ensures we get ALL transaction data even if block response doesn't include it
-                    if not normalized.get('transactions') or len(normalized['transactions']) == 0:
-                        # Try multiple methods to get ALL transactions for this block
-                        tx_methods = [
-                            ('getblocktransactions', [block_number, True]),  # verbose
-                            ('getblocktransactions', [block_number]),
-                            ('getblocktxs', [block_number, True]),  # verbose
-                            ('getblocktxs', [block_number]),
-                            ('gettransactions', [block_number, True]),  # verbose
-                            ('gettransactions', [block_number]),
-                            ('gxc_getBlockTransactions', [block_number, True]),  # verbose
-                            ('gxc_getBlockTransactions', [block_number])
-                        ]
-                        for tx_method, tx_params in tx_methods:
-                            tx_result = rpc_call(tx_method, params=tx_params, timeout=20, show_errors=False)
-                            if tx_result:
-                                # Ensure we have a list of transactions
-                                if isinstance(tx_result, list):
-                                    normalized['transactions'] = tx_result
-                                elif isinstance(tx_result, dict):
-                                    normalized['transactions'] = [tx_result]
-                                else:
-                                    normalized['transactions'] = [tx_result] if tx_result else []
-                                
-                                # Update transaction count
-                                normalized['transaction_count'] = len(normalized['transactions'])
-                                normalized['tx_count'] = len(normalized['transactions'])
-                                break
-                    
-                    # If we have transactions but they're incomplete (just hashes), fetch full data
+                    # If transactions are just hashes, fetch full data using gettransaction
                     if normalized.get('transactions'):
                         full_transactions = []
                         for tx in normalized['transactions']:
@@ -1056,21 +1011,27 @@ class BlockchainExplorer:
         if not tx_hash:
             return None
         
+        # Use correct RPC endpoints: gettransaction with verbose=true returns full transaction data
         methods = [
-            ('gettransaction', [tx_hash, True]),  # verbose
-            ('gettransaction', [tx_hash]),
-            ('getrawtransaction', [tx_hash, True]),  # verbose
-            ('getrawtransaction', [tx_hash]),
-            ('gxc_getTransaction', [tx_hash, True]),  # verbose
-            ('gxc_getTransaction', [tx_hash]),
-            ('gettx', [tx_hash, True]),  # verbose
-            ('gettx', [tx_hash])
+            ('gettransaction', [tx_hash, True]),  # verbose=true returns full data
+            ('gettransaction', [tx_hash]),  # defaults to verbose=true
+            ('getrawtransaction', [tx_hash, True]),  # verbose=true returns full JSON
+            ('getrawtransaction', [tx_hash]),  # verbose=false returns hex only, so try verbose
+            ('gxc_getTransaction', [tx_hash, True]),  # verbose (alias)
+            ('gxc_getTransaction', [tx_hash]),  # defaults to verbose
+            ('gettx', [tx_hash, True]),  # verbose (alias)
+            ('gettx', [tx_hash])  # defaults to verbose
         ]
         
         for method, params in methods:
             result = rpc_call(method, params=params, timeout=15, show_errors=False)
             if result:
-                return result
+                # Ensure result is a dict (full transaction data), not a string (hex)
+                if isinstance(result, dict):
+                    return result
+                elif isinstance(result, str) and method == 'getrawtransaction' and len(params) == 1:
+                    # Got hex string, need to retry with verbose=true
+                    continue
         
         return None
     
@@ -1100,46 +1061,57 @@ class BlockchainExplorer:
             consensus = block_data.get('consensusType') or block_data.get('consensus_type') or 'pow'
             block_type = block_type_map.get(consensus.lower(), 0)
             
+            # Extract all block fields
+            merkle_root = block_data.get('merkleRoot') or block_data.get('merkle_root') or ''
+            total_difficulty = block_data.get('totalDifficulty') or block_data.get('total_difficulty') or difficulty
+            block_size = block_data.get('size') or 0
+            gas_used = block_data.get('gasUsed') or block_data.get('gas_used') or 0
+            gas_limit = block_data.get('gasLimit') or block_data.get('gas_limit') or 0
+            reward = block_data.get('reward') or 12.5  # Default testnet reward
+            validator_signature = block_data.get('validatorSignature') or block_data.get('validator_signature') or ''
+            pow_hash = block_data.get('powHash') or block_data.get('pow_hash') or ''
+            pos_hash = block_data.get('posHash') or block_data.get('pos_hash') or ''
+            fee_burn_rate = float(block_data.get('feeBurnRate') or block_data.get('fee_burn_rate') or 0.0)
+            pop_reference = block_data.get('popReference') or block_data.get('pop_reference') or ''
+            
+            # Convert timestamp to datetime if needed
+            if isinstance(timestamp, (int, float)):
+                from datetime import datetime
+                timestamp_dt = datetime.fromtimestamp(timestamp)
+            elif isinstance(timestamp, str):
+                try:
+                    timestamp_dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                except:
+                    timestamp_dt = datetime.fromtimestamp(int(time.time()))
+            else:
+                timestamp_dt = timestamp
+            
+            # Fix Python 3.12 datetime deprecation warning
+            # Convert datetime to ISO format string for SQLite
+            if isinstance(timestamp_dt, datetime):
+                timestamp_str = timestamp_dt.isoformat()
+            else:
+                timestamp_str = str(timestamp_dt)
+            
             # Check if block already exists
             cursor.execute('SELECT block_number FROM blocks WHERE block_number = ?', (block_number,))
             if cursor.fetchone():
-                # Block exists, update it
+                # Block exists, update it with ALL fields
                 cursor.execute('''
                     UPDATE blocks SET
-                        block_hash = ?, parent_hash = ?, timestamp = ?,
-                        miner_address = ?, difficulty = ?, nonce = ?,
-                        transaction_count = ?
+                        block_hash = ?, parent_hash = ?, merkle_root = ?, timestamp = ?,
+                        miner_address = ?, difficulty = ?, total_difficulty = ?, nonce = ?,
+                        size = ?, gas_used = ?, gas_limit = ?, transaction_count = ?,
+                        reward = ?, consensus_type = ?, block_type = ?, validator_signature = ?,
+                        pow_hash = ?, pos_hash = ?, fee_burn_rate = ?, pop_reference = ?
                     WHERE block_number = ?
-                ''', (block_hash, parent_hash, timestamp, miner_address, difficulty, nonce, transaction_count, block_number))
+                ''', (block_hash, parent_hash, merkle_root, timestamp_str, miner_address, 
+                      float(difficulty), float(total_difficulty), int(nonce), int(block_size),
+                      int(gas_used), int(gas_limit), int(transaction_count), float(reward),
+                      consensus, block_type, validator_signature, pow_hash, pos_hash,
+                      fee_burn_rate, pop_reference, block_number))
             else:
-                # New block, insert it
-                # Handle both testnet format and full format
-                merkle_root = block_data.get('merkleRoot') or block_data.get('merkle_root') or ''
-                total_difficulty = block_data.get('totalDifficulty') or block_data.get('total_difficulty') or difficulty
-                block_size = block_data.get('size') or 0
-                gas_used = block_data.get('gasUsed') or block_data.get('gas_used') or 0
-                gas_limit = block_data.get('gasLimit') or block_data.get('gas_limit') or 0
-                reward = block_data.get('reward') or 12.5  # Default testnet reward
-                
-                # Convert timestamp to datetime if needed
-                if isinstance(timestamp, (int, float)):
-                    from datetime import datetime
-                    timestamp_dt = datetime.fromtimestamp(timestamp)
-                elif isinstance(timestamp, str):
-                    try:
-                        timestamp_dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                    except:
-                        timestamp_dt = datetime.fromtimestamp(int(time.time()))
-                else:
-                    timestamp_dt = timestamp
-                
-                # Fix Python 3.12 datetime deprecation warning
-                # Convert datetime to ISO format string for SQLite
-                if isinstance(timestamp_dt, datetime):
-                    timestamp_str = timestamp_dt.isoformat()
-                else:
-                    timestamp_str = str(timestamp_dt)
-                
+                # New block, insert it with ALL fields
                 cursor.execute('''
                     INSERT INTO blocks (
                         block_number, block_hash, parent_hash, merkle_root, timestamp,
@@ -1165,11 +1137,11 @@ class BlockchainExplorer:
                 float(reward),
                 consensus,
                 block_type,
-                block_data.get('validatorSignature') or block_data.get('validator_signature') or '',
-                block_data.get('powHash') or block_data.get('pow_hash') or '',
-                block_data.get('posHash') or block_data.get('pos_hash') or '',
-                float(block_data.get('feeBurnRate') or block_data.get('fee_burn_rate') or 0.0),
-                block_data.get('popReference') or block_data.get('pop_reference') or ''
+                validator_signature,
+                pow_hash,
+                pos_hash,
+                fee_burn_rate,
+                pop_reference
             ))
             
             # Store transactions - handle both list and single transaction
@@ -1293,19 +1265,35 @@ class BlockchainExplorer:
             else:
                 tx_timestamp_str = str(tx_timestamp) if tx_timestamp else datetime.utcnow().isoformat()
             
+            # Extract all additional fields from transaction data
+            block_hash = (tx_data.get('blockHash') or tx_data.get('block_hash') or 
+                         (block_data.get('hash') if block_data else None) or 
+                         (block_data.get('block_hash') if block_data else None) or None)
+            signature = tx_data.get('signature') or tx_data.get('sig') or None
+            prev_tx_hash = tx_data.get('prevTxHash') or tx_data.get('prev_tx_hash') or tx_data.get('previousTxHash') or None
+            referenced_amount = tx_data.get('referencedAmount') or tx_data.get('referenced_amount') or None
+            traceability_valid = tx_data.get('traceabilityValid') if 'traceabilityValid' in tx_data else (tx_data.get('traceability_valid') if 'traceability_valid' in tx_data else None)
+            memo = tx_data.get('memo') or tx_data.get('message') or None
+            lock_time = tx_data.get('lockTime') or tx_data.get('lock_time') or tx_data.get('locktime') or 0
+            is_gold_backed = tx_data.get('isGoldBacked') or tx_data.get('is_gold_backed') or False
+            pop_reference = tx_data.get('popReference') or tx_data.get('pop_reference') or tx_data.get('popRef') or None
+            
             # Use WAL mode for better concurrency and reduce locking
             cursor.execute('PRAGMA journal_mode=WAL')
             
             cursor.execute('''
                 INSERT OR REPLACE INTO transactions (
-                    tx_hash, block_number, tx_index, from_address,
+                    tx_hash, block_number, block_hash, tx_index, from_address,
                     to_address, value, fee, gas_price, gas_used,
                     status, timestamp, input_data, nonce, tx_type,
-                    contract_address, is_coinbase
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    contract_address, signature, is_coinbase, prev_tx_hash,
+                    referenced_amount, traceability_valid, memo, lock_time,
+                    is_gold_backed, pop_reference
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 tx_hash,
                 block_number,
+                block_hash,
                 tx_index,
                 from_addr,
                 to_addr,
@@ -1319,7 +1307,15 @@ class BlockchainExplorer:
                 int(nonce),
                 tx_type,
                 contract_addr,
-                1 if is_coinbase else 0
+                signature,
+                1 if is_coinbase else 0,
+                prev_tx_hash,
+                float(referenced_amount) if referenced_amount is not None else None,
+                1 if traceability_valid else (0 if traceability_valid is False else None),
+                memo,
+                int(lock_time),
+                1 if is_gold_backed else 0,
+                pop_reference
             ))
             
             # Emit WebSocket event for new transaction
@@ -3709,13 +3705,11 @@ def address_detail(address):
             print(f"[EXPLORER] Address {address} not in database, fetching from node...")
             # Try multiple methods to get balance - ensure ALL address data is fetched
             balance = None
+            # Use correct RPC endpoints: getbalance takes only address parameter
             methods = [
-                ('getbalance', [address, True]),  # verbose - includes all balance info
-                ('getbalance', [address]),
-                ('gxc_getBalance', [address, True]),  # verbose
-                ('gxc_getBalance', [address]),
-                ('getaddressbalance', [address, True]),  # verbose
-                ('getaddressbalance', [address])
+                ('getbalance', [address]),  # Returns balance as float
+                ('gxc_getBalance', [address]),  # Alias
+                ('getaddressbalance', [address])  # Alias
             ]
             
             for method, params in methods:
@@ -3730,10 +3724,13 @@ def address_detail(address):
             # Try to get address transaction count and other info - fetch ALL transaction data
             tx_count = 0
             try:
-                # Try to get transaction history - use verbose to get all transaction IDs
-                tx_history = rpc_call('getaddresstxids', [address, True], timeout=20, show_errors=False)
+                # Use correct RPC endpoints: getaddresstxids returns transaction IDs (hashes)
+                tx_history = rpc_call('getaddresstxids', [address], timeout=20, show_errors=False)
                 if not tx_history:
-                    tx_history = rpc_call('getaddresstxids', [address], timeout=20, show_errors=False)
+                    # Fallback to listtransactions which returns full transaction data
+                    tx_list = rpc_call('listtransactions', [address, 100], timeout=20, show_errors=False)
+                    if tx_list and isinstance(tx_list, list):
+                        tx_history = [tx.get('hash') or tx.get('tx_hash') for tx in tx_list if isinstance(tx, dict)]
                 
                 if tx_history and isinstance(tx_history, list):
                     tx_count = len(tx_history)
@@ -3785,10 +3782,14 @@ def address_detail(address):
         if not transactions and addr_info:
             print(f"[EXPLORER] Address {address} has no transactions in DB, trying to fetch from node...")
             try:
-                # Try to get transaction history from node - use verbose to get ALL transaction IDs
-                tx_history = rpc_call('getaddresstxids', [address, True], timeout=20, show_errors=False)
+                # Use correct RPC endpoints: getaddresstxids returns transaction IDs (hashes)
+                # For full transaction data, prefer listtransactions
+                tx_history = rpc_call('getaddresstxids', [address], timeout=20, show_errors=False)
                 if not tx_history:
-                    tx_history = rpc_call('getaddresstxids', [address], timeout=20, show_errors=False)
+                    # Fallback to listtransactions which returns full transaction data
+                    tx_list = rpc_call('listtransactions', [address, 100], timeout=20, show_errors=False)
+                    if tx_list and isinstance(tx_list, list):
+                        tx_history = [tx.get('hash') or tx.get('tx_hash') for tx in tx_list if isinstance(tx, dict)]
                 
                 if tx_history and isinstance(tx_history, list):
                     # Fetch and store transactions with FULL data

@@ -13,7 +13,7 @@ import bcrypt
 import jwt
 import qrcode
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, flash
 from flask_cors import CORS
 from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -71,7 +71,7 @@ class BlockchainClient:
         self.detect_server_network()
     
     def detect_server_network(self):
-        """Detect the actual network of the blockchain server"""
+        """Detect the actual network of the blockchain server - improved detection"""
         try:
             # Try RPC getblockchaininfo first
             payload = {
@@ -96,45 +96,87 @@ class BlockchainClient:
                     elif 'mainnet' in chain or 'mainnet' in network_name or 'main' in chain:
                         self.detected_network = 'mainnet'
                     else:
-                        # Check address prefix from genesis or latest block
-                        latest_block = result.get('blocks', 0)
-                        if latest_block > 0:
-                            # Try to get a block to check address format
-                            block_payload = {
-                                "jsonrpc": "2.0",
-                                "method": "getblock",
-                                "params": [latest_block, True],
-                                "id": 1
-                            }
-                            block_response = requests.post(self.rpc_url, json=block_payload, timeout=self.timeout)
-                            if block_response.status_code == 200:
-                                block_result = block_response.json().get('result')
-                                if block_result:
-                                    miner = block_result.get('miner', '') or block_result.get('miner_address', '')
-                                    if miner.startswith('tGXC'):
-                                        self.detected_network = 'testnet'
-                                    elif miner.startswith('GXC'):
-                                        self.detected_network = 'mainnet'
+                        # Check address prefix from latest block or any block
+                        latest_block = result.get('blocks', 0) or result.get('height', 0)
+                        # Try latest block, or block 0, or block 1
+                        blocks_to_try = [latest_block, 0, 1] if latest_block > 0 else [0, 1]
+                        
+                        for block_num in blocks_to_try:
+                            try:
+                                block_payload = {
+                                    "jsonrpc": "2.0",
+                                    "method": "getblock",
+                                    "params": [int(block_num), True],  # verbose=true
+                                    "id": 1
+                                }
+                                block_response = requests.post(self.rpc_url, json=block_payload, timeout=self.timeout)
+                                if block_response.status_code == 200:
+                                    block_result = block_response.json().get('result')
+                                    if block_result:
+                                        # Check miner address
+                                        miner = block_result.get('miner', '') or block_result.get('miner_address', '')
+                                        if miner:
+                                            if miner.startswith('tGXC'):
+                                                self.detected_network = 'testnet'
+                                                break
+                                            elif miner.startswith('GXC') and not miner.startswith('tGXC'):
+                                                self.detected_network = 'mainnet'
+                                                break
+                                        
+                                        # Check transactions for address prefixes
+                                        transactions = block_result.get('transactions', [])
+                                        if transactions:
+                                            for tx in transactions[:5]:  # Check first 5 transactions
+                                                if isinstance(tx, dict):
+                                                    from_addr = tx.get('from', '') or tx.get('from_address', '')
+                                                    to_addr = tx.get('to', '') or tx.get('to_address', '')
+                                                    if from_addr.startswith('tGXC') or to_addr.startswith('tGXC'):
+                                                        self.detected_network = 'testnet'
+                                                        break
+                                                    elif (from_addr.startswith('GXC') and not from_addr.startswith('tGXC')) or \
+                                                         (to_addr.startswith('GXC') and not to_addr.startswith('tGXC')):
+                                                        self.detected_network = 'mainnet'
+                                                        break
+                                            if self.detected_network:
+                                                break
+                            except:
+                                continue
+                    
+                    # If still not detected, default based on RPC port (testnet uses 18332, mainnet uses 8332)
+                    if not self.detected_network:
+                        if ':18332' in self.rpc_url or ':18080' in self.rest_url:
+                            self.detected_network = 'testnet'
+                        elif ':8332' in self.rpc_url or ':8080' in self.rest_url:
+                            self.detected_network = 'mainnet'
+                        else:
+                            # Last resort: use expected network
+                            self.detected_network = self.expected_network
                     
                     self.network_detected = True
-                    logger.info(f"Detected blockchain server network: {self.detected_network}")
+                    logger.info(f"✅ Detected blockchain server network: {self.detected_network}")
                     
-                    # Warn if network mismatch
+                    # Auto-update expected network to match detected network
                     if self.detected_network != self.expected_network:
-                        logger.warning(f"⚠️ Network mismatch! Expected {self.expected_network}, but server is {self.detected_network}")
-                        logger.warning(f"   Wallet configured for: {self.expected_network}")
+                        logger.warning(f"⚠️ Network mismatch detected! Auto-adjusting wallet from {self.expected_network} to {self.detected_network}")
+                        logger.warning(f"   Wallet was configured for: {self.expected_network}")
                         logger.warning(f"   Blockchain server is: {self.detected_network}")
-                        logger.warning(f"   Balance may be incorrect! Please check network configuration.")
+                        logger.warning(f"   Auto-adjusting wallet to match server network...")
+                        # Update expected network to match detected
+                        self.expected_network = self.detected_network
                     
                     return self.detected_network
         except Exception as e:
             logger.warning(f"Could not detect server network: {e}")
+            import traceback
+            traceback.print_exc()
             # Fallback: assume network matches expected
             self.detected_network = self.expected_network
+            self.network_detected = False
             return self.detected_network
         
         # Fallback: use expected network
         self.detected_network = self.expected_network
+        self.network_detected = False
         return self.detected_network
     
     def get_address_balance(self, address):
@@ -143,11 +185,11 @@ class BlockchainClient:
         if not self.network_detected:
             self.detect_server_network()
         
-        # Check if address prefix matches detected network
+        # Check if address prefix matches detected network (but don't block the request)
         if self.detected_network == 'testnet' and not address.startswith('tGXC'):
-            logger.warning(f"⚠️ Address {address} does not match testnet prefix (tGXC)")
+            logger.debug(f"Note: Address {address[:16]}... has mainnet prefix but server is testnet - will still query")
         elif self.detected_network == 'mainnet' and not address.startswith('GXC'):
-            logger.warning(f"⚠️ Address {address} does not match mainnet prefix (GXC)")
+            logger.debug(f"Note: Address {address[:16]}... has testnet prefix but server is mainnet - will still query")
         
         try:
             # Try REST API first
@@ -159,20 +201,21 @@ class BlockchainClient:
                 logger.info(f"Balance fetched from REST API ({self.detected_network}): {address[:16]}... = {balance} GXC")
                 return balance
             
-            # Fallback to RPC if REST fails
-            logger.warning(f"REST API failed ({response.status_code}), trying RPC...")
+            # Fallback to RPC if REST fails - use correct RPC endpoint
+            logger.warning(f"REST API failed ({response.status_code}), trying RPC getbalance...")
             
-            # Try RPC getbalance
+            # Use correct RPC endpoint: getbalance takes only address parameter
             payload = {
                 "jsonrpc": "2.0",
                 "method": "getbalance",
-                "params": [address],
+                "params": [address],  # Only address parameter, no verbose flag
                 "id": 1
             }
             rpc_response = requests.post(self.rpc_url, json=payload, timeout=self.timeout)
             if rpc_response.status_code == 200:
                 result = rpc_response.json().get('result')
                 if result is not None:
+                    # RPC getbalance returns balance as float directly
                     if isinstance(result, dict):
                         balance = float(result.get('balance', 0.0))
                     else:
@@ -189,28 +232,102 @@ class BlockchainClient:
             return 0.0
     
     def get_address_transactions(self, address, limit=50):
-        """Get real transactions from blockchain"""
+        """Get real transactions from blockchain - uses RPC to get ALL transaction data"""
         try:
+            # Try REST API first
             url = f"{self.rest_url}/api/v1/address/{address}/transactions"
             response = requests.get(url, params={'limit': limit}, timeout=self.timeout)
             if response.status_code == 200:
-                return response.json()
-            else:
-                logger.warning(f"Failed to get transactions for {address}: {response.status_code}")
-                return []
+                transactions = response.json()
+                if transactions and isinstance(transactions, list) and len(transactions) > 0:
+                    return transactions
+            
+            # Fallback to RPC: use listtransactions to get full transaction data
+            logger.info(f"REST API failed, using RPC listtransactions for {address[:16]}...")
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "listtransactions",
+                "params": [address, limit, 0],  # address, count, skip
+                "id": 1
+            }
+            rpc_response = requests.post(self.rpc_url, json=payload, timeout=self.timeout)
+            if rpc_response.status_code == 200:
+                result = rpc_response.json().get('result')
+                if result and isinstance(result, list):
+                    logger.info(f"Got {len(result)} transactions from RPC for {address[:16]}...")
+                    return result
+            
+            # Alternative: get transaction IDs and fetch full data
+            logger.info(f"Trying getaddresstxids + gettransaction for {address[:16]}...")
+            txids_payload = {
+                "jsonrpc": "2.0",
+                "method": "getaddresstxids",
+                "params": [address],
+                "id": 1
+            }
+            txids_response = requests.post(self.rpc_url, json=txids_payload, timeout=self.timeout)
+            if txids_response.status_code == 200:
+                txids_result = txids_response.json().get('result')
+                if txids_result and isinstance(txids_result, list):
+                    # Fetch full transaction data for each ID
+                    transactions = []
+                    for tx_hash in txids_result[:limit]:
+                        tx_data = self.get_transaction(tx_hash)
+                        if tx_data:
+                            transactions.append(tx_data)
+                    if transactions:
+                        logger.info(f"Got {len(transactions)} transactions via getaddresstxids for {address[:16]}...")
+                        return transactions
+            
+            logger.warning(f"Failed to get transactions for {address}: all methods failed")
+            return []
         except Exception as e:
             logger.error(f"Error fetching transactions for {address}: {e}")
             return []
     
     def get_transaction(self, tx_hash):
-        """Get transaction details from blockchain"""
+        """Get transaction details from blockchain - uses RPC to get ALL transaction fields"""
         try:
+            # Try REST API first
             url = f"{self.rest_url}/api/v1/transaction/{tx_hash}"
             response = requests.get(url, timeout=self.timeout)
             if response.status_code == 200:
-                return response.json()
-            else:
-                return None
+                tx_data = response.json()
+                if tx_data and isinstance(tx_data, dict):
+                    return tx_data
+            
+            # Fallback to RPC: use gettransaction with verbose=true to get ALL fields
+            logger.info(f"REST API failed, using RPC gettransaction for {tx_hash[:16]}...")
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "gettransaction",
+                "params": [tx_hash, True],  # verbose=true returns full transaction data
+                "id": 1
+            }
+            rpc_response = requests.post(self.rpc_url, json=payload, timeout=self.timeout)
+            if rpc_response.status_code == 200:
+                result = rpc_response.json().get('result')
+                if result and isinstance(result, dict):
+                    logger.info(f"Got transaction data from RPC for {tx_hash[:16]}...")
+                    return result
+            
+            # Alternative: try getrawtransaction with verbose=true
+            logger.info(f"Trying getrawtransaction for {tx_hash[:16]}...")
+            raw_payload = {
+                "jsonrpc": "2.0",
+                "method": "getrawtransaction",
+                "params": [tx_hash, True],  # verbose=true returns full JSON
+                "id": 1
+            }
+            raw_response = requests.post(self.rpc_url, json=raw_payload, timeout=self.timeout)
+            if raw_response.status_code == 200:
+                raw_result = raw_response.json().get('result')
+                if raw_result and isinstance(raw_result, dict):
+                    logger.info(f"Got transaction data from getrawtransaction for {tx_hash[:16]}...")
+                    return raw_result
+            
+            logger.warning(f"Failed to get transaction {tx_hash}: all methods failed")
+            return None
         except Exception as e:
             logger.error(f"Error fetching transaction {tx_hash}: {e}")
             return None
@@ -397,12 +514,24 @@ class WalletService:
         # Log network info for debugging
         logger.info(f"WalletService initialized: network={self.network}, testnet={self.testnet}, address_prefix={CURRENT_NETWORK.get('address_prefix', 'GXC')}")
         
-        # Log detected network from server
+        # Auto-detect and adjust network from server
         if self.blockchain.network_detected:
             logger.info(f"Blockchain server network detected: {self.blockchain.detected_network}")
             if self.blockchain.detected_network != self.network:
-                logger.warning(f"⚠️ NETWORK MISMATCH: Wallet configured for {self.network}, but server is {self.blockchain.detected_network}")
-                logger.warning(f"   This may cause incorrect balances. Please verify network configuration.")
+                logger.warning(f"⚠️ NETWORK MISMATCH DETECTED: Wallet configured for {self.network}, but server is {self.blockchain.detected_network}")
+                logger.warning(f"   Auto-adjusting wallet network to match server...")
+                # Auto-update wallet network to match detected server network
+                self.network = self.blockchain.detected_network
+                self.testnet = (self.network == 'testnet')
+                logger.info(f"✅ Wallet network auto-adjusted to: {self.network} (testnet={self.testnet})")
+        else:
+            # Force network detection on initialization
+            detected = self.blockchain.detect_server_network()
+            if detected and detected != self.network:
+                logger.warning(f"⚠️ Auto-adjusting wallet from {self.network} to {detected}")
+                self.network = detected
+                self.testnet = (self.network == 'testnet')
+                logger.info(f"✅ Wallet network auto-adjusted to: {self.network} (testnet={self.testnet})")
         
     def get_db_connection(self):
         """Get database connection (testnet or mainnet)"""
@@ -733,7 +862,7 @@ class WalletService:
             payload = {
                 'user_id': user_id,
                 'username': db_username,
-                'exp': datetime.utcnow() + timedelta(hours=24)
+                'exp': datetime.now(timezone.utc) + timedelta(hours=24)
             }
             token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
             
@@ -796,7 +925,7 @@ class WalletService:
                 'user_id': user_id,
                 'username': user_info['username'],
                 'wallet_id': wallet_id,
-                'exp': datetime.utcnow() + timedelta(hours=24)
+                'exp': datetime.now(timezone.utc) + timedelta(hours=24)
             }
             access_token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
             
@@ -831,7 +960,7 @@ class WalletService:
                     'username': user_info['username'],
                     'email': user_info['email'],
                     'wallet_name': wallet_name,
-                    'created_at': datetime.utcnow().isoformat(),
+                    'created_at': datetime.now(timezone.utc).isoformat(),
                     'private_key': private_key,  # Also in recovery info
                     'seed_phrase': seed_phrase  # Also in recovery info
                 },
@@ -1939,7 +2068,7 @@ def health_check():
         'status': 'healthy',
         'service': 'GXC Wallet API',
         'version': '1.0.0',
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     })
 
 @app.route('/api/v1/docs', methods=['GET'])
