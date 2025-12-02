@@ -205,25 +205,63 @@ void RPCAPI::registerMethods() {
         }
         
         JsonValue utxos(JsonValue::array());
-        // Get balance to verify address has funds
-        double balance = blockchain->getBalance(address);
         
-        // Note: Full UTXO list would require exposing getUtxoSet() method
-        // For now, return empty array if balance is 0, or a single UTXO entry if balance > 0
-        if (balance > 0) {
-            JsonValue utxo;
-            utxo["address"] = address;
-            utxo["amount"] = balance;
-            utxo["value"] = balance;
-            utxo["txid"] = ""; // Would need actual UTXO data
-            utxo["vout"] = 0;
-            utxo["scriptPubKey"] = "";
-            utxo["confirmations"] = 1;
-            utxos.push_back(utxo);
+        // Get real-time UTXO set from blockchain
+        const auto& utxoSet = blockchain->getUtxoSet();
+        uint32_t currentHeight = blockchain->getHeight();
+        
+        // Find all UTXOs for this address in real-time
+        for (const auto& [utxoKey, output] : utxoSet) {
+            if (output.address == address) {
+                // Parse UTXO key to get transaction hash and output index
+                // Format: "txHash_outputIndex"
+                size_t underscorePos = utxoKey.find('_');
+                if (underscorePos != std::string::npos) {
+                    std::string txHash = utxoKey.substr(0, underscorePos);
+                    uint32_t outputIndex = 0;
+                    try {
+                        outputIndex = std::stoul(utxoKey.substr(underscorePos + 1));
+                    } catch (...) {
+                        outputIndex = 0;
+                    }
+                    
+                    // Find the transaction to get block height for confirmations
+                    uint32_t blockHeight = 0;
+                    for (uint32_t h = 0; h < currentHeight; h++) {
+                        Block block = blockchain->getBlock(h);
+                        for (const auto& tx : block.getTransactions()) {
+                            if (tx.getHash() == txHash) {
+                                blockHeight = h;
+                                break;
+                            }
+                        }
+                        if (blockHeight > 0) break;
+                    }
+                    
+                    uint32_t confirmations = currentHeight > blockHeight ? currentHeight - blockHeight : 1;
+                    
+                    JsonValue utxo;
+                    utxo["txid"] = txHash;
+                    utxo["tx_hash"] = txHash;
+                    utxo["vout"] = outputIndex;
+                    utxo["output_index"] = outputIndex;
+                    utxo["address"] = address;
+                    utxo["amount"] = output.amount;
+                    utxo["value"] = output.amount;
+                    utxo["scriptPubKey"] = output.script;
+                    utxo["script"] = output.script;
+                    utxo["confirmations"] = confirmations;
+                    utxo["block_height"] = blockHeight;
+                    utxo["spendable"] = true;
+                    utxo["solvable"] = true;
+                    utxos.push_back(utxo);
+                }
+            }
         }
         
+        double balance = blockchain->getBalance(address);
         LOG_API(LogLevel::INFO, "listunspent for " + address.substr(0, 16) + "...: " + 
-                std::to_string(utxos.size()) + " UTXOs, balance: " + std::to_string(balance));
+                std::to_string(utxos.size()) + " UTXOs, balance: " + std::to_string(balance) + " GXC (REAL-TIME)");
         
         return utxos;
     };
@@ -573,13 +611,15 @@ void RPCAPI::processRequests() {
 JsonValue RPCAPI::getBlockchainInfo(const JsonValue& params) {
     JsonValue result;
     
+    // Get REAL-TIME data from blockchain (no caching)
     uint32_t currentHeight = blockchain->getHeight();
+    Block latestBlock = blockchain->getLatestBlock();
     double blockReward = calculateBlockReward(currentHeight);
     
-    result["chain"] = "main"; // or "test" for testnet
+    result["chain"] = Config::isTestnet() ? "test" : "main";
     result["blocks"] = static_cast<uint64_t>(currentHeight);
     result["height"] = static_cast<uint64_t>(currentHeight);
-    result["bestblockhash"] = blockchain->getLatestBlock().getHash();
+    result["bestblockhash"] = latestBlock.getHash();
     result["difficulty"] = blockchain->getDifficulty();
     result["mediantime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
     result["verificationprogress"] = 1.0;
@@ -594,14 +634,17 @@ JsonValue RPCAPI::getBlockchainInfo(const JsonValue& params) {
 }
 
 JsonValue RPCAPI::getBestBlockHash(const JsonValue& params) {
+    // REAL-TIME: Returns hash of latest block (always current)
     return blockchain->getLatestBlock().getHash();
 }
 
 JsonValue RPCAPI::getBlockCount(const JsonValue& params) {
-    return static_cast<uint64_t>(blockchain->getHeight() - 1); // 0-indexed
+    // REAL-TIME: Returns current blockchain height (always up-to-date)
+    return static_cast<uint64_t>(blockchain->getHeight());
 }
 
 JsonValue RPCAPI::getDifficulty(const JsonValue& params) {
+    // REAL-TIME: Returns current network difficulty (always up-to-date)
     return blockchain->getDifficulty();
 }
 
@@ -613,6 +656,7 @@ JsonValue RPCAPI::getBlock(const JsonValue& params) {
     bool verbose = params.size() > 1 ? params[1].get<bool>() : true;
     uint32_t verbosity = params.size() > 1 && params[1].is_number() ? params[1].get<uint32_t>() : (verbose ? 2 : 0);
     
+    // REAL-TIME: Get block data directly from blockchain (no caching)
     Block block;
     uint32_t height = 0;
     
@@ -937,7 +981,8 @@ JsonValue RPCAPI::getTransaction(const JsonValue& params) {
     std::string txHash = params[0].get<std::string>();
     bool verbose = params.size() > 1 ? params[1].get<bool>() : true;
     
-    // Search for transaction in all blocks
+    // REAL-TIME: Search for transaction in all blocks (no caching)
+    // Searches from latest to earliest for fastest results
     uint32_t currentHeight = blockchain->getHeight();
     Transaction foundTx;
     uint32_t blockHeight = 0;
@@ -990,7 +1035,8 @@ JsonValue RPCAPI::listTransactions(const JsonValue& params) {
     
     JsonValue result(JsonValue::array());
     
-    // Get all transactions for address from blockchain
+    // REAL-TIME: Get all transactions for address from blockchain (no caching)
+    // Searches all blocks in real-time to find transactions involving this address
     uint32_t currentHeight = blockchain->getHeight();
     std::vector<JsonValue> allTxs;
     
@@ -1057,8 +1103,12 @@ JsonValue RPCAPI::getBalance(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address parameter");
     }
     
-    // Get balance from blockchain using UTXO set
+    // REAL-TIME: Get balance from blockchain using current UTXO set (no caching)
+    // Balance is calculated fresh from all unspent transaction outputs
     double balance = blockchain->getBalance(address);
+    
+    LOG_API(LogLevel::DEBUG, "getBalance(" + address.substr(0, 16) + "...): " + 
+            std::to_string(balance) + " GXC (REAL-TIME)");
     
     return balance;
 }
