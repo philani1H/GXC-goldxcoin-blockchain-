@@ -1,866 +1,1163 @@
-# GXC Wallet Application Development Guide
+# GXC Wallet App Development Guide
 
-Complete guide for building wallet applications that connect to the GXC blockchain.
+Complete guide for building a wallet application that connects to the GXC blockchain.
 
-## Table of Contents
+---
+
+## 📋 Table of Contents
 
 1. [Overview](#overview)
-2. [Blockchain Architecture](#blockchain-architecture)
-3. [API Endpoints](#api-endpoints)
-4. [Wallet Creation](#wallet-creation)
-5. [Key Management](#key-management)
-6. [Transaction Handling](#transaction-handling)
-7. [Balance Queries](#balance-queries)
-8. [Real-Time Updates](#real-time-updates)
-9. [Security Best Practices](#security-best-practices)
-10. [Code Examples](#code-examples)
+2. [Getting Started](#getting-started)
+3. [Connecting to the Blockchain](#connecting-to-the-blockchain)
+4. [Wallet Operations](#wallet-operations)
+5. [Staking Operations](#staking-operations)
+6. [Complete API Reference](#complete-api-reference)
+7. [Example Implementation](#example-implementation)
+8. [Security Best Practices](#security-best-practices)
+9. [Error Handling](#error-handling)
+10. [Testing](#testing)
 
 ---
 
-## Overview
+## 🎯 Overview
 
-The GXC blockchain provides a comprehensive REST API and RPC interface for wallet applications. This guide covers everything you need to build a fully functional wallet that interacts with the GXC blockchain using real data.
-
-### Network Configuration
-
-```json
-{
-  "network_name": "GXC Mainnet",
-  "chain_id": "GXC",
-  "rpc_url": "http://localhost:8545",
-  "rest_url": "http://localhost:8545",
-  "explorer_url": "http://localhost:3000",
-  "currency": "GXC",
-  "block_time": "2 seconds",
-  "consensus": "Hybrid PoW/PoS"
-}
-```
+This guide will help you build a wallet app that can:
+- ✅ Connect to GXC blockchain nodes
+- ✅ Generate addresses
+- ✅ Check balances
+- ✅ Send and receive coins
+- ✅ Stake coins and become a validator
+- ✅ View validator information
+- ✅ Monitor transactions
 
 ---
 
-## Blockchain Architecture
+## 🚀 Getting Started
 
-### Address Format
-- **Prefix**: `GXC`
-- **Length**: 43 characters total
-- **Format**: `GXC` + 40 hex characters
-- **Example**: `GXC1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t`
+### Prerequisites
 
-### Key Pair Generation
-- **Algorithm**: ED25519
-- **Private Key**: 32 bytes (256 bits)
-- **Public Key**: 32 bytes (256 bits)
-- **Address**: Derived from public key hash
+- **Blockchain Node**: Running GXC node (testnet or mainnet)
+- **RPC Endpoint**: Node RPC URL (default: `http://localhost:18332`)
+- **Programming Language**: Any language that supports HTTP/JSON (Python, JavaScript, Java, etc.)
 
-### Transaction Structure
-```json
-{
-  "version": 1,
-  "inputs": [
-    {
-      "txHash": "previous_transaction_hash",
-      "outputIndex": 0,
-      "amount": 100.0
-    }
-  ],
-  "outputs": [
-    {
-      "address": "GXC...",
-      "amount": 99.0
-    }
-  ],
-  "fee": 0.001,
-  "lockTime": 0,
-  "memo": "optional memo",
-  "senderAddress": "GXC...",
-  "receiverAddress": "GXC..."
-}
-```
+### Node Connection
+
+**Testnet Node**: `http://localhost:18332`  
+**Mainnet Node**: `http://localhost:8332`  
+**Remote Node**: `http://your-node-ip:18332`
 
 ---
 
-## API Endpoints
+## 🔌 Connecting to the Blockchain
 
-### Base URLs
-- **REST API**: `http://localhost:8545/api/v1`
-- **RPC API**: `http://localhost:8545` (JSON-RPC 2.0)
+### RPC API Format
 
-### REST Endpoints
+All requests use JSON-RPC 2.0 format:
 
-#### 1. Get Blockchain Info
-```http
-GET /api/v1/blockchain/info
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "method_name",
+  "params": [...],
+  "id": 1
+}
+```
+
+### Example: Check Connection
+
+```bash
+curl -X POST http://localhost:18332 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "getblockchaininfo",
+    "params": [],
+    "id": 1
+  }'
 ```
 
 **Response:**
 ```json
 {
-  "chain": "GXC",
-  "blocks": 12345,
-  "bestblockhash": "0x...",
-  "difficulty": 1.5,
-  "networkhashps": 1000000,
-  "chainwork": "0x..."
+  "jsonrpc": "2.0",
+  "result": {
+    "chain": "testnet",
+    "blocks": 1234,
+    "difficulty": 0.1
+  },
+  "id": 1
 }
 ```
 
-#### 2. Get Address Balance
-```http
-GET /api/v1/address/{address}/balance
-```
-
-**Response:**
-```json
-{
-  "address": "GXC1a2b3c...",
-  "balance": 1000.5,
-  "confirmed": 1000.5,
-  "unconfirmed": 0.0,
-  "tx_count": 42
-}
-```
-
-#### 3. Get Address Transactions
-```http
-GET /api/v1/address/{address}/transactions?limit=50
-```
-
-**Response:**
-```json
-[
-  {
-    "txid": "0x...",
-    "hash": "0x...",
-    "version": 1,
-    "time": 1234567890,
-    "blocktime": 1234567890,
-    "confirmations": 10,
-    "sender_address": "GXC...",
-    "receiver_address": "GXC...",
-    "amount": 100.0,
-    "fee": 0.001,
-    "vin": [...],
-    "vout": [...]
-  }
-]
-```
-
-#### 4. Get Transaction Details
-```http
-GET /api/v1/transaction/{tx_hash}
-```
-
-**Response:**
-```json
-{
-  "txid": "0x...",
-  "hash": "0x...",
-  "version": 1,
-  "size": 250,
-  "locktime": 0,
-  "time": 1234567890,
-  "confirmations": 10,
-  "sender_address": "GXC...",
-  "receiver_address": "GXC...",
-  "amount": 100.0,
-  "fee": 0.001,
-  "vin": [...],
-  "vout": [...],
-  "prev_tx_hash": "0x...",
-  "referenced_amount": 100.001,
-  "is_traceable": true
-}
-```
-
-#### 5. Get UTXOs for Address
-```http
-GET /api/v1/address/{address}/utxo
-```
-
-**Response:**
-```json
-[
-  {
-    "txHash": "0x...",
-    "outputIndex": 0,
-    "address": "GXC...",
-    "amount": 50.0,
-    "spent": false
-  }
-]
-```
-
-#### 6. Submit Transaction
-```http
-POST /api/v1/transactions
-Content-Type: application/json
-```
-
-**Request:**
-```json
-{
-  "from_address": "GXC...",
-  "to_address": "GXC...",
-  "amount": 100.0,
-  "fee": 0.001,
-  "utxos": [
-    {
-      "txHash": "0x...",
-      "outputIndex": 0,
-      "amount": 100.001
-    }
-  ],
-  "private_key": "encrypted_private_key",
-  "memo": "optional memo"
-}
-```
-
-**Response:**
-```json
-{
-  "txid": "0x...",
-  "result": "success",
-  "message": "Transaction submitted to mempool"
-}
-```
-
----
-
-## Wallet Creation
-
-### Step 1: Generate Key Pair
+### Python Connection Example
 
 ```python
-from cryptography.hazmat.primitives.asymmetric import ed25519
-from cryptography.hazmat.primitives import serialization
-import hashlib
-import base58
+import requests
+import json
 
-def generate_keypair():
-    """Generate ED25519 key pair"""
-    private_key = ed25519.Ed25519PrivateKey.generate()
-    public_key = private_key.public_key()
+class GXCWallet:
+    def __init__(self, rpc_url="http://localhost:18332"):
+        self.rpc_url = rpc_url
+        self.session = requests.Session()
+        self.session.headers.update({'Content-Type': 'application/json'})
     
-    # Serialize keys
-    private_key_bytes = private_key.private_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PrivateFormat.Raw,
-        encryption_algorithm=serialization.NoEncryption()
-    )
+    def rpc_call(self, method, params=None):
+        """Make RPC call to blockchain node"""
+        if params is None:
+            params = []
+        
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": 1
+        }
+        
+        try:
+            response = self.session.post(self.rpc_url, json=payload, timeout=10)
+            response.raise_for_status()
+            result = response.json()
+            
+            if "error" in result:
+                raise Exception(f"RPC Error: {result['error']}")
+            
+            return result.get("result")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Connection error: {e}")
     
-    public_key_bytes = public_key.public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw
-    )
-    
-    return private_key_bytes, public_key_bytes
+    def test_connection(self):
+        """Test connection to blockchain node"""
+        try:
+            info = self.rpc_call("getblockchaininfo")
+            return True, info
+        except Exception as e:
+            return False, str(e)
+
+# Usage
+wallet = GXCWallet("http://localhost:18332")
+connected, info = wallet.test_connection()
+if connected:
+    print(f"Connected! Chain height: {info.get('blocks', 0)}")
+else:
+    print(f"Connection failed: {info}")
 ```
 
-### Step 2: Derive Address from Public Key
+### JavaScript/Node.js Connection Example
+
+```javascript
+const axios = require('axios');
+
+class GXCWallet {
+    constructor(rpcUrl = 'http://localhost:18332') {
+        this.rpcUrl = rpcUrl;
+    }
+    
+    async rpcCall(method, params = []) {
+        const payload = {
+            jsonrpc: '2.0',
+            method: method,
+            params: params,
+            id: 1
+        };
+        
+        try {
+            const response = await axios.post(this.rpcUrl, payload, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 10000
+            });
+            
+            if (response.data.error) {
+                throw new Error(`RPC Error: ${response.data.error.message}`);
+            }
+            
+            return response.data.result;
+        } catch (error) {
+            throw new Error(`Connection error: ${error.message}`);
+        }
+    }
+    
+    async testConnection() {
+        try {
+            const info = await this.rpcCall('getblockchaininfo');
+            return { connected: true, info };
+        } catch (error) {
+            return { connected: false, error: error.message };
+        }
+    }
+}
+
+// Usage
+const wallet = new GXCWallet('http://localhost:18332');
+wallet.testConnection().then(result => {
+    if (result.connected) {
+        console.log(`Connected! Chain height: ${result.info.blocks}`);
+    } else {
+        console.log(`Connection failed: ${result.error}`);
+    }
+});
+```
+
+---
+
+## 💼 Wallet Operations
+
+### 1. Generate New Address
+
+**Method**: `getnewaddress`
 
 ```python
-def derive_address(public_key_bytes):
-    """Derive GXC address from public key"""
-    # Hash public key
-    hash_obj = hashlib.sha256(public_key_bytes)
-    hash_bytes = hash_obj.digest()
-    
-    # Take first 20 bytes
-    address_hash = hash_bytes[:20]
-    
-    # Encode with base58 and add GXC prefix
-    address = "GXC" + base58.b58encode(address_hash).decode('utf-8')
-    
+def generate_address(self):
+    """Generate a new GXC address"""
+    address = self.rpc_call("getnewaddress", [])
     return address
 ```
 
-### Step 3: Encrypt Private Key
-
-```python
-from cryptography.fernet import Fernet
-import bcrypt
-
-def encrypt_private_key(private_key_bytes, password):
-    """Encrypt private key with password"""
-    # Derive key from password
-    salt = bcrypt.gensalt()
-    key = bcrypt.hashpw(password.encode(), salt)
-    
-    # Use first 32 bytes as encryption key
-    encryption_key = key[:32]
-    f = Fernet(base64.urlsafe_b64encode(encryption_key))
-    
-    encrypted_key = f.encrypt(private_key_bytes)
-    return encrypted_key, salt
-```
-
-### Step 4: Store Wallet Securely
-
-```python
-import sqlite3
-import json
-
-def store_wallet(user_id, wallet_name, address, public_key, encrypted_private_key):
-    """Store wallet in database"""
-    conn = sqlite3.connect('wallets.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        INSERT INTO wallets (user_id, wallet_name, address, public_key, encrypted_private_key)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, wallet_name, address, public_key, encrypted_private_key))
-    
-    conn.commit()
-    conn.close()
-```
-
----
-
-## Key Management
-
-### Decrypting Private Key
-
-```python
-def decrypt_private_key(encrypted_private_key, password, salt):
-    """Decrypt private key with password"""
-    key = bcrypt.hashpw(password.encode(), salt)
-    encryption_key = key[:32]
-    f = Fernet(base64.urlsafe_b64encode(encryption_key))
-    
-    private_key_bytes = f.decrypt(encrypted_private_key)
-    return private_key_bytes
-```
-
-### Signing Transactions
-
-```python
-def sign_transaction(transaction_data, private_key_bytes):
-    """Sign transaction with private key"""
-    private_key = ed25519.Ed25519PrivateKey.from_private_bytes(private_key_bytes)
-    
-    # Serialize transaction
-    tx_string = json.dumps(transaction_data, sort_keys=True)
-    tx_bytes = tx_string.encode('utf-8')
-    
-    # Sign
-    signature = private_key.sign(tx_bytes)
-    
-    return base64.b64encode(signature).decode('utf-8')
-```
-
----
-
-## Transaction Handling
-
-### Building a Transaction
-
-```python
-def build_transaction(from_address, to_address, amount, fee, utxos):
-    """Build transaction from UTXOs"""
-    total_input = sum(utxo['amount'] for utxo in utxos)
-    change = total_input - amount - fee
-    
-    transaction = {
-        "version": 1,
-        "inputs": [
-            {
-                "txHash": utxo["txHash"],
-                "outputIndex": utxo["outputIndex"],
-                "amount": utxo["amount"]
-            }
-            for utxo in utxos
-        ],
-        "outputs": [
-            {
-                "address": to_address,
-                "amount": amount
-            }
-        ],
-        "fee": fee,
-        "lockTime": 0,
-        "senderAddress": from_address,
-        "receiverAddress": to_address
-    }
-    
-    # Add change output if needed
-    if change > 0:
-        transaction["outputs"].append({
-            "address": from_address,
-            "amount": change
-        })
-    
-    return transaction
-```
-
-### Submitting a Transaction
-
-```python
-import requests
-
-def submit_transaction(transaction, signature, rest_url):
-    """Submit signed transaction to blockchain"""
-    payload = {
-        "transaction": transaction,
-        "signature": signature
-    }
-    
-    response = requests.post(
-        f"{rest_url}/api/v1/transactions",
-        json=payload,
-        headers={"Content-Type": "application/json"}
-    )
-    
-    if response.status_code == 200:
-        return response.json()
-    else:
-        raise Exception(f"Transaction failed: {response.text}")
-```
-
----
-
-## Balance Queries
-
-### Fetching Real Balance
-
-```python
-def get_balance(address, rest_url):
-    """Get real balance from blockchain"""
-    response = requests.get(
-        f"{rest_url}/api/v1/address/{address}/balance"
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        return data['balance']
-    else:
-        return 0.0
-```
-
-### Fetching UTXOs
-
-```python
-def get_utxos(address, rest_url):
-    """Get UTXOs for address"""
-    response = requests.get(
-        f"{rest_url}/api/v1/address/{address}/utxo"
-    )
-    
-    if response.status_code == 200:
-        return response.json()
-    else:
-        return []
-```
-
-### Selecting UTXOs for Transaction
-
-```python
-def select_utxos(utxos, amount, fee):
-    """Select UTXOs for transaction (simplified)"""
-    total_needed = amount + fee
-    selected = []
-    total = 0.0
-    
-    for utxo in sorted(utxos, key=lambda x: x['amount'], reverse=True):
-        if total >= total_needed:
-            break
-        selected.append(utxo)
-        total += utxo['amount']
-    
-    if total < total_needed:
-        raise Exception("Insufficient funds")
-    
-    return selected
-```
-
----
-
-## Real-Time Updates
-
-### Polling for Updates
-
-```python
-import time
-import threading
-
-class BalanceMonitor:
-    def __init__(self, address, rest_url, callback, interval=5):
-        self.address = address
-        self.rest_url = rest_url
-        self.callback = callback
-        self.interval = interval
-        self.running = False
-        self.last_balance = 0.0
-    
-    def start(self):
-        self.running = True
-        thread = threading.Thread(target=self._monitor)
-        thread.daemon = True
-        thread.start()
-    
-    def stop(self):
-        self.running = False
-    
-    def _monitor(self):
-        while self.running:
-            try:
-                balance = get_balance(self.address, self.rest_url)
-                if balance != self.last_balance:
-                    self.callback(balance, self.last_balance)
-                    self.last_balance = balance
-            except Exception as e:
-                print(f"Error monitoring balance: {e}")
-            
-            time.sleep(self.interval)
-```
-
-### WebSocket Connection (if available)
-
-```python
-import websocket
-import json
-
-def connect_websocket(address, callback):
-    """Connect to blockchain WebSocket for real-time updates"""
-    ws_url = "ws://localhost:8545/ws"
-    
-    def on_message(ws, message):
-        data = json.loads(message)
-        if data.get('address') == address:
-            callback(data)
-    
-    ws = websocket.WebSocketApp(
-        ws_url,
-        on_message=on_message
-    )
-    ws.run_forever()
-```
-
----
-
-## Security Best Practices
-
-### 1. Never Store Private Keys in Plain Text
-- Always encrypt private keys
-- Use strong password hashing (bcrypt, argon2)
-- Store encrypted keys securely
-
-### 2. Use Secure Random Number Generation
-```python
-import secrets
-
-# Generate secure random bytes
-private_key = secrets.token_bytes(32)
-```
-
-### 3. Validate All Inputs
-```python
-def validate_address(address):
-    """Validate GXC address format"""
-    if not address.startswith('GXC'):
-        return False
-    if len(address) != 43:
-        return False
-    # Add more validation as needed
-    return True
-
-def validate_amount(amount):
-    """Validate transaction amount"""
-    if amount <= 0:
-        return False
-    if amount > 1000000000:  # Max supply check
-        return False
-    return True
-```
-
-### 4. Implement Rate Limiting
-```python
-from functools import wraps
-import time
-
-def rate_limit(calls_per_second=10):
-    """Rate limiting decorator"""
-    min_interval = 1.0 / calls_per_second
-    last_called = [0.0]
-    
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            elapsed = time.time() - last_called[0]
-            left_to_wait = min_interval - elapsed
-            if left_to_wait > 0:
-                time.sleep(left_to_wait)
-            ret = func(*args, **kwargs)
-            last_called[0] = time.time()
-            return ret
-        return wrapper
-    return decorator
-```
-
-### 5. Use HTTPS in Production
-- Always use HTTPS for API calls in production
-- Verify SSL certificates
-- Never send private keys over unencrypted connections
-
----
-
-## Code Examples
-
-### Complete Wallet Class
-
-```python
-import requests
-import json
-from cryptography.hazmat.primitives.asymmetric import ed25519
-from cryptography.hazmat.primitives import serialization
-
-class GXCWallet:
-    def __init__(self, address, private_key_bytes, rest_url):
-        self.address = address
-        self.private_key_bytes = private_key_bytes
-        self.rest_url = rest_url
-    
-    def get_balance(self):
-        """Get wallet balance"""
-        response = requests.get(
-            f"{self.rest_url}/api/v1/address/{self.address}/balance"
-        )
-        if response.status_code == 200:
-            return response.json()['balance']
-        return 0.0
-    
-    def get_transactions(self, limit=50):
-        """Get transaction history"""
-        response = requests.get(
-            f"{self.rest_url}/api/v1/address/{self.address}/transactions",
-            params={'limit': limit}
-        )
-        if response.status_code == 200:
-            return response.json()
-        return []
-    
-    def get_utxos(self):
-        """Get UTXOs"""
-        response = requests.get(
-            f"{self.rest_url}/api/v1/address/{self.address}/utxo"
-        )
-        if response.status_code == 200:
-            return response.json()
-        return []
-    
-    def send(self, to_address, amount, fee=0.001):
-        """Send GXC to another address"""
-        # Get UTXOs
-        utxos = self.get_utxos()
-        if not utxos:
-            raise Exception("No UTXOs available")
-        
-        # Select UTXOs
-        selected_utxos = self._select_utxos(utxos, amount, fee)
-        
-        # Build transaction
-        transaction = self._build_transaction(to_address, amount, fee, selected_utxos)
-        
-        # Sign transaction
-        signature = self._sign_transaction(transaction)
-        
-        # Submit transaction
-        return self._submit_transaction(transaction, signature)
-    
-    def _select_utxos(self, utxos, amount, fee):
-        """Select UTXOs for transaction"""
-        total_needed = amount + fee
-        selected = []
-        total = 0.0
-        
-        for utxo in sorted(utxos, key=lambda x: x['amount'], reverse=True):
-            if total >= total_needed:
-                break
-            selected.append(utxo)
-            total += utxo['amount']
-        
-        if total < total_needed:
-            raise Exception("Insufficient funds")
-        
-        return selected
-    
-    def _build_transaction(self, to_address, amount, fee, utxos):
-        """Build transaction"""
-        total_input = sum(utxo['amount'] for utxo in utxos)
-        change = total_input - amount - fee
-        
-        transaction = {
-            "version": 1,
-            "inputs": [
-                {
-                    "txHash": utxo["txHash"],
-                    "outputIndex": utxo["outputIndex"],
-                    "amount": utxo["amount"]
-                }
-                for utxo in utxos
-            ],
-            "outputs": [
-                {
-                    "address": to_address,
-                    "amount": amount
-                }
-            ],
-            "fee": fee,
-            "lockTime": 0,
-            "senderAddress": self.address,
-            "receiverAddress": to_address
-        }
-        
-        if change > 0:
-            transaction["outputs"].append({
-                "address": self.address,
-                "amount": change
-            })
-        
-        return transaction
-    
-    def _sign_transaction(self, transaction):
-        """Sign transaction"""
-        private_key = ed25519.Ed25519PrivateKey.from_private_bytes(self.private_key_bytes)
-        tx_string = json.dumps(transaction, sort_keys=True)
-        tx_bytes = tx_string.encode('utf-8')
-        signature = private_key.sign(tx_bytes)
-        return base64.b64encode(signature).decode('utf-8')
-    
-    def _submit_transaction(self, transaction, signature):
-        """Submit transaction to blockchain"""
-        payload = {
-            "transaction": transaction,
-            "signature": signature
-        }
-        
-        response = requests.post(
-            f"{self.rest_url}/api/v1/transactions",
-            json=payload,
-            headers={"Content-Type": "application/json"}
-        )
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise Exception(f"Transaction failed: {response.text}")
-```
-
-### Usage Example
-
-```python
-# Initialize wallet
-wallet = GXCWallet(
-    address="GXC1a2b3c...",
-    private_key_bytes=private_key,
-    rest_url="http://localhost:8545"
-)
-
-# Get balance
-balance = wallet.get_balance()
-print(f"Balance: {balance} GXC")
-
-# Send transaction
-try:
-    result = wallet.send(
-        to_address="GXC9z8y7x6w...",
-        amount=10.0,
-        fee=0.001
-    )
-    print(f"Transaction submitted: {result['txid']}")
-except Exception as e:
-    print(f"Error: {e}")
-
-# Get transaction history
-transactions = wallet.get_transactions(limit=10)
-for tx in transactions:
-    print(f"TX: {tx['txid']}, Amount: {tx['amount']} GXC")
-```
-
----
-
-## Error Handling
-
-### Common Errors and Solutions
-
-1. **Insufficient Balance**
-   - Check balance before sending
-   - Include fee in calculations
-   - Handle UTXO selection properly
-
-2. **Invalid Address**
-   - Validate address format
-   - Check address checksum (if implemented)
-
-3. **Network Errors**
-   - Implement retry logic
-   - Handle timeouts gracefully
-   - Provide user feedback
-
-4. **Transaction Failures**
-   - Check transaction status
-   - Verify signatures
-   - Validate transaction structure
-
----
-
-## Testing
-
-### Test Network Configuration
-
-For testing, use a testnet or local development network:
-
-```python
-TESTNET_CONFIG = {
-    "rpc_url": "http://testnet.gxc.io:8545",
-    "rest_url": "http://testnet.gxc.io:8545",
-    "explorer_url": "http://testnet-explorer.gxc.io"
+**RPC Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "getnewaddress",
+  "params": [],
+  "id": 1
 }
 ```
 
-### Unit Tests
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": "tGXC9fab7317231b966af85ac453e168c0932",
+  "id": 1
+}
+```
+
+### 2. Check Balance
+
+**Method**: `getbalance` or `gxc_getBalance`
 
 ```python
-import unittest
+def get_balance(self, address):
+    """Get balance for an address"""
+    balance = self.rpc_call("getbalance", [address])
+    return float(balance)
+```
 
-class TestGXCWallet(unittest.TestCase):
-    def setUp(self):
-        self.wallet = GXCWallet(
-            address="GXC...",
-            private_key_bytes=b"...",
-            rest_url="http://localhost:8545"
-        )
+**RPC Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "getbalance",
+  "params": ["tGXC9fab7317231b966af85ac453e168c0932"],
+  "id": 1
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": 1000.5,
+  "id": 1
+}
+```
+
+### 3. Get Transaction History
+
+**Method**: `listtransactions` or `gxc_getTransactionsByAddress`
+
+```python
+def get_transactions(self, address, limit=100):
+    """Get transaction history for an address"""
+    transactions = self.rpc_call("listtransactions", [address, limit])
+    return transactions
+```
+
+**RPC Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "listtransactions",
+  "params": ["tGXC9fab7317231b966af85ac453e168c0932", 100],
+  "id": 1
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "hash": "abc123...",
+      "from": "tGXC...sender",
+      "to": "tGXC9fab7317231b966af85ac453e168c0932",
+      "amount": 100.0,
+      "confirmations": 6,
+      "timestamp": 1234567890,
+      "is_coinbase": false
+    }
+  ],
+  "id": 1
+}
+```
+
+### 4. Send Coins
+
+**Method**: `sendtoaddress`
+
+```python
+def send_coins(self, from_address, to_address, amount, private_key=None):
+    """
+    Send coins from one address to another
     
-    def test_get_balance(self):
-        balance = self.wallet.get_balance()
-        self.assertIsInstance(balance, float)
-        self.assertGreaterEqual(balance, 0)
-    
-    def test_get_transactions(self):
-        transactions = self.wallet.get_transactions()
-        self.assertIsInstance(transactions, list)
+    Note: In production, private key should be stored securely
+    and transaction should be signed client-side
+    """
+    # For now, this is a placeholder - actual implementation
+    # would require signing the transaction with private key
+    result = self.rpc_call("sendtoaddress", [
+        from_address,
+        to_address,
+        amount
+    ])
+    return result
+```
+
+**RPC Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "sendtoaddress",
+  "params": [
+    "tGXC...from",
+    "tGXC...to",
+    100.0
+  ],
+  "id": 1
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "txid": "transaction_hash_here",
+    "success": true
+  },
+  "id": 1
+}
+```
+
+### 5. Validate Address
+
+**Method**: `validateaddress`
+
+```python
+def validate_address(self, address):
+    """Validate if an address is valid"""
+    result = self.rpc_call("validateaddress", [address])
+    return result.get("isvalid", False)
 ```
 
 ---
 
-## Additional Resources
+## 💰 Staking Operations
 
-- **Blockchain Explorer**: `http://localhost:3000`
-- **RPC API Documentation**: See `src/RPCAPI.cpp`
-- **REST API Documentation**: See `src/RESTServer.cpp`
-- **Database Schema**: See `include/Database.h`
+### 1. Register as Validator / Stake Coins
+
+**Method**: `registervalidator` or `gxc_registerValidator` or `stake`
+
+```python
+def stake_coins(self, address, stake_amount, staking_days):
+    """
+    Register as validator and stake coins
+    
+    Requirements:
+    - Minimum stake: 100 GXC
+    - Staking period: 14-365 days
+    - Must have sufficient balance
+    """
+    result = self.rpc_call("registervalidator", [
+        address,
+        stake_amount,
+        staking_days
+    ])
+    return result
+```
+
+**RPC Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "registervalidator",
+  "params": [
+    "tGXC9fab7317231b966af85ac453e168c0932",
+    1000.0,
+    90
+  ],
+  "id": 1
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "success": true,
+    "address": "tGXC9fab7317231b966af85ac453e168c0932",
+    "stake_amount": 1000.0,
+    "staking_days": 90,
+    "weighted_stake": 1050.0,
+    "message": "Validator registered successfully"
+  },
+  "id": 1
+}
+```
+
+### 2. Add More Stake
+
+**Method**: `addstake` or `gxc_addStake`
+
+```python
+def add_stake(self, address, additional_amount):
+    """Add more stake to existing validator"""
+    result = self.rpc_call("addstake", [
+        address,
+        additional_amount
+    ])
+    return result
+```
+
+### 3. Unstake / Withdraw Stake
+
+**Method**: `unstake` or `gxc_unstake`
+
+```python
+def unstake(self, address):
+    """Withdraw stake and deactivate validator"""
+    result = self.rpc_call("unstake", [address])
+    return result
+```
+
+### 4. Get All Validators
+
+**Method**: `getvalidators` or `gxc_getValidators`
+
+```python
+def get_validators(self):
+    """Get list of all active validators"""
+    validators = self.rpc_call("getvalidators", [])
+    return validators
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "address": "tGXC9fab7317231b966af85ac453e168c0932",
+      "stake_amount": 1000.0,
+      "staking_days": 90,
+      "weighted_stake": 1050.0,
+      "is_active": true,
+      "blocks_produced": 15,
+      "missed_blocks": 2,
+      "uptime": 0.95,
+      "total_rewards": 50.0,
+      "apy": 5.0,
+      "is_slashed": false
+    }
+  ],
+  "id": 1
+}
+```
+
+### 5. Get Validator Info
+
+**Method**: `getvalidatorinfo` or `gxc_getValidatorInfo`
+
+```python
+def get_validator_info(self, address):
+    """Get detailed information for a specific validator"""
+    info = self.rpc_call("getvalidatorinfo", [address])
+    return info
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "address": "tGXC9fab7317231b966af85ac453e168c0932",
+    "stake_amount": 1000.0,
+    "staking_days": 90,
+    "weighted_stake": 1050.0,
+    "time_weight": 1.05,
+    "is_active": true,
+    "blocks_produced": 15,
+    "missed_blocks": 2,
+    "uptime": 0.95,
+    "total_rewards": 50.0,
+    "pending_rewards": 5.0,
+    "apy": 5.0,
+    "is_slashed": false,
+    "slashed_amount": 0.0,
+    "is_valid": true
+  },
+  "id": 1
+}
+```
 
 ---
 
-## Support
+## 📚 Complete API Reference
 
-For questions or issues:
-1. Check the blockchain logs
-2. Verify network connectivity
-3. Ensure correct API endpoints
-4. Review transaction structure
+### Wallet Methods
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `getnewaddress` | Generate new address | `[]` |
+| `getbalance` | Get balance | `[address]` |
+| `gxc_getBalance` | Get balance (alias) | `[address]` |
+| `listtransactions` | Get transactions | `[address, limit]` |
+| `gxc_getTransactionsByAddress` | Get transactions (alias) | `[address, limit]` |
+| `sendtoaddress` | Send coins | `[from, to, amount]` |
+| `validateaddress` | Validate address | `[address]` |
+| `gettransaction` | Get transaction details | `[txid]` |
+| `gxc_getTransaction` | Get transaction (alias) | `[txid]` |
+
+### Staking Methods
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `registervalidator` | Register as validator | `[address, stakeAmount, stakingDays]` |
+| `gxc_registerValidator` | Register (alias) | `[address, stakeAmount, stakingDays]` |
+| `stake` | Stake coins (alias) | `[address, stakeAmount, stakingDays]` |
+| `addstake` | Add more stake | `[address, additionalAmount]` |
+| `gxc_addStake` | Add stake (alias) | `[address, additionalAmount]` |
+| `unstake` | Withdraw stake | `[address]` |
+| `gxc_unstake` | Unstake (alias) | `[address]` |
+| `getvalidators` | List all validators | `[]` |
+| `gxc_getValidators` | List validators (alias) | `[]` |
+| `getvalidatorinfo` | Get validator info | `[address]` |
+| `gxc_getValidatorInfo` | Get validator info (alias) | `[address]` |
+
+### Blockchain Methods
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `getblockchaininfo` | Get chain info | `[]` |
+| `getblockcount` | Get block count | `[]` |
+| `getblock` | Get block | `[height/hash, verbose]` |
+| `getlatestblock` | Get latest block | `[]` |
 
 ---
 
-**Last Updated**: 2024
-**Version**: 1.0
+## 💻 Complete Example Implementation
 
+### Python Wallet App Example
+
+```python
+import requests
+import json
+from typing import Optional, List, Dict
+
+class GXCWalletApp:
+    """Complete GXC Wallet Application"""
+    
+    def __init__(self, rpc_url: str = "http://localhost:18332"):
+        self.rpc_url = rpc_url
+        self.session = requests.Session()
+        self.session.headers.update({'Content-Type': 'application/json'})
+    
+    def rpc_call(self, method: str, params: List = None) -> Dict:
+        """Make RPC call to blockchain node"""
+        if params is None:
+            params = []
+        
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": 1
+        }
+        
+        try:
+            response = self.session.post(
+                self.rpc_url, 
+                json=payload, 
+                timeout=10
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            if "error" in result:
+                raise Exception(f"RPC Error: {result['error']}")
+            
+            return result.get("result")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Connection error: {e}")
+    
+    # ========== WALLET OPERATIONS ==========
+    
+    def generate_address(self) -> str:
+        """Generate a new GXC address"""
+        return self.rpc_call("getnewaddress", [])
+    
+    def get_balance(self, address: str) -> float:
+        """Get balance for an address"""
+        balance = self.rpc_call("getbalance", [address])
+        return float(balance)
+    
+    def get_transactions(self, address: str, limit: int = 100) -> List[Dict]:
+        """Get transaction history"""
+        return self.rpc_call("listtransactions", [address, limit])
+    
+    def send_coins(self, from_address: str, to_address: str, amount: float) -> Dict:
+        """Send coins to another address"""
+        return self.rpc_call("sendtoaddress", [
+            from_address,
+            to_address,
+            amount
+        ])
+    
+    def validate_address(self, address: str) -> bool:
+        """Validate address format"""
+        result = self.rpc_call("validateaddress", [address])
+        return result.get("isvalid", False)
+    
+    def get_transaction_details(self, txid: str) -> Dict:
+        """Get detailed transaction information"""
+        return self.rpc_call("gettransaction", [txid])
+    
+    # ========== STAKING OPERATIONS ==========
+    
+    def stake_coins(
+        self, 
+        address: str, 
+        stake_amount: float, 
+        staking_days: int
+    ) -> Dict:
+        """
+        Register as validator and stake coins
+        
+        Args:
+            address: Your wallet address
+            stake_amount: Amount to stake (minimum 100 GXC)
+            staking_days: Staking period (14-365 days)
+        
+        Returns:
+            Validator registration result
+        """
+        if stake_amount < 100.0:
+            raise ValueError("Minimum stake is 100 GXC")
+        if not (14 <= staking_days <= 365):
+            raise ValueError("Staking days must be between 14 and 365")
+        
+        return self.rpc_call("registervalidator", [
+            address,
+            stake_amount,
+            staking_days
+        ])
+    
+    def add_stake(self, address: str, additional_amount: float) -> Dict:
+        """Add more stake to existing validator"""
+        return self.rpc_call("addstake", [address, additional_amount])
+    
+    def unstake(self, address: str) -> Dict:
+        """Withdraw stake and deactivate validator"""
+        return self.rpc_call("unstake", [address])
+    
+    def get_all_validators(self) -> List[Dict]:
+        """Get list of all active validators"""
+        return self.rpc_call("getvalidators", [])
+    
+    def get_validator_info(self, address: str) -> Dict:
+        """Get detailed validator information"""
+        return self.rpc_call("getvalidatorinfo", [address])
+    
+    # ========== BLOCKCHAIN INFO ==========
+    
+    def get_blockchain_info(self) -> Dict:
+        """Get blockchain information"""
+        return self.rpc_call("getblockchaininfo", [])
+    
+    def get_block_count(self) -> int:
+        """Get current block height"""
+        return self.rpc_call("getblockcount", [])
+    
+    def get_latest_block(self) -> Dict:
+        """Get latest block"""
+        return self.rpc_call("getlatestblock", [])
+
+
+# ========== USAGE EXAMPLE ==========
+
+if __name__ == "__main__":
+    # Initialize wallet
+    wallet = GXCWalletApp("http://localhost:18332")
+    
+    # Generate address
+    address = wallet.generate_address()
+    print(f"Generated address: {address}")
+    
+    # Check balance
+    balance = wallet.get_balance(address)
+    print(f"Balance: {balance} GXC")
+    
+    # Get transactions
+    transactions = wallet.get_transactions(address)
+    print(f"Transaction count: {len(transactions)}")
+    
+    # Stake coins (if you have enough balance)
+    if balance >= 100:
+        stake_result = wallet.stake_coins(address, 100.0, 90)
+        print(f"Staking result: {stake_result}")
+        
+        # Get validator info
+        validator_info = wallet.get_validator_info(address)
+        print(f"Validator info: {validator_info}")
+    
+    # Get all validators
+    validators = wallet.get_all_validators()
+    print(f"Total validators: {len(validators)}")
+    
+    # Get blockchain info
+    chain_info = wallet.get_blockchain_info()
+    print(f"Chain height: {chain_info.get('blocks', 0)}")
+```
+
+### JavaScript/React Wallet App Example
+
+```javascript
+// wallet.js
+const axios = require('axios');
+
+class GXCWalletApp {
+    constructor(rpcUrl = 'http://localhost:18332') {
+        this.rpcUrl = rpcUrl;
+    }
+    
+    async rpcCall(method, params = []) {
+        const payload = {
+            jsonrpc: '2.0',
+            method: method,
+            params: params,
+            id: 1
+        };
+        
+        try {
+            const response = await axios.post(this.rpcUrl, payload, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 10000
+            });
+            
+            if (response.data.error) {
+                throw new Error(response.data.error.message);
+            }
+            
+            return response.data.result;
+        } catch (error) {
+            throw new Error(`RPC Error: ${error.message}`);
+        }
+    }
+    
+    // Wallet Operations
+    async generateAddress() {
+        return await this.rpcCall('getnewaddress');
+    }
+    
+    async getBalance(address) {
+        return await this.rpcCall('getbalance', [address]);
+    }
+    
+    async getTransactions(address, limit = 100) {
+        return await this.rpcCall('listtransactions', [address, limit]);
+    }
+    
+    async sendCoins(fromAddress, toAddress, amount) {
+        return await this.rpcCall('sendtoaddress', [fromAddress, toAddress, amount]);
+    }
+    
+    // Staking Operations
+    async stakeCoins(address, stakeAmount, stakingDays) {
+        if (stakeAmount < 100) {
+            throw new Error('Minimum stake is 100 GXC');
+        }
+        if (stakingDays < 14 || stakingDays > 365) {
+            throw new Error('Staking days must be between 14 and 365');
+        }
+        return await this.rpcCall('registervalidator', [address, stakeAmount, stakingDays]);
+    }
+    
+    async addStake(address, additionalAmount) {
+        return await this.rpcCall('addstake', [address, additionalAmount]);
+    }
+    
+    async unstake(address) {
+        return await this.rpcCall('unstake', [address]);
+    }
+    
+    async getAllValidators() {
+        return await this.rpcCall('getvalidators');
+    }
+    
+    async getValidatorInfo(address) {
+        return await this.rpcCall('getvalidatorinfo', [address]);
+    }
+    
+    // Blockchain Info
+    async getBlockchainInfo() {
+        return await this.rpcCall('getblockchaininfo');
+    }
+}
+
+module.exports = GXCWalletApp;
+```
+
+### React Component Example
+
+```jsx
+// WalletComponent.jsx
+import React, { useState, useEffect } from 'react';
+import GXCWalletApp from './wallet';
+
+function WalletComponent() {
+    const [wallet] = useState(new GXCWalletApp('http://localhost:18332'));
+    const [address, setAddress] = useState('');
+    const [balance, setBalance] = useState(0);
+    const [transactions, setTransactions] = useState([]);
+    const [validators, setValidators] = useState([]);
+    
+    useEffect(() => {
+        loadWallet();
+        loadValidators();
+    }, []);
+    
+    const loadWallet = async () => {
+        try {
+            const addr = await wallet.generateAddress();
+            setAddress(addr);
+            const bal = await wallet.getBalance(addr);
+            setBalance(bal);
+            const txs = await wallet.getTransactions(addr);
+            setTransactions(txs);
+        } catch (error) {
+            console.error('Error loading wallet:', error);
+        }
+    };
+    
+    const loadValidators = async () => {
+        try {
+            const vals = await wallet.getAllValidators();
+            setValidators(vals);
+        } catch (error) {
+            console.error('Error loading validators:', error);
+        }
+    };
+    
+    const handleStake = async () => {
+        try {
+            const result = await wallet.stakeCoins(address, 1000, 90);
+            alert(`Staked successfully! Weighted stake: ${result.weighted_stake}`);
+            loadValidators();
+        } catch (error) {
+            alert(`Error: ${error.message}`);
+        }
+    };
+    
+    return (
+        <div>
+            <h1>GXC Wallet</h1>
+            <p>Address: {address}</p>
+            <p>Balance: {balance} GXC</p>
+            
+            <h2>Transactions</h2>
+            <ul>
+                {transactions.map(tx => (
+                    <li key={tx.hash}>
+                        {tx.amount} GXC - {tx.confirmations} confirmations
+                    </li>
+                ))}
+            </ul>
+            
+            <h2>Staking</h2>
+            <button onClick={handleStake}>Stake 1000 GXC for 90 days</button>
+            
+            <h2>Validators</h2>
+            <ul>
+                {validators.map(v => (
+                    <li key={v.address}>
+                        {v.address}: {v.stake_amount} GXC staked, APY: {v.apy}%
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+export default WalletComponent;
+```
+
+---
+
+## 🔒 Security Best Practices
+
+### 1. **Never Store Private Keys in Code**
+
+```python
+# ❌ BAD
+PRIVATE_KEY = "your_private_key_here"
+
+# ✅ GOOD - Use environment variables or secure storage
+import os
+private_key = os.environ.get('GXC_PRIVATE_KEY')
+```
+
+### 2. **Use HTTPS for Remote Connections**
+
+```python
+# ✅ GOOD
+wallet = GXCWalletApp("https://your-secure-node.com:18332")
+```
+
+### 3. **Validate All Inputs**
+
+```python
+def send_coins(self, from_address, to_address, amount):
+    # Validate address format
+    if not self.validate_address(to_address):
+        raise ValueError("Invalid recipient address")
+    
+    # Validate amount
+    if amount <= 0:
+        raise ValueError("Amount must be positive")
+    
+    # Check balance
+    balance = self.get_balance(from_address)
+    if balance < amount:
+        raise ValueError("Insufficient balance")
+    
+    return self.rpc_call("sendtoaddress", [from_address, to_address, amount])
+```
+
+### 4. **Handle Errors Gracefully**
+
+```python
+try:
+    result = wallet.send_coins(from_addr, to_addr, amount)
+    print(f"Transaction sent: {result['txid']}")
+except Exception as e:
+    print(f"Error: {e}")
+    # Log error, notify user, etc.
+```
+
+### 5. **Sign Transactions Client-Side**
+
+In production, transactions should be signed client-side using the private key, not sent to the node unsigned.
+
+---
+
+## ⚠️ Error Handling
+
+### Common RPC Errors
+
+```python
+def handle_rpc_error(error_response):
+    """Handle RPC error responses"""
+    error_code = error_response.get("code", -1)
+    error_message = error_response.get("message", "Unknown error")
+    
+    error_map = {
+        -8: "Invalid parameter",
+        -32601: "Method not found",
+        -32600: "Invalid request",
+        -32603: "Internal error"
+    }
+    
+    return error_map.get(error_code, error_message)
+```
+
+### Example Error Handling
+
+```python
+try:
+    balance = wallet.get_balance(address)
+except Exception as e:
+    if "Connection error" in str(e):
+        # Handle connection issues
+        print("Cannot connect to blockchain node")
+    elif "RPC Error" in str(e):
+        # Handle RPC errors
+        print(f"Blockchain error: {e}")
+    else:
+        # Handle other errors
+        print(f"Unexpected error: {e}")
+```
+
+---
+
+## 🧪 Testing
+
+### Test Checklist
+
+- [ ] Connect to blockchain node
+- [ ] Generate new address
+- [ ] Check balance (should be 0 for new address)
+- [ ] Receive coins (from mining or another wallet)
+- [ ] Verify balance updates
+- [ ] Send coins to another address
+- [ ] Verify transaction appears in history
+- [ ] Register as validator
+- [ ] Check validator appears in validator list
+- [ ] Add more stake
+- [ ] Unstake
+- [ ] Verify validator removed from list
+
+### Test Script
+
+```python
+def test_wallet():
+    wallet = GXCWalletApp("http://localhost:18332")
+    
+    # Test 1: Generate address
+    address = wallet.generate_address()
+    assert address.startswith("tGXC"), "Invalid address format"
+    print("✅ Address generation works")
+    
+    # Test 2: Check balance
+    balance = wallet.get_balance(address)
+    assert isinstance(balance, (int, float)), "Balance should be numeric"
+    print(f"✅ Balance check works: {balance} GXC")
+    
+    # Test 3: Get validators
+    validators = wallet.get_all_validators()
+    assert isinstance(validators, list), "Validators should be a list"
+    print(f"✅ Validator list works: {len(validators)} validators")
+    
+    print("All tests passed!")
+
+if __name__ == "__main__":
+    test_wallet()
+```
+
+---
+
+## 📱 Mobile App Integration
+
+### React Native Example
+
+```javascript
+// WalletService.js
+import axios from 'axios';
+
+const RPC_URL = 'http://your-node-ip:18332';
+
+export const WalletService = {
+    async getBalance(address) {
+        const response = await axios.post(RPC_URL, {
+            jsonrpc: '2.0',
+            method: 'getbalance',
+            params: [address],
+            id: 1
+        });
+        return response.data.result;
+    },
+    
+    async stakeCoins(address, amount, days) {
+        const response = await axios.post(RPC_URL, {
+            jsonrpc: '2.0',
+            method: 'registervalidator',
+            params: [address, amount, days],
+            id: 1
+        });
+        return response.data.result;
+    }
+};
+```
+
+---
+
+## 🎨 UI/UX Recommendations
+
+### Wallet Dashboard Should Show:
+
+1. **Balance Display**
+   - Current balance (large, prominent)
+   - Available balance (after staked amount)
+   - Staked amount (if validator)
+
+2. **Transaction List**
+   - Recent transactions
+   - Pending transactions
+   - Transaction status (confirmed/unconfirmed)
+
+3. **Staking Section**
+   - Current stake amount
+   - Staking period remaining
+   - Rewards earned
+   - Validator status
+   - APY percentage
+
+4. **Quick Actions**
+   - Send coins button
+   - Receive coins (QR code)
+   - Stake button
+   - View validators button
+
+---
+
+## 📚 Additional Resources
+
+- **RPC API Documentation**: See `STAKING_ENDPOINTS_GUIDE.md`
+- **Mining Guide**: See `MINERS_README.md`
+- **Blockchain Explorer**: Use web explorer for transaction verification
+- **Testnet**: Use testnet for development/testing
+
+---
+
+## 🆘 Troubleshooting
+
+### Connection Issues
+
+**Problem**: Cannot connect to node  
+**Solution**: 
+- Check node is running
+- Verify RPC port (18332 for testnet)
+- Check firewall settings
+- Verify URL format
+
+### Balance Not Updating
+
+**Problem**: Balance shows 0 after receiving coins  
+**Solution**:
+- Wait for block confirmation (6+ blocks)
+- Check transaction hash in explorer
+- Verify address is correct
+
+### Staking Errors
+
+**Problem**: Cannot stake coins  
+**Solution**:
+- Ensure balance >= 100 GXC
+- Check staking days (14-365)
+- Verify address is valid
+- Check if already a validator
+
+---
+
+## 📝 Summary
+
+This guide provides everything you need to build a GXC wallet app:
+
+✅ **Connection**: RPC API connection examples  
+✅ **Wallet Ops**: Generate addresses, check balance, send/receive  
+✅ **Staking Ops**: Register validator, stake, unstake, view validators  
+✅ **Code Examples**: Python, JavaScript, React  
+✅ **Security**: Best practices for secure implementation  
+✅ **Testing**: Test scripts and checklists  
+
+Start building your wallet app today! 🚀
