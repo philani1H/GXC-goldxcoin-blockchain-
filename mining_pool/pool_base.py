@@ -107,6 +107,9 @@ class MiningPool:
                 self.start_stratum_server()
             except Exception as e:
                 print(f"Warning: Could not start Stratum server: {e}")
+        
+        # Start background tasks
+        self.start_background_tasks()
     
     def init_database(self):
         """Initialize pool database"""
@@ -211,18 +214,22 @@ class MiningPool:
             # Try standard RPC method first, then GXC-specific
             for method in ['getblockchaininfo', 'gxc_getBlockchainInfo']:
                 response = requests.post(self.rpc_url, json={
+                    'jsonrpc': '2.0',
                     'method': method,
                     'params': [],
                     'id': 1
-                }, timeout=5)
+                }, timeout=10, headers={'Content-Type': 'application/json'})
                 
                 if response.status_code == 200:
-                    result = response.json().get('result')
+                    data = response.json()
+                    if 'error' in data:
+                        continue  # Try next method
+                    result = data.get('result')
                     if result:
                         return result
             return None
         except Exception as e:
-            print(f"Error getting blockchain info: {e}")
+            print(f"[{self.pool_name}] Error getting blockchain info: {e}")
             return None
     
     def get_block_template(self) -> Optional[Dict]:
@@ -232,18 +239,22 @@ class MiningPool:
             for method in ['getblocktemplate', 'gxc_getBlockTemplate']:
                 params = [{'algorithm': self.algorithm}] if method == 'gxc_getBlockTemplate' else []
                 response = requests.post(self.rpc_url, json={
+                    'jsonrpc': '2.0',
                     'method': method,
                     'params': params,
                     'id': 1
-                }, timeout=5)
+                }, timeout=10, headers={'Content-Type': 'application/json'})
                 
                 if response.status_code == 200:
-                    result = response.json().get('result')
+                    data = response.json()
+                    if 'error' in data:
+                        continue  # Try next method
+                    result = data.get('result')
                     if result:
                         return result
             return None
         except Exception as e:
-            print(f"Error getting block template: {e}")
+            print(f"[{self.pool_name}] Error getting block template: {e}")
             return None
     
     def submit_block(self, block_data: Dict) -> bool:
@@ -252,13 +263,21 @@ class MiningPool:
             # Try standard RPC method first, then GXC-specific
             for method in ['submitblock', 'gxc_submitBlock']:
                 response = requests.post(self.rpc_url, json={
+                    'jsonrpc': '2.0',
                     'method': method,
                     'params': [block_data],
                     'id': 1
-                }, timeout=10)
+                }, timeout=10, headers={'Content-Type': 'application/json'})
                 
                 if response.status_code == 200:
-                    result = response.json().get('result')
+                    data = response.json()
+                    if 'error' in data:
+                        error_msg = data['error']
+                        if isinstance(error_msg, dict):
+                            error_msg = error_msg.get('message', str(error_msg))
+                        print(f"[{self.pool_name}] Block submission error: {error_msg}")
+                        continue
+                    result = data.get('result')
                     # submitblock returns null on success, or error string on failure
                     if result is None or result is True:
                         return True
@@ -266,7 +285,7 @@ class MiningPool:
                         return True
             return False
         except Exception as e:
-            print(f"Error submitting block: {e}")
+            print(f"[{self.pool_name}] Error submitting block: {e}")
             return False
     
     def generate_mining_job(self) -> Dict:
@@ -1164,13 +1183,21 @@ class MiningPool:
             """Network and pool status"""
             stats = self.get_pool_stats()
             blockchain_info = self.get_blockchain_info()
+            pool_balance = self.get_pool_balance()
             
             return render_template('network_status.html',
                                  pool_name=self.pool_name,
                                  algorithm=self.algorithm,
                                  stats=stats,
                                  blockchain_info=blockchain_info,
+                                 pool_balance=pool_balance,
                                  rpc_url=self.rpc_url)
+        
+        @self.app.route('/api/pool-balance')
+        def api_pool_balance():
+            """API endpoint for pool balance"""
+            balance = self.get_pool_balance()
+            return jsonify({'balance': balance, 'address': os.environ.get('POOL_ADDRESS', 'Not set')})
     
     def get_pool_stats(self) -> Dict:
         """Get pool statistics"""
@@ -1329,6 +1356,61 @@ class MiningPool:
         finally:
             conn.close()
     
+    def get_pool_balance(self) -> float:
+        """Get pool's balance from blockchain"""
+        try:
+            # Get pool address from environment or use a default
+            pool_address = os.environ.get('POOL_ADDRESS', '')
+            if not pool_address:
+                print(f"[{self.pool_name}] Warning: POOL_ADDRESS not set, cannot check balance")
+                return 0.0
+            
+            response = requests.post(self.rpc_url, json={
+                'jsonrpc': '2.0',
+                'method': 'getbalance',
+                'params': [pool_address],
+                'id': 1
+            }, timeout=10, headers={'Content-Type': 'application/json'})
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'error' in data:
+                    print(f"[{self.pool_name}] Error getting balance: {data['error']}")
+                    return 0.0
+                balance = float(data.get('result', 0))
+                return balance
+            return 0.0
+        except Exception as e:
+            print(f"[{self.pool_name}] Error checking pool balance: {e}")
+            return 0.0
+    
+    def send_payout_transaction(self, from_address: str, to_address: str, amount: float) -> Optional[str]:
+        """Send payout transaction to blockchain"""
+        try:
+            response = requests.post(self.rpc_url, json={
+                'jsonrpc': '2.0',
+                'method': 'sendtoaddress',
+                'params': [from_address, to_address, amount],
+                'id': 1
+            }, timeout=30, headers={'Content-Type': 'application/json'})
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'error' in data:
+                    error_msg = data['error']
+                    if isinstance(error_msg, dict):
+                        error_msg = error_msg.get('message', str(error_msg))
+                    print(f"[{self.pool_name}] Payout transaction error: {error_msg}")
+                    return None
+                result = data.get('result')
+                if isinstance(result, dict):
+                    return result.get('txid')
+                return str(result) if result else None
+            return None
+        except Exception as e:
+            print(f"[{self.pool_name}] Error sending payout transaction: {e}")
+            return None
+    
     def process_payouts(self, min_payout=0.1):
         """
         Process pending payouts for miners who have reached minimum threshold
@@ -1338,6 +1420,17 @@ class MiningPool:
         cursor = conn.cursor()
         
         try:
+            # Get pool address for sending payouts
+            pool_address = os.environ.get('POOL_ADDRESS', '')
+            if not pool_address:
+                print(f"[{self.pool_name}] Error: POOL_ADDRESS not set, cannot process payouts")
+                return
+            
+            # Check pool balance
+            pool_balance = self.get_pool_balance()
+            if pool_balance < min_payout:
+                print(f"[{self.pool_name}] Warning: Pool balance ({pool_balance:.4f} GXC) is below minimum payout threshold")
+            
             # Get miners with pending balance >= minimum payout
             cursor.execute('''
                 SELECT miner_id, address, pending_balance
@@ -1349,26 +1442,54 @@ class MiningPool:
             
             eligible_miners = cursor.fetchall()
             
+            if not eligible_miners:
+                print(f"[{self.pool_name}] No miners eligible for payout")
+                return
+            
+            print(f"[{self.pool_name}] Processing {len(eligible_miners)} payouts...")
+            
+            successful_payouts = 0
+            failed_payouts = 0
+            
             for miner_id, address, pending_balance in eligible_miners:
                 try:
-                    # Here you would send the actual transaction to the blockchain
-                    # For now, we'll mark it as completed
-                    # TODO: Implement actual blockchain transaction
+                    # Check if we have enough balance
+                    if pool_balance < pending_balance:
+                        print(f"[{self.pool_name}] Insufficient balance for payout to {miner_id}: need {pending_balance:.4f}, have {pool_balance:.4f}")
+                        continue
                     
-                    cursor.execute('''
-                        UPDATE payouts
-                        SET status = 'completed', paid_at = CURRENT_TIMESTAMP
-                        WHERE miner_id = ? AND status = 'pending'
-                    ''', (miner_id,))
+                    # Send transaction to blockchain
+                    txid = self.send_payout_transaction(pool_address, address, pending_balance)
                     
-                    # Reset pending balance
-                    cursor.execute('''
-                        UPDATE miners
-                        SET pending_balance = 0.0
-                        WHERE miner_id = ?
-                    ''', (miner_id,))
-                    
-                    print(f"[{self.pool_name}] Processed payout: {pending_balance:.4f} GXC to {address}")
+                    if txid:
+                        # Update payout record with transaction hash
+                        cursor.execute('''
+                            UPDATE payouts
+                            SET status = 'completed', tx_hash = ?, paid_at = CURRENT_TIMESTAMP
+                            WHERE miner_id = ? AND status = 'pending'
+                        ''', (txid, miner_id))
+                        
+                        # Reset pending balance
+                        cursor.execute('''
+                            UPDATE miners
+                            SET pending_balance = 0.0
+                            WHERE miner_id = ?
+                        ''', (miner_id,))
+                        
+                        # Update pool balance estimate
+                        pool_balance -= pending_balance
+                        successful_payouts += 1
+                        
+                        print(f"[{self.pool_name}] ✅ Payout sent: {pending_balance:.4f} GXC to {address} (TX: {txid[:16]}...)")
+                    else:
+                        # Mark as failed
+                        cursor.execute('''
+                            UPDATE payouts
+                            SET status = 'failed'
+                            WHERE miner_id = ? AND status = 'pending'
+                        ''', (miner_id,))
+                        failed_payouts += 1
+                        print(f"[{self.pool_name}] ❌ Failed to send payout to {miner_id}")
                     
                 except Exception as e:
                     print(f"[{self.pool_name}] Error processing payout for {miner_id}: {e}")
@@ -1378,9 +1499,10 @@ class MiningPool:
                         SET status = 'failed'
                         WHERE miner_id = ? AND status = 'pending'
                     ''', (miner_id,))
+                    failed_payouts += 1
             
             conn.commit()
-            print(f"[{self.pool_name}] Processed {len(eligible_miners)} payouts")
+            print(f"[{self.pool_name}] Payout processing complete: {successful_payouts} successful, {failed_payouts} failed")
             
         except Exception as e:
             print(f"[{self.pool_name}] Error processing payouts: {e}")
@@ -1442,6 +1564,39 @@ class MiningPool:
             }
         finally:
             conn.close()
+    
+    def start_background_tasks(self):
+        """Start background tasks for pool management"""
+        def update_job_periodically():
+            """Update mining job every 30 seconds"""
+            while True:
+                try:
+                    time.sleep(30)
+                    if self.stratum_running:
+                        # Generate new job to keep miners updated
+                        self.generate_mining_job()
+                except Exception as e:
+                    print(f"[{self.pool_name}] Error in job update task: {e}")
+        
+        def process_payouts_periodically():
+            """Process payouts every hour"""
+            while True:
+                try:
+                    time.sleep(3600)  # 1 hour
+                    self.process_payouts()
+                except Exception as e:
+                    print(f"[{self.pool_name}] Error in payout processing task: {e}")
+        
+        # Start background threads
+        job_thread = threading.Thread(target=update_job_periodically)
+        job_thread.daemon = True
+        job_thread.start()
+        
+        payout_thread = threading.Thread(target=process_payouts_periodically)
+        payout_thread.daemon = True
+        payout_thread.start()
+        
+        print(f"[{self.pool_name}] Background tasks started (job updates, payout processing)")
     
     def run(self, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=False):
         """Run the pool web server"""
