@@ -760,8 +760,6 @@ JsonValue RPCAPI::transactionToJson(const Transaction& tx, uint32_t blockHeight,
     txJson["is_coinbase"] = tx.isCoinbaseTransaction();
     txJson["isCoinbase"] = tx.isCoinbaseTransaction();
     txJson["coinbase"] = tx.isCoinbaseTransaction();
-    txJson["type"] = tx.isCoinbaseTransaction() ? "coinbase" : "transfer";
-    txJson["tx_type"] = tx.isCoinbaseTransaction() ? "coinbase" : "transfer";
     
     // From/To addresses
     if (tx.isCoinbaseTransaction()) {
@@ -832,11 +830,12 @@ JsonValue RPCAPI::transactionToJson(const Transaction& tx, uint32_t blockHeight,
     txJson["contract_address"] = "";
     txJson["contractAddress"] = "";
     
-    // Transaction type (more detailed)
+    // Transaction type (more detailed) - update the base type field too
     std::string txType = tx.isCoinbaseTransaction() ? "coinbase" : 
                         (tx.isGoldBackedTransaction() ? "gold_backed" : "transfer");
     txJson["tx_type"] = txType;
     txJson["transaction_type"] = txType;
+    txJson["type"] = txType; // Update the main type field with detailed type
     
     // Inputs
     JsonValue inputs = JsonValue(JsonValue::array());
