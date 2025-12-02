@@ -2,15 +2,22 @@
 #include "../include/Logger.h"
 #include "../include/Utils.h"
 #include "../include/HashUtils.h"
-
 #include "../include/Config.h"
 #include <algorithm>
 #include <numeric>
 #include <sstream>
 #include <unordered_set>
 
-Blockchain::Blockchain() : difficulty(1000.0), lastBlock(), blockReward(50.0), lastHalvingBlock(0) {
-    LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created");
+Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0) {
+    // Set difficulty based on network type
+    bool isTestnet = Config::isTestnet();
+    if (isTestnet) {
+        difficulty = 0.1;  // Very easy for testnet
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created (TESTNET mode, difficulty: 0.1)");
+    } else {
+        difficulty = 1000.0;  // Harder for mainnet
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created (MAINNET mode, difficulty: 1000.0)");
+    }
 }
 
 Blockchain::~Blockchain() {
@@ -501,20 +508,36 @@ bool Blockchain::validateBlockInternal(const Block& block, uint32_t expectedInde
 bool Blockchain::validateProofOfWork(const Block& block) const {
     std::string hash = block.getHash();
     
-    // Count leading zeros
-    int leadingZeros = 0;
-    for (char c : hash) {
-        if (c == '0') {
-            leadingZeros++;
-        } else {
-            break;
-        }
+    if (hash.empty()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Block hash is empty");
+        return false;
     }
     
-    // Calculate required zeros based on difficulty
-    int requiredZeros = static_cast<int>(std::log2(block.getDifficulty())) + 2;
+    // Use blockchain's difficulty for validation (not block's difficulty)
+    // This prevents miners from submitting blocks with incorrect difficulty
+    double validationDifficulty = difficulty;
     
-    return leadingZeros >= requiredZeros;
+    // For testnet, use easier validation (difficulty 0.1 means 0 leading zeros required)
+    // For mainnet, use stricter validation
+    bool isValid = meetsTarget(hash, validationDifficulty);
+    
+    if (!isValid) {
+        // Count leading zeros for logging
+        int leadingZeros = 0;
+        for (char c : hash) {
+            if (c == '0') {
+                leadingZeros++;
+            } else {
+                break;
+            }
+        }
+        size_t requiredZeros = static_cast<size_t>(validationDifficulty);
+        LOG_BLOCKCHAIN(LogLevel::DEBUG, "validateProofOfWork: Hash " + hash.substr(0, 16) + 
+                      "... has " + std::to_string(leadingZeros) + " leading zeros, required: " + 
+                      std::to_string(requiredZeros) + " (difficulty: " + std::to_string(validationDifficulty) + ")");
+    }
+    
+    return isValid;
 }
 
 bool Blockchain::validateTransaction(const Transaction& tx) {
