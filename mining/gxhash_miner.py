@@ -685,10 +685,27 @@ class GXCMiner:
         
         def fetch():
             try:
+                # Get current blockchain height to detect resets
+                current_height = self.client.get_current_block_height()
+                
                 # Get balance from blockchain - REAL DATA ONLY
                 balance = self.client.get_address_balance(address)
                 if balance is None:
                     balance = 0.0
+                
+                # Check for significant balance drop (possible chain reset)
+                if hasattr(self, 'last_known_balance') and self.last_known_balance > 0:
+                    balance_drop = self.last_known_balance - balance
+                    if balance_drop > 100:  # Significant drop (>100 GXC)
+                        self.root.after(0, lambda: self.log(
+                            f"⚠️ WARNING: Balance dropped from {self.last_known_balance:.8f} to {balance:.8f} GXC "
+                            f"(drop: {balance_drop:.8f} GXC). Possible chain reorganization or node reset!",
+                            "WARNING"))
+                        self.root.after(0, lambda: self.log(
+                            f"⚠️ Current blockchain height: {current_height}. Check if node reset or chain reorganized.",
+                            "WARNING"))
+                
+                self.last_known_balance = balance
                 
                 # Update balance display with REAL blockchain data
                 self.root.after(0, lambda: self.update_balance_display(balance))
@@ -697,16 +714,30 @@ class GXCMiner:
                 # Get transactions from blockchain - REAL DATA ONLY
                 transactions = self.client.get_address_transactions(address, limit=100)
                 
-                # Calculate total earned from ACTUAL blockchain transactions
+                # Calculate total earned from ACTUAL blockchain transactions (only confirmed)
                 total_earned = self.calculate_total_earned_from_blockchain(transactions)
+                
+                # Check for transaction count drop (possible chain reset)
+                if hasattr(self, 'last_transaction_count') and self.last_transaction_count > 0:
+                    tx_drop = self.last_transaction_count - len(transactions)
+                    if tx_drop > 5:  # Significant drop (>5 transactions)
+                        self.root.after(0, lambda: self.log(
+                            f"⚠️ WARNING: Transaction count dropped from {self.last_transaction_count} to {len(transactions)}. "
+                            f"Possible chain reorganization or node reset!",
+                            "WARNING"))
+                
+                self.last_transaction_count = len(transactions)
                 
                 # Update UI with REAL earnings from blockchain
                 self.root.after(0, lambda: self.update_earnings_display(total_earned))
                 self.root.after(0, lambda: self.update_transactions_display(transactions))
                 self.root.after(0, lambda: self.log(f"📊 Loaded {len(transactions)} transactions", "INFO"))
-                self.root.after(0, lambda: self.log(f"💰 Total earned (from blockchain): {total_earned:.8f} GXC", "INFO"))
+                self.root.after(0, lambda: self.log(f"💰 Total earned (from blockchain, confirmed only): {total_earned:.8f} GXC", "INFO"))
+                self.root.after(0, lambda: self.log(f"📏 Current blockchain height: {current_height}", "INFO"))
             except Exception as e:
                 self.root.after(0, lambda: self.log(f"❌ Failed to fetch from blockchain: {e}", "ERROR"))
+                import traceback
+                self.root.after(0, lambda: self.log(f"❌ Error details: {traceback.format_exc()}", "ERROR"))
         
         threading.Thread(target=fetch, daemon=True).start()
     
