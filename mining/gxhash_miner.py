@@ -175,7 +175,27 @@ class BlockchainClient:
         return None
     
     def get_address_balance(self, address: str) -> float:
-        """Get balance for an address"""
+        """Get balance for an address - Use RPC for reliability"""
+        # Try RPC methods first (more reliable)
+        methods = [
+            ("gxc_getBalance", [address]),
+            ("getbalance", [address]),
+            ("getaddressbalance", [address]),
+        ]
+        
+        for method, params in methods:
+            try:
+                result = self.rpc_call(method, params)
+                if result is not None:
+                    if isinstance(result, (int, float)):
+                        return float(result)
+                    elif isinstance(result, dict):
+                        balance = result.get('balance') or result.get('amount') or 0.0
+                        return float(balance)
+            except:
+                continue
+        
+        # Fallback to REST API
         try:
             result = self.rest_call(f"/api/v1/address/{address}/balance")
             if result:
@@ -192,7 +212,28 @@ class BlockchainClient:
         return 0
     
     def get_address_transactions(self, address: str, limit: int = 50) -> List[Dict]:
-        """Get transactions for an address"""
+        """Get transactions for an address - Use RPC for reliability"""
+        # Try RPC methods first (more reliable)
+        methods = [
+            ("gxc_getTransactionsByAddress", [address, limit]),
+            ("getaddresstransactions", [address, limit]),
+            ("listtransactions", [address, limit]),
+        ]
+        
+        for method, params in methods:
+            try:
+                result = self.rpc_call(method, params)
+                if result is not None:
+                    if isinstance(result, list):
+                        return result
+                    elif isinstance(result, dict):
+                        txs = result.get('transactions') or result.get('txs') or []
+                        if isinstance(txs, list):
+                            return txs
+            except:
+                continue
+        
+        # Fallback to REST API
         try:
             result = self.rest_call(f"/api/v1/address/{address}/transactions?limit={limit}")
             if isinstance(result, list):
@@ -202,6 +243,30 @@ class BlockchainClient:
         except:
             pass
         return []
+    
+    def verify_block_confirmed(self, block_hash: str, block_height: int) -> bool:
+        """Verify that a block is confirmed on the blockchain"""
+        try:
+            # Get current blockchain height
+            current_height = self.get_current_block_height()
+            if current_height == 0:
+                return False
+            
+            # Check if block is at least 6 blocks deep (confirmed)
+            if current_height < block_height + 6:
+                return False
+            
+            # Try to get the block by hash to verify it exists
+            block_info = self.rpc_call("getblock", [block_hash])
+            if block_info:
+                # Verify block height matches
+                block_height_from_node = block_info.get('height') or block_info.get('block_number') or 0
+                if block_height_from_node == block_height:
+                    confirmations = current_height - block_height + 1
+                    return confirmations >= 6
+            return False
+        except:
+            return False
 
 
 class GXCMiner:
@@ -587,15 +652,24 @@ class GXCMiner:
     def calculate_total_earned_from_blockchain(self, transactions: List[Dict]) -> float:
         """Calculate total earned from actual blockchain coinbase transactions"""
         total = 0.0
+        current_height = self.client.get_current_block_height() if self.client else 0
+        
         for tx in transactions:
             # Only count confirmed coinbase transactions (mining rewards)
             if tx.get('type') == 'coinbase' or tx.get('is_coinbase') or tx.get('isCoinbase'):
                 confirmations = tx.get('confirmations', 0)
-                # Only count if confirmed (6+ confirmations) or at least 1 confirmation for recent
-                if confirmations >= 1:
+                block_number = tx.get('block_number') or tx.get('block') or 0
+                
+                # Calculate confirmations if not provided
+                if confirmations == 0 and block_number > 0 and current_height > 0:
+                    confirmations = max(0, current_height - block_number + 1)
+                
+                # Only count if confirmed (6+ confirmations for safety)
+                if confirmations >= 6:
                     amount = tx.get('amount') or tx.get('value') or 0.0
                     if amount > 0:
                         total += amount
+                        self.log(f"✅ Confirmed coinbase: {amount} GXC (block {block_number}, {confirmations} confirmations)", "SUCCESS")
         return total
     
     def refresh_transactions(self):
@@ -1044,6 +1118,16 @@ class GXCMiner:
                     
                     # Refresh balance and transactions from blockchain to get REAL data
                     # Wait a bit for block to be processed, then verify from blockchain
+                    # Verify block is actually confirmed on chain
+                    import time
+                    time.sleep(2)  # Wait for block to be processed
+                    
+                    # Verify block confirmation
+                    block_hash = block_data.get('hash') or block_data.get('blockHash')
+                    if block_hash and block_height:
+                        is_confirmed = self.client.verify_block_confirmed(block_hash, block_height)
+                        if not is_confirmed:
+                            self.root.after(0, lambda: self.log(f"⚠️ Block {block_height} not yet confirmed (may be orphaned)", "WARNING"))
                     self.root.after(5000, self.refresh_transactions)  # Wait 5 seconds for block processing
                     self.root.after(15000, self.refresh_transactions)  # Refresh again after 15 seconds to get confirmed data
                 else:
