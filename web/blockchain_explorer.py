@@ -64,6 +64,9 @@ base_db_path = '/tmp' if os.path.exists('/tmp') else '.'
 db_filename = f'gxc_explorer_{NETWORK}.db'
 DATABASE_PATH = os.environ.get('DATABASE_PATH', os.path.join(base_db_path, db_filename))
 
+# Forum URL - can be overridden via environment variable
+FORUM_URL = os.environ.get('FORUM_URL', 'http://localhost:5000')
+
 # Helper function for safe integer conversion from request parameters
 def safe_int(value, default=0, min_val=None, max_val=None):
     """
@@ -3317,7 +3320,8 @@ def index():
                          stats=network_stats,
                          blockchain_node_url=ACTIVE_NODE_URL or BLOCKCHAIN_NODE_URL,
                          connection_info=connection_info,
-                         network_info=network_info)
+                         network_info=network_info,
+                         forum_url=FORUM_URL)
 
 @app.route('/block/<block_number>')
 def block_detail(block_number):
@@ -3411,7 +3415,8 @@ def block_detail(block_number):
                              block=block,
                              transactions=transactions,
                              connection_info=connection_info,
-                             network_info=network_info)
+                             network_info=network_info,
+                             forum_url=FORUM_URL)
         
     except Exception as e:
         print(f"Error in block_detail: {e}")
@@ -3533,7 +3538,8 @@ def transaction_detail(tx_hash):
                 return render_template('error.html', 
                     error="Transaction not found",
                     message=f"The transaction {tx_hash} could not be found in the database or on the blockchain node.",
-                    back_url="/transactions"), 404
+                    back_url="/transactions",
+                    forum_url=FORUM_URL), 404
         
         # Get transaction inputs
         cursor.execute('''
@@ -3820,7 +3826,8 @@ def address_detail(address):
                              address_info=addr_info,
                              transactions=transactions,
                              connection_info=connection_info,
-                             network_info=network_info)
+                             network_info=network_info,
+                             forum_url=FORUM_URL)
         
     except Exception as e:
         print(f"Error in address_detail: {e}")
@@ -3960,7 +3967,7 @@ def transactions_list():
         
         # Handle empty result gracefully
         if not rows:
-            return render_template('transactions.html', transactions=[], network_info=network_info, current_height=current_height)
+            return render_template('transactions.html', transactions=[], network_info=network_info, current_height=current_height, forum_url=FORUM_URL)
         
         for row in rows:
             # Safely unpack row - all values are guaranteed by COALESCE
@@ -4003,7 +4010,7 @@ def transactions_list():
                 'confirmations': max(0, current_height - block + 1) if block > 0 else 0
             })
         
-        return render_template('transactions.html', transactions=transactions, network_info=network_info, current_height=current_height)
+        return render_template('transactions.html', transactions=transactions, network_info=network_info, current_height=current_height, forum_url=FORUM_URL)
         
     except Exception as e:
         # Log error for debugging
@@ -4019,7 +4026,7 @@ def transactions_list():
             'is_mainnet': NETWORK == 'mainnet'
         }
         # Return empty list on error instead of crashing
-        return render_template('transactions.html', transactions=[], network_info=network_info)
+        return render_template('transactions.html', transactions=[], network_info=network_info, forum_url=FORUM_URL)
     finally:
         conn.close()
 
@@ -4161,7 +4168,7 @@ def stocks_page():
                 {'ticker': 'JNJ', 'company_name': 'Johnson & Johnson', 'exchange': 'NYSE', 'current_price': 162.45, 'market_cap': 430000000000, 'total_shares': 2600000000, 'dividend_yield': 0.031, 'sector': 'Healthcare'}
             ]
         
-        return render_template('stocks.html', stocks=stocks)
+        return render_template('stocks.html', stocks=stocks, forum_url=FORUM_URL)
         
     finally:
         conn.close()
