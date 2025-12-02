@@ -1,0 +1,358 @@
+# GXC Wallet Web Developer Quick Reference
+
+Quick reference guide for building GXC wallet web applications.
+
+---
+
+## 🔗 API Endpoints
+
+### RPC API (Primary)
+
+**Base URL:** `http://localhost:18332` (testnet) or `http://localhost:8332` (mainnet)
+
+**Request Format:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "method_name",
+  "params": [...],
+  "id": 1
+}
+```
+
+### Quick RPC Calls
+
+#### Generate Address
+```javascript
+fetch('http://localhost:18332', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'getnewaddress',
+    params: [],
+    id: 1
+  })
+})
+```
+
+#### Get Balance
+```javascript
+fetch('http://localhost:18332', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'getbalance',
+    params: ['tGXC...address'],
+    id: 1
+  })
+})
+```
+
+#### Get Transactions
+```javascript
+fetch('http://localhost:18332', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'listtransactions',
+    params: ['tGXC...address', 100],
+    id: 1
+  })
+})
+```
+
+#### Send Coins
+```javascript
+fetch('http://localhost:18332', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'sendtoaddress',
+    params: ['from_address', 'to_address', 100.0],
+    id: 1
+  })
+})
+```
+
+#### Register Validator (Stake)
+```javascript
+fetch('http://localhost:18332', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'registervalidator',
+    params: ['tGXC...address', 1000.0, 90],
+    id: 1
+  })
+})
+```
+
+#### Get Validators
+```javascript
+fetch('http://localhost:18332', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'getvalidators',
+    params: [],
+    id: 1
+  })
+})
+```
+
+---
+
+## 💻 JavaScript/TypeScript Helper
+
+### Simple RPC Client
+
+```javascript
+class GXCRPC {
+  constructor(url = 'http://localhost:18332') {
+    this.url = url;
+    this.id = 1;
+  }
+
+  async call(method, params = []) {
+    const response = await fetch(this.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method,
+        params,
+        id: this.id++
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.result;
+  }
+
+  // Wallet methods
+  async getNewAddress() {
+    return this.call('getnewaddress');
+  }
+
+  async getBalance(address) {
+    return this.call('getbalance', [address]);
+  }
+
+  async getTransactions(address, limit = 100) {
+    return this.call('listtransactions', [address, limit]);
+  }
+
+  async sendCoins(from, to, amount) {
+    return this.call('sendtoaddress', [from, to, amount]);
+  }
+
+  // Staking methods
+  async stake(address, amount, days) {
+    return this.call('registervalidator', [address, amount, days]);
+  }
+
+  async getValidators() {
+    return this.call('getvalidators');
+  }
+}
+
+// Usage
+const rpc = new GXCRPC('http://localhost:18332');
+const address = await rpc.getNewAddress();
+const balance = await rpc.getBalance(address);
+```
+
+---
+
+## ⚡ React Hook Example
+
+```jsx
+import { useState, useEffect } from 'react';
+
+function useGXCWallet(rpcUrl = 'http://localhost:18332') {
+  const [address, setAddress] = useState(null);
+  const [balance, setBalance] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  const rpc = new GXCRPC(rpcUrl);
+
+  useEffect(() => {
+    loadWallet();
+  }, []);
+
+  const loadWallet = async () => {
+    setLoading(true);
+    try {
+      const addr = await rpc.getNewAddress();
+      setAddress(addr);
+      const bal = await rpc.getBalance(addr);
+      setBalance(bal);
+    } catch (error) {
+      console.error('Error loading wallet:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshBalance = async () => {
+    if (address) {
+      const bal = await rpc.getBalance(address);
+      setBalance(bal);
+    }
+  };
+
+  return {
+    address,
+    balance,
+    loading,
+    refreshBalance,
+    sendCoins: (to, amount) => rpc.sendCoins(address, to, amount),
+    stake: (amount, days) => rpc.stake(address, amount, days),
+  };
+}
+
+// Usage in component
+function Wallet() {
+  const { address, balance, loading, refreshBalance } = useGXCWallet();
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <h1>GXC Wallet</h1>
+      <p>Address: {address}</p>
+      <p>Balance: {balance} GXC</p>
+      <button onClick={refreshBalance}>Refresh</button>
+    </div>
+  );
+}
+```
+
+---
+
+## 🎨 Vue 3 Composition API Example
+
+```vue
+<template>
+  <div>
+    <h1>GXC Wallet</h1>
+    <p>Address: {{ address }}</p>
+    <p>Balance: {{ balance }} GXC</p>
+    <button @click="refreshBalance">Refresh</button>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue';
+import { GXCRPC } from './rpc';
+
+const rpc = new GXCRPC('http://localhost:18332');
+const address = ref(null);
+const balance = ref(0);
+const loading = ref(false);
+
+onMounted(async () => {
+  loading.value = true;
+  try {
+    address.value = await rpc.getNewAddress();
+    balance.value = await rpc.getBalance(address.value);
+  } catch (error) {
+    console.error('Error:', error);
+  } finally {
+    loading.value = false;
+  }
+});
+
+const refreshBalance = async () => {
+  if (address.value) {
+    balance.value = await rpc.getBalance(address.value);
+  }
+};
+</script>
+```
+
+---
+
+## 📋 All RPC Methods
+
+### Wallet
+- `getnewaddress` - Generate address
+- `getbalance` - Get balance
+- `listtransactions` - Get transactions
+- `sendtoaddress` - Send coins
+- `validateaddress` - Validate address
+- `gettransaction` - Get transaction details
+
+### Staking
+- `registervalidator` - Register validator
+- `stake` - Stake coins (alias)
+- `addstake` - Add more stake
+- `unstake` - Withdraw stake
+- `getvalidators` - List validators
+- `getvalidatorinfo` - Get validator info
+
+### Blockchain
+- `getblockchaininfo` - Chain info
+- `getblockcount` - Block count
+- `getblock` - Get block
+- `getlatestblock` - Latest block
+
+---
+
+## 🔐 Security Checklist
+
+- [ ] Use HTTPS in production
+- [ ] Validate all inputs
+- [ ] Never store private keys in code
+- [ ] Use environment variables for URLs
+- [ ] Implement rate limiting
+- [ ] Handle errors gracefully
+- [ ] Validate addresses before sending
+- [ ] Check balance before transactions
+
+---
+
+## 🐛 Common Errors
+
+| Error | Solution |
+|-------|----------|
+| Connection refused | Check node is running |
+| Invalid address | Validate address format |
+| Insufficient balance | Check balance before sending |
+| RPC error -32601 | Method not found, check method name |
+| Timeout | Increase timeout or check network |
+
+---
+
+## 📚 Full Documentation
+
+See `WEB_WALLET_DEVELOPER_GUIDE.md` for complete documentation.
+
+---
+
+## 🚀 Quick Start
+
+1. **Install dependencies:**
+   ```bash
+   npm install axios
+   ```
+
+2. **Create RPC client:**
+   ```javascript
+   const rpc = new GXCRPC('http://localhost:18332');
+   ```
+
+3. **Use in your app:**
+   ```javascript
+   const address = await rpc.getNewAddress();
+   const balance = await rpc.getBalance(address);
+   ```
+
+That's it! You're ready to build your GXC wallet app! 🎉
