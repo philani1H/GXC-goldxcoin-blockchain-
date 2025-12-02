@@ -109,6 +109,8 @@ public:
     bool isValid() const;
     size_t getHeight() const;
     double getDifficulty() const;
+    double getBalance(const std::string& address) const;
+    const std::unordered_map<std::string, TransactionOutput>& getUtxoSet() const;
     std::string getStats() const;
     
     // Hybrid consensus
