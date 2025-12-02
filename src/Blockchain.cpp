@@ -194,6 +194,18 @@ bool Blockchain::addBlock(const Block& block) {
         // Pass chain.size() directly instead of calling getHeight()
         LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Starting block validation...");
         uint32_t expectedIndex = chain.size(); // This is getHeight() without the lock
+        
+        // CRITICAL: Check if a block at this index already exists in the chain
+        // This prevents duplicate blocks at the same height (race condition protection)
+        for (const auto& existingBlock : chain) {
+            if (existingBlock->getIndex() == blockToAdd.getIndex()) {
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "addBlock: Block at index " + std::to_string(blockToAdd.getIndex()) + 
+                              " already exists (hash: " + existingBlock->getHash().substr(0, 16) + 
+                              "...). Rejecting duplicate block (hash: " + blockToAdd.getHash().substr(0, 16) + "...).");
+                return false;
+            }
+        }
+        
         bool validationResult = validateBlockInternal(blockToAdd, expectedIndex);
         LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Block validation result: " + std::string(validationResult ? "PASS" : "FAIL"));
         
@@ -232,14 +244,23 @@ bool Blockchain::addBlock(const Block& block) {
         
         // Update UTXO set (add outputs, remove inputs)
         // This must be called BEFORE any balance queries to ensure wallet is updated
+        LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Updating UTXO set for " + std::to_string(blockToAdd.getTransactions().size()) + " transactions...");
         updateUtxoSet(blockToAdd);
         
-        // Log coinbase reward if present
+        // Log coinbase reward if present and verify UTXO was added
         for (const auto& tx : blockToAdd.getTransactions()) {
             if (tx.isCoinbaseTransaction() && !tx.getOutputs().empty()) {
                 const auto& coinbaseOutput = tx.getOutputs()[0];
                 LOG_BLOCKCHAIN(LogLevel::INFO, "Coinbase reward: " + std::to_string(coinbaseOutput.amount) + 
-                              " GXC to " + coinbaseOutput.address.substr(0, 16) + "...");
+                              " GXC to " + coinbaseOutput.address);
+                
+                // Verify UTXO was added to set
+                std::string expectedUtxoKey = tx.getHash() + "_0";
+                if (utxoSet.find(expectedUtxoKey) != utxoSet.end()) {
+                    LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Verified coinbase UTXO [" + expectedUtxoKey + "] added to UTXO set");
+                } else {
+                    LOG_BLOCKCHAIN(LogLevel::ERROR, "❌ Coinbase UTXO [" + expectedUtxoKey + "] NOT found in UTXO set after update!");
+                }
             }
         }
         
@@ -904,15 +925,28 @@ double Blockchain::getBalance(const std::string& address) const {
     
     // Sum all UTXOs for this address
     for (const auto& [utxoKey, output] : utxoSet) {
+        // Use exact match for address comparison
         if (output.address == address) {
             balance += output.amount;
             utxoCount++;
-            LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " = " + std::to_string(output.amount) + " GXC");
+            LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " = " + std::to_string(output.amount) + 
+                          " GXC to " + output.address.substr(0, 20) + "...");
         }
     }
     
     // Always log balance queries at INFO level for debugging
-    LOG_BLOCKCHAIN(LogLevel::INFO, "getBalance(" + address.substr(0, 20) + "...): " + std::to_string(balance) + " GXC from " + std::to_string(utxoCount) + " UTXOs (total: " + std::to_string(utxoSet.size()) + ")");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "getBalance(" + address.substr(0, 20) + "...): " + std::to_string(balance) + 
+                  " GXC from " + std::to_string(utxoCount) + " UTXOs (total UTXOs in set: " + std::to_string(utxoSet.size()) + ")");
+    
+    // If balance is 0 but we expect UTXOs, log all UTXOs for debugging
+    if (balance == 0.0 && utxoSet.size() > 0) {
+        LOG_BLOCKCHAIN(LogLevel::DEBUG, "getBalance: No UTXOs found for address " + address.substr(0, 20) + 
+                      "... Available UTXOs:");
+        for (const auto& [utxoKey, output] : utxoSet) {
+            LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO [" + utxoKey + "]: " + std::to_string(output.amount) + 
+                          " GXC to " + output.address.substr(0, 20) + "...");
+        }
+    }
     
     return balance;
 }
