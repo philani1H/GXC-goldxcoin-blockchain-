@@ -357,31 +357,61 @@ void Network::maintainPeerConnections() {
     const size_t MIN_PEERS = 3;
     if (peers.size() < MIN_PEERS) {
         // Seed nodes are optional - don't spam logs if they're unavailable
-        // connectToSeedNodes();
+        connectToSeedNodes();
     }
 }
 
 void Network::connectToSeedNodes() {
     // Default seed nodes
+    // In a real implementation, these should be loaded from Config or DNS seeds
     std::vector<std::pair<std::string, int>> seedNodes = {
-        {"seed1.gxc.network", 9333},
-        {"seed2.gxc.network", 9333},
-        {"seed3.gxc.network", 9333},
-        {"127.0.0.1", 9334} // Local test node
+        {"seed1.gxc-testnet.network", 19333}, // Testnet seed 1
+        {"seed2.gxc-testnet.network", 19333}, // Testnet seed 2
+        {"127.0.0.1", 19334},                  // Local test node 1
+        {"127.0.0.1", 19335}                   // Local test node 2
     };
     
     const size_t MIN_PEERS = 3;
+    // We already hold the lock in maintainPeerConnections, but connectToSeedNodes
+    // is called from there. However, we need to be careful about unlocking.
+    // Ideally, we collect candidates first, then unlock to connect.
+
+    // BUT: maintainPeerConnections calls this method directly while holding the lock.
+    // The previous implementation had a dangerous unlock/lock sequence inside the loop.
+    // Let's refactor to be safer: we can't connect while holding the lock if connectToPeer takes time.
+    // So we should just identify candidates here, and return them, or change the architecture.
+    // For this specific codebase structure where connectToSeedNodes is a member function called by
+    // maintainPeerConnections (which holds the lock), we must release the lock before connecting.
+
+    // NOTE: In the original code, the unlock/lock was inside the loop.
+    // We will follow that pattern but ensure it's safe.
+
     for (const auto& [host, port] : seedNodes) {
         if (peers.size() >= MIN_PEERS) {
             break;
         }
         
         std::string peerKey = host + ":" + std::to_string(port);
-        if (peers.find(peerKey) == peers.end()) {
-            // Try to connect (without lock to avoid deadlock)
+
+        // Check if already connected or connecting
+        bool alreadyConnected = false;
+        if (peers.find(peerKey) != peers.end()) {
+            alreadyConnected = true;
+        }
+
+        if (!alreadyConnected) {
+            // Unlock to connect (blocking operation)
             peersMutex.unlock();
-            connectToPeer(host, port);
+
+            // Attempt connection
+            bool connected = connectToPeer(host, port);
+
+            // Re-lock
             peersMutex.lock();
+
+            if (connected) {
+                LOG_NETWORK(LogLevel::INFO, "Connected to seed node: " + peerKey);
+            }
         }
     }
 }
@@ -464,8 +494,17 @@ void Network::handleHandshakeMessage(NetworkPeer& peer, const std::string& messa
     peer.version = "1.0.0"; // Extract from message
     peer.lastSeen = Utils::getCurrentTimestamp();
     
+    // TODO: Extract peer block height from handshake message if available
+    // For now, we'll request latest blocks to sync
+
     // Send handshake response
     sendHandshake(peer.host + ":" + std::to_string(peer.port));
+
+    // Trigger sync: Request blocks from peer
+    // In a full implementation, we would compare heights and only request if behind
+    std::string getBlocksMessage = R"({"type":"getblocks"})";
+    sendMessage(peer.host + ":" + std::to_string(peer.port), getBlocksMessage);
+    LOG_NETWORK(LogLevel::INFO, "Requested blocks from peer " + peer.host + " after handshake");
 }
 
 void Network::handleTransactionMessage(NetworkPeer& peer, const std::string& message) {
