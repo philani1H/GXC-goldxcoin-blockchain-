@@ -6,6 +6,7 @@
 #include <sqlite3.h>
 #include <sstream>
 #include <fstream>
+#include <filesystem>
 
 // Static instance
 std::unique_ptr<Database> Database::instance = nullptr;
@@ -56,20 +57,25 @@ bool Database::open(const std::string& dbPath) {
         // Validate database path based on network mode
         bool isTestnet = Config::isTestnet();
         
+        // Use filesystem to check only filename, not full path
+        // This avoids issues where the directory path contains "testnet" but we're on mainnet
+        std::filesystem::path pathObj(dbPath);
+        std::string filename = pathObj.filename().string();
+
         // CRITICAL: Ensure testnet and mainnet databases are completely separate
         if (isTestnet) {
-            // Testnet mode - database MUST contain "testnet" in path
-            if (dbPath.find("testnet") == std::string::npos) {
-                LOG_DATABASE(LogLevel::ERROR, "TESTNET mode but database path doesn't contain 'testnet': " + dbPath);
+            // Testnet mode - database filename MUST contain "testnet"
+            if (filename.find("testnet") == std::string::npos) {
+                LOG_DATABASE(LogLevel::ERROR, "TESTNET mode but database filename doesn't contain 'testnet': " + dbPath);
                 LOG_DATABASE(LogLevel::ERROR, "REFUSING to open database - risk of mainnet data corruption!");
-                LOG_DATABASE(LogLevel::ERROR, "Database path must contain 'testnet' for testnet mode");
+                LOG_DATABASE(LogLevel::ERROR, "Database filename must contain 'testnet' for testnet mode");
                 return false;
             }
             LOG_DATABASE(LogLevel::INFO, "✓ Testnet database path validated");
         } else {
-            // Mainnet mode - database MUST NOT contain "testnet"
-            if (dbPath.find("testnet") != std::string::npos) {
-                LOG_DATABASE(LogLevel::ERROR, "MAINNET mode but database path contains 'testnet': " + dbPath);
+            // Mainnet mode - database filename MUST NOT contain "testnet"
+            if (filename.find("testnet") != std::string::npos) {
+                LOG_DATABASE(LogLevel::ERROR, "MAINNET mode but database filename contains 'testnet': " + dbPath);
                 LOG_DATABASE(LogLevel::ERROR, "REFUSING to open testnet database in mainnet mode!");
                 LOG_DATABASE(LogLevel::ERROR, "This would corrupt testnet data!");
                 return false;
@@ -113,6 +119,13 @@ bool Database::open(const std::string& dbPath) {
             return false;
         }
         
+        // Verify network mode in database metadata
+        if (!checkDatabaseNetwork(isTestnet)) {
+            LOG_DATABASE(LogLevel::ERROR, "Database network mismatch! Refusing to use this database.");
+            close();
+            return false;
+        }
+
         LOG_DATABASE(LogLevel::INFO, "Database opened successfully");
         return true;
         
@@ -323,6 +336,18 @@ bool Database::createTables() {
             return false;
         }
         
+        // Chain Info table for metadata
+        std::string createChainInfo = R"(
+            CREATE TABLE IF NOT EXISTS chain_info (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        )";
+
+        if (!executeSQL(createChainInfo)) {
+            return false;
+        }
+
         // Create indexes for better performance
         createIndexes();
         
@@ -333,6 +358,57 @@ bool Database::createTables() {
         LOG_DATABASE(LogLevel::ERROR, "Error creating tables: " + std::string(e.what()));
         return false;
     }
+}
+
+bool Database::checkDatabaseNetwork(bool isTestnet) {
+    if (!db) return false;
+
+    std::string expectedMode = isTestnet ? "testnet" : "mainnet";
+    std::string sql = "SELECT value FROM chain_info WHERE key = 'network_mode'";
+
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+
+    if (rc != SQLITE_OK) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare network check statement: " + std::string(sqlite3_errmsg(db)));
+        return false;
+    }
+
+    bool valid = true;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        // Mode exists, verify it
+        std::string storedMode = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        if (storedMode != expectedMode) {
+            LOG_DATABASE(LogLevel::ERROR, "CRITICAL ERROR: Database network mismatch!");
+            LOG_DATABASE(LogLevel::ERROR, "Expected: " + expectedMode + ", Found: " + storedMode);
+            LOG_DATABASE(LogLevel::ERROR, "You are trying to open a " + storedMode + " database in " + expectedMode + " mode.");
+            valid = false;
+        } else {
+            LOG_DATABASE(LogLevel::INFO, "Database network mode verified: " + storedMode);
+        }
+    } else {
+        // Mode doesn't exist (new DB or upgrade), insert it
+        sqlite3_finalize(stmt);
+
+        sql = "INSERT INTO chain_info (key, value) VALUES ('network_mode', ?)";
+        rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, expectedMode.c_str(), -1, SQLITE_STATIC);
+            if (sqlite3_step(stmt) != SQLITE_DONE) {
+                LOG_DATABASE(LogLevel::ERROR, "Failed to save network mode: " + std::string(sqlite3_errmsg(db)));
+                valid = false;
+            } else {
+                LOG_DATABASE(LogLevel::INFO, "Initialized database network mode: " + expectedMode);
+            }
+        } else {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare network save statement: " + std::string(sqlite3_errmsg(db)));
+            valid = false;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    return valid;
 }
 
 bool Database::createIndexes() {
@@ -451,7 +527,7 @@ bool Database::saveBlock(const Block& block) {
         // Save transactions (this also updates UTXO set)
         for (const auto& tx : block.getTransactions()) {
             if (!saveTransaction(tx, block.getHash(), block.getIndex())) {
-                LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction in block");
+                LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction in block: " + tx.getHash());
                 executeSQL("ROLLBACK;");
                 return false;
             }
@@ -496,7 +572,7 @@ bool Database::saveTransaction(const Transaction& tx, const std::string& blockHa
         int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
         
         if (rc != SQLITE_OK) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare transaction insert statement");
+            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare transaction insert statement: " + std::string(sqlite3_errmsg(db)));
             return false;
         }
         
@@ -529,12 +605,18 @@ bool Database::saveTransaction(const Transaction& tx, const std::string& blockHa
         sqlite3_finalize(stmt);
         
         if (rc != SQLITE_DONE) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to insert transaction");
+            LOG_DATABASE(LogLevel::ERROR, "Failed to insert transaction: " + std::string(sqlite3_errmsg(db)));
             return false;
         }
         
         // Save inputs and outputs
-        if (!saveTransactionInputs(tx) || !saveTransactionOutputs(tx)) {
+        if (!saveTransactionInputs(tx)) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction inputs");
+            return false;
+        }
+
+        if (!saveTransactionOutputs(tx)) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction outputs");
             return false;
         }
         
@@ -575,6 +657,7 @@ bool Database::saveTransactionInputs(const Transaction& tx) {
         int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
         
         if (rc != SQLITE_OK) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare input insert: " + std::string(sqlite3_errmsg(db)));
             return false;
         }
         
@@ -589,6 +672,7 @@ bool Database::saveTransactionInputs(const Transaction& tx) {
         sqlite3_finalize(stmt);
         
         if (rc != SQLITE_DONE) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to insert input: " + std::string(sqlite3_errmsg(db)));
             return false;
         }
     }
@@ -611,6 +695,7 @@ bool Database::saveTransactionOutputs(const Transaction& tx) {
         int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
         
         if (rc != SQLITE_OK) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare output insert: " + std::string(sqlite3_errmsg(db)));
             return false;
         }
         
@@ -623,6 +708,7 @@ bool Database::saveTransactionOutputs(const Transaction& tx) {
         sqlite3_finalize(stmt);
         
         if (rc != SQLITE_DONE) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to insert output: " + std::string(sqlite3_errmsg(db)));
             return false;
         }
     }
