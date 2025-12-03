@@ -33,6 +33,11 @@ public:
     static constexpr int RPC_INVALID_REQUEST = -32600;
     static constexpr int RPC_INTERNAL_ERROR = -32603;
     static constexpr int RPC_VERIFY_REJECTED = -25;
+    static constexpr int RPC_MISC_ERROR = -1;
+    static constexpr int RPC_TYPE_ERROR = -3;
+    static constexpr int RPC_INVALID_ADDRESS_OR_KEY = -5;
+    static constexpr int RPC_WALLET_ERROR = -4;
+    static constexpr int RPC_WALLET_INSUFFICIENT_FUNDS = -6;
 };
 
 // RPC method result
