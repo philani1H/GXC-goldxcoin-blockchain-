@@ -231,6 +231,7 @@ bool Database::createTables() {
                 output_index INTEGER NOT NULL,
                 address TEXT NOT NULL,
                 amount REAL NOT NULL,
+                script TEXT,
                 block_height INTEGER NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(tx_hash, output_index)
@@ -1281,10 +1282,10 @@ std::vector<Validator> Database::getActiveValidators() const {
     return validators;
 }
 // UTXO management functions
-bool Database::storeUTXO(const std::string& txHash, uint32_t outputIndex, const TransactionOutput& output) {
+bool Database::storeUTXO(const std::string& txHash, uint32_t outputIndex, const TransactionOutput& output, uint32_t blockHeight) {
     std::string sql = R"(
-        INSERT OR REPLACE INTO utxo (tx_hash, output_index, address, amount, script)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO utxo (tx_hash, output_index, address, amount, script, block_height)
+        VALUES (?, ?, ?, ?, ?, ?)
     )";
     
     sqlite3_stmt* stmt;
@@ -1300,6 +1301,7 @@ bool Database::storeUTXO(const std::string& txHash, uint32_t outputIndex, const 
     sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_double(stmt, 4, output.amount);
     sqlite3_bind_text(stmt, 5, output.script.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 6, blockHeight);
     
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);

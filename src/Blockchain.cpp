@@ -559,7 +559,7 @@ void Blockchain::updateUtxoSet(const Block& block) {
             
             // Persist UTXO to database
             try {
-                Database::getInstance().storeUTXO(tx.getHash(), outputIndex - 1, output);
+                Database::getInstance().storeUTXO(tx.getHash(), outputIndex - 1, output, block.getIndex());
             } catch (const std::exception& e) {
                 LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to persist UTXO to database: " + std::string(e.what()));
             }

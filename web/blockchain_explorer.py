@@ -338,6 +338,7 @@ IS_VERCEL = os.environ.get('VERCEL', '0') == '1' or 'vercel' in os.environ.get('
 EXPLORER_URL = os.environ.get('EXPLORER_URL', 'https://gxc-blockchain.vercel.app' if IS_VERCEL else 'http://localhost:3000')
 MARKET_MAKER_URL = os.environ.get('MARKET_MAKER_URL', 'https://gxc-blockchain-market-maker.vercel.app' if IS_VERCEL else 'http://localhost:4000')
 FORUM_URL = os.environ.get('FORUM_URL', 'https://gxc-blockchain-forum.vercel.app' if IS_VERCEL else 'http://localhost:3001')
+REALTIME_MODE = os.environ.get('REALTIME_MODE', '1') == '1'
 
 class BlockchainExplorer:
     def __init__(self):
@@ -1342,11 +1343,11 @@ class BlockchainExplorer:
             # Update address balances and activity (handle coinbase transactions)
             from_addr_for_update = tx_data.get('from') or tx_data.get('from_address') or from_addr
             to_addr_for_update = tx_data.get('to') or tx_data.get('to_address') or to_addr
-            if from_addr_for_update or to_addr_for_update:
+            if (from_addr_for_update or to_addr_for_update) and not REALTIME_MODE:
                 self.update_address_activity(from_addr_for_update, to_addr_for_update)
             
             # Update address relationships for graph (skip for coinbase)
-            if to_addr_for_update and not is_coinbase:
+            if to_addr_for_update and not is_coinbase and not REALTIME_MODE:
                 self.update_address_relationships(from_addr_for_update, to_addr_for_update, float(value))
             
             # Track gold token transfers
@@ -1383,6 +1384,8 @@ class BlockchainExplorer:
     
     def update_address_activity(self, from_addr, to_addr):
         """Update address activity records"""
+        if REALTIME_MODE:
+            return
         # Add timeout to prevent database locking issues
         conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
         cursor = conn.cursor()
@@ -3248,66 +3251,52 @@ connection_test_thread.start()
 @app.route('/')
 def index():
     """Main explorer page"""
-    # Try to sync latest block and transactions first
-    try:
-        latest_block = explorer.get_latest_block()
-        if latest_block:
-            # Store block (which will also store transactions if included)
-            explorer.store_block(latest_block)
-            print(f"[EXPLORER] Synced latest block #{latest_block.get('number') or latest_block.get('height') or 0}")
-    except Exception as e:
-        print(f"Error syncing latest block: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    # Get data from database
-    recent_blocks = explorer.get_recent_blocks(10) or []
-    recent_transactions = explorer.get_recent_transactions(15) or []
-    
-    # If no transactions but we have blocks, try to fetch transactions from recent blocks
-    if not recent_transactions and recent_blocks:
-        print("[EXPLORER] No transactions in database, trying to fetch from recent blocks...")
-        for block in recent_blocks[:5]:  # Check last 5 blocks
-            block_num = block.get('number', 0)
-            if block_num > 0:
-                try:
-                    block_data = explorer.get_block_by_number(block_num)
-                    if block_data and block_data.get('transactions'):
-                        explorer.store_block(block_data)
-                except Exception as e:
-                    print(f"Error fetching transactions for block {block_num}: {e}")
-        # Refresh transactions
-        recent_transactions = explorer.get_recent_transactions(15) or []
-    network_stats = explorer.get_network_stats() or {}
-    
-    # Ensure stats has all required keys with defaults
-    if not network_stats or not isinstance(network_stats, dict):
+    if REALTIME_MODE:
+        recent_blocks = []
+        recent_transactions = []
         network_stats = {}
-    network_stats.setdefault('total_blocks', 0)
-    network_stats.setdefault('total_transactions', 0)
-    network_stats.setdefault('total_addresses', 0)
-    network_stats.setdefault('total_supply', 31000000)
-    network_stats.setdefault('hash_rate', 0.0)
-    network_stats.setdefault('difficulty', 0.0)
-    network_stats.setdefault('avg_block_time', 0.0)
-    
-    # If no blocks, try to get blockchain info and show connection status
-    if not recent_blocks:
-        info = rpc_call('getblockchaininfo', timeout=5, show_errors=False)
-        if info:
-            height = info.get('blocks') or info.get('height') or 0
-            if height > 0:
-                print(f"[EXPLORER] No blocks in database, syncing from height {height}...")
-                # Try to fetch and store recent blocks (last 20)
-                synced_count = 0
-                for h in range(max(0, height - 19), height + 1):
-                    block = explorer.get_block_by_number(h)
-                    if block:
-                        explorer.store_block(block)
-                        synced_count += 1
-                print(f"[EXPLORER] Synced {synced_count} blocks from testnet node")
-                # Refresh data
-                recent_blocks = explorer.get_recent_blocks(10)
+        info = rpc_call('getblockchaininfo', timeout=10, show_errors=False)
+        height = (info.get('blocks') or info.get('height') or 0) if info else 0
+        if height > 0:
+            start = max(0, height - 9)
+            for h in range(start, height + 1):
+                b = explorer.get_block_by_number(h)
+                if b:
+                    recent_blocks.append(b)
+                    txs = b.get('transactions') or []
+                    for tx in txs:
+                        txd = tx if isinstance(tx, dict) else explorer._get_full_transaction_data(tx) or {'hash': tx}
+                        txd['block_number'] = b.get('number') or b.get('block_number') or 0
+                        txd['confirmations'] = max(0, height - (txd.get('block_number') or 0) + 1) if (txd.get('block_number') or 0) > 0 else 0
+                        recent_transactions.append(txd)
+        network_stats = {
+            'total_blocks': height or 0,
+            'total_transactions': len(recent_transactions),
+            'total_addresses': 0,
+            'total_supply': 31000000,
+            'hash_rate': 0.0,
+            'difficulty': (recent_blocks[-1].get('difficulty') if recent_blocks else 0.0) or 0.0,
+            'avg_block_time': 0.0
+        }
+    else:
+        try:
+            latest_block = explorer.get_latest_block()
+            if latest_block:
+                explorer.store_block(latest_block)
+        except Exception:
+            pass
+        recent_blocks = explorer.get_recent_blocks(10) or []
+        recent_transactions = explorer.get_recent_transactions(15) or []
+        network_stats = explorer.get_network_stats() or {}
+        if not network_stats or not isinstance(network_stats, dict):
+            network_stats = {}
+        network_stats.setdefault('total_blocks', 0)
+        network_stats.setdefault('total_transactions', 0)
+        network_stats.setdefault('total_addresses', 0)
+        network_stats.setdefault('total_supply', 31000000)
+        network_stats.setdefault('hash_rate', 0.0)
+        network_stats.setdefault('difficulty', 0.0)
+        network_stats.setdefault('avg_block_time', 0.0)
     
     # Get connection status for display
     connection_info = {
@@ -3754,7 +3743,7 @@ def address_detail(address):
             
             # Create address entry
             cursor.execute('''
-                INSERT OR IGNORE INTO addresses (address, balance, first_seen, last_seen, transaction_count)
+                INSERT OR IGNORE INTO addresses (address, balance, first_seen, last_activity, transaction_count)
                 VALUES (?, ?, datetime('now'), datetime('now'), ?)
             ''', (address, balance, tx_count))
             conn.commit()
@@ -4288,7 +4277,6 @@ def charts_page():
 
 @app.route('/wallet')
 def wallet_page():
-    """Wallet page with wallet service information"""
     network_info = {
         'network': NETWORK.upper(),
         'address_prefix': CURRENT_NETWORK['address_prefix'],
@@ -4297,7 +4285,48 @@ def wallet_page():
         'is_testnet': NETWORK == 'testnet',
         'is_mainnet': NETWORK == 'mainnet'
     }
-    return render_template('wallet.html', network_info=network_info)
+    address = request.args.get('address')
+    wallets = rpc_call('listwallets', timeout=8, show_errors=False) or []
+    if not wallets:
+        wallets = rpc_call('gxc_listWallets', timeout=8, show_errors=False) or []
+    info = rpc_call('getwalletinfo', timeout=8, show_errors=False) or {}
+    if not info or not isinstance(info, dict):
+        info = rpc_call('gxc_getWalletInfo', timeout=8, show_errors=False) or {}
+    addr_balance = None
+    addr_details = {}
+    if address:
+        for method in ['getaddressbalance','getbalance','gxc_getAddressBalance','gxc_getBalance','getbalanceof','getaddrbalance']:
+            res = rpc_call(method, params=[address], timeout=8, show_errors=False)
+            if res is not None:
+                if isinstance(res, dict) and 'balance' in res:
+                    addr_balance = res.get('balance')
+                    addr_details = res
+                elif isinstance(res, (int,float)):
+                    addr_balance = res
+                elif isinstance(res, dict):
+                    addr_details = res
+                break
+        if addr_balance is None and REALTIME_MODE:
+            info_rt = explorer.get_latest_block() or {}
+            txs = info_rt.get('transactions') or []
+            seen = [tx for tx in txs if (tx.get('to') == address or tx.get('to_address') == address or tx.get('from') == address or tx.get('from_address') == address)]
+            if seen:
+                addr_balance = 0.0
+    wallet = {
+        'exists': bool(wallets) or bool(info) or bool(addr_balance) or bool(address and addr_details),
+        'names': wallets if isinstance(wallets, list) else [],
+        'walletname': info.get('walletname') or info.get('name') or (wallets[0] if isinstance(wallets, list) and wallets else None),
+        'balance': info.get('balance') or info.get('confirmed_balance') or 0.0,
+        'unconfirmed_balance': info.get('unconfirmed_balance') or info.get('unconfirmedBalance') or 0.0,
+        'txcount': info.get('txcount') or info.get('transactions') or 0,
+        'keypool': info.get('keypoolsize') or info.get('keypool') or 0,
+        'hdseed_id': info.get('hdseedid') or info.get('hdseed_id'),
+        'descriptors': info.get('descriptors'),
+        'address': address,
+        'address_balance': addr_balance,
+        'address_details': addr_details
+    }
+    return render_template('wallet.html', network_info=network_info, wallet=wallet)
 
 @app.route('/api')
 def api_docs():
@@ -4318,6 +4347,27 @@ def api_transactions():
     limit = safe_int(request.args.get('limit', 20), default=20, min_val=1, max_val=100)
     transactions = explorer.get_recent_transactions(limit)
     return jsonify(transactions)
+
+@app.route('/api/wallet')
+def api_wallet():
+    wallets = rpc_call('listwallets', timeout=8, show_errors=False) or []
+    if not wallets:
+        wallets = rpc_call('gxc_listWallets', timeout=8, show_errors=False) or []
+    info = rpc_call('getwalletinfo', timeout=8, show_errors=False) or {}
+    if not info or not isinstance(info, dict):
+        info = rpc_call('gxc_getWalletInfo', timeout=8, show_errors=False) or {}
+    wallet = {
+        'exists': bool(wallets) or bool(info),
+        'names': wallets if isinstance(wallets, list) else [],
+        'walletname': info.get('walletname') or info.get('name') or (wallets[0] if isinstance(wallets, list) and wallets else None),
+        'balance': info.get('balance') or info.get('confirmed_balance') or 0.0,
+        'unconfirmed_balance': info.get('unconfirmed_balance') or info.get('unconfirmedBalance') or 0.0,
+        'txcount': info.get('txcount') or info.get('transactions') or 0,
+        'keypool': info.get('keypoolsize') or info.get('keypool') or 0,
+        'hdseed_id': info.get('hdseedid') or info.get('hdseed_id'),
+        'descriptors': info.get('descriptors'),
+    }
+    return jsonify(wallet)
 
 @app.route('/api/v1/stats')
 @app.route('/api/stats')
@@ -5508,4 +5558,4 @@ if __name__ == '__main__':
     explorer.init_database()
     
     # Run the application
-    socketio.run(app, host='0.0.0.0', port=3000, debug=False)
+    socketio.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', 3000)), debug=False)

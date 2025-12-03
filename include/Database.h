@@ -51,19 +51,6 @@ public:
     
     // Transaction storage
     bool storeTransaction(const Transaction& tx);
-    bool getTransaction(const std::string& hash, Transaction& tx) const;
-    bool deleteTransaction(const std::string& hash);
-    std::vector<Transaction> getTransactionsByAddress(const std::string& address) const;
-    std::vector<Transaction> getPendingTransactions() const;
-    
-    // UTXO management
-    bool storeUTXO(const std::string& txHash, uint32_t outputIndex, const TransactionOutput& output);
-    bool getUTXO(const std::string& txHash, uint32_t outputIndex, TransactionOutput& output) const;
-    bool deleteUTXO(const std::string& txHash, uint32_t outputIndex);
-    std::vector<TransactionOutput> getUTXOsByAddress(const std::string& address) const;
-    double getBalance(const std::string& address) const;
-    
-    // Wallet operations
     bool storeWallet(const std::string& address, const std::string& publicKey, const std::string& encryptedPrivateKey);
     bool getWallet(const std::string& address, std::string& publicKey, std::string& encryptedPrivateKey) const;
     bool deleteWallet(const std::string& address);
