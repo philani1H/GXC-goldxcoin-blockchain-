@@ -67,6 +67,10 @@ public:
     std::string serialize() const;
     bool deserialize(const std::string& data);
     
+    // Persistence
+    bool loadFromDatabase();
+    bool saveToDatabase();
+    
     // Clear all validators (for testing)
     void clear();
 };

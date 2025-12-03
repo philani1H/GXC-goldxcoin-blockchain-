@@ -296,6 +296,31 @@ bool Database::createTables() {
             return false;
         }
         
+        // Validators table for staking
+        std::string createValidators = R"(
+            CREATE TABLE IF NOT EXISTS validators (
+                address TEXT PRIMARY KEY,
+                stake_amount REAL NOT NULL,
+                staking_days INTEGER NOT NULL,
+                stake_start_time INTEGER NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                public_key TEXT NOT NULL,
+                blocks_produced INTEGER NOT NULL DEFAULT 0,
+                missed_blocks INTEGER NOT NULL DEFAULT 0,
+                uptime REAL NOT NULL DEFAULT 1.0,
+                total_rewards REAL NOT NULL DEFAULT 0.0,
+                pending_rewards REAL NOT NULL DEFAULT 0.0,
+                is_slashed BOOLEAN NOT NULL DEFAULT 0,
+                slashed_amount REAL NOT NULL DEFAULT 0.0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        )";
+        
+        if (!executeSQL(createValidators)) {
+            return false;
+        }
+        
         // Create indexes for better performance
         createIndexes();
         
@@ -318,6 +343,9 @@ bool Database::createIndexes() {
         "CREATE INDEX IF NOT EXISTS idx_transactions_block_hash ON transactions(block_hash)",
         "CREATE INDEX IF NOT EXISTS idx_transactions_sender ON transactions(sender_address)",
         "CREATE INDEX IF NOT EXISTS idx_transactions_recipient ON transactions(recipient_address)",
+        
+        "CREATE INDEX IF NOT EXISTS idx_validators_active ON validators(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_validators_stake ON validators(stake_amount)",
         "CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions(timestamp)",
         
         "CREATE INDEX IF NOT EXISTS idx_inputs_tx_hash ON transaction_inputs(transaction_hash)",
@@ -1009,4 +1037,245 @@ std::vector<Block> Database::getBlocksByRange(uint32_t startHeight, uint32_t end
 
 bool Database::isConnected() const {
     return db != nullptr;
+}
+
+// Validator persistence methods
+bool Database::storeValidator(const Validator& validator) {
+    std::string sql = R"(
+        INSERT OR REPLACE INTO validators (
+            address, stake_amount, staking_days, stake_start_time, is_active,
+            public_key, blocks_produced, missed_blocks, uptime,
+            total_rewards, pending_rewards, is_slashed, slashed_amount, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare validator insert: " + std::string(sqlite3_errmsg(db)));
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, validator.getAddress().c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(stmt, 2, validator.getStakeAmount());
+    sqlite3_bind_int(stmt, 3, validator.getStakingDays());
+    sqlite3_bind_int64(stmt, 4, validator.getStakeStartTime());
+    sqlite3_bind_int(stmt, 5, validator.getIsActive() ? 1 : 0);
+    sqlite3_bind_text(stmt, 6, validator.getPublicKey().c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 7, validator.getBlocksProduced());
+    sqlite3_bind_int(stmt, 8, validator.getMissedBlocks());
+    sqlite3_bind_double(stmt, 9, validator.getUptime());
+    sqlite3_bind_double(stmt, 10, validator.getTotalRewards());
+    sqlite3_bind_double(stmt, 11, validator.getPendingRewards());
+    sqlite3_bind_int(stmt, 12, validator.getIsSlashed() ? 1 : 0);
+    sqlite3_bind_double(stmt, 13, validator.getSlashedAmount());
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to store validator: " + std::string(sqlite3_errmsg(db)));
+        return false;
+    }
+    
+    LOG_DATABASE(LogLevel::INFO, "Stored validator: " + validator.getAddress());
+    return true;
+}
+
+bool Database::getValidator(const std::string& address, Validator& validator) const {
+    std::string sql = R"(
+        SELECT address, stake_amount, staking_days, stake_start_time, is_active,
+               public_key, blocks_produced, missed_blocks, uptime,
+               total_rewards, pending_rewards, is_slashed, slashed_amount
+        FROM validators
+        WHERE address = ?
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, address.c_str(), -1, SQLITE_TRANSIENT);
+    
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        std::string addr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        double stakeAmount = sqlite3_column_double(stmt, 1);
+        uint32_t stakingDays = sqlite3_column_int(stmt, 2);
+        
+        validator = Validator(addr, stakeAmount, stakingDays);
+        validator.setPublicKey(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
+        validator.setIsActive(sqlite3_column_int(stmt, 4) == 1);
+        
+        // Restore performance metrics
+        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 6); i++) {
+            validator.recordBlockProduced();
+        }
+        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 7); i++) {
+            validator.recordMissedBlock();
+        }
+        validator.updateUptime(sqlite3_column_double(stmt, 8));
+        
+        // Restore rewards
+        double totalRewards = sqlite3_column_double(stmt, 9);
+        double pendingRewards = sqlite3_column_double(stmt, 10);
+        validator.addReward(pendingRewards);
+        // Set total rewards by distributing and adding back
+        if (totalRewards > 0) {
+            validator.distributePendingRewards();
+            validator.addReward(totalRewards);
+            validator.distributePendingRewards();
+            validator.addReward(pendingRewards);
+        }
+        
+        // Restore slashing status
+        if (sqlite3_column_int(stmt, 11) == 1) {
+            validator.slash(sqlite3_column_double(stmt, 12), "Restored from database");
+        }
+        
+        found = true;
+    }
+    
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+bool Database::updateValidator(const Validator& validator) {
+    return storeValidator(validator);
+}
+
+bool Database::deleteValidator(const std::string& address) {
+    std::string sql = "DELETE FROM validators WHERE address = ?";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, address.c_str(), -1, SQLITE_TRANSIENT);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    return rc == SQLITE_DONE;
+}
+
+std::vector<Validator> Database::getAllValidators() const {
+    std::vector<Validator> validators;
+    
+    std::string sql = R"(
+        SELECT address, stake_amount, staking_days, stake_start_time, is_active,
+               public_key, blocks_produced, missed_blocks, uptime,
+               total_rewards, pending_rewards, is_slashed, slashed_amount
+        FROM validators
+        ORDER BY stake_amount DESC
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        return validators;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        std::string addr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        double stakeAmount = sqlite3_column_double(stmt, 1);
+        uint32_t stakingDays = sqlite3_column_int(stmt, 2);
+        
+        Validator validator(addr, stakeAmount, stakingDays);
+        validator.setPublicKey(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
+        validator.setIsActive(sqlite3_column_int(stmt, 4) == 1);
+        
+        // Restore performance metrics
+        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 6); i++) {
+            validator.recordBlockProduced();
+        }
+        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 7); i++) {
+            validator.recordMissedBlock();
+        }
+        validator.updateUptime(sqlite3_column_double(stmt, 8));
+        
+        // Restore rewards
+        double totalRewards = sqlite3_column_double(stmt, 9);
+        double pendingRewards = sqlite3_column_double(stmt, 10);
+        validator.addReward(pendingRewards);
+        if (totalRewards > 0) {
+            validator.distributePendingRewards();
+            validator.addReward(totalRewards);
+            validator.distributePendingRewards();
+            validator.addReward(pendingRewards);
+        }
+        
+        // Restore slashing status
+        if (sqlite3_column_int(stmt, 11) == 1) {
+            validator.slash(sqlite3_column_double(stmt, 12), "Restored from database");
+        }
+        
+        validators.push_back(validator);
+    }
+    
+    sqlite3_finalize(stmt);
+    return validators;
+}
+
+std::vector<Validator> Database::getActiveValidators() const {
+    std::vector<Validator> validators;
+    
+    std::string sql = R"(
+        SELECT address, stake_amount, staking_days, stake_start_time, is_active,
+               public_key, blocks_produced, missed_blocks, uptime,
+               total_rewards, pending_rewards, is_slashed, slashed_amount
+        FROM validators
+        WHERE is_active = 1 AND is_slashed = 0
+        ORDER BY stake_amount DESC
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        return validators;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        std::string addr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        double stakeAmount = sqlite3_column_double(stmt, 1);
+        uint32_t stakingDays = sqlite3_column_int(stmt, 2);
+        
+        Validator validator(addr, stakeAmount, stakingDays);
+        validator.setPublicKey(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
+        validator.setIsActive(sqlite3_column_int(stmt, 4) == 1);
+        
+        // Restore performance metrics
+        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 6); i++) {
+            validator.recordBlockProduced();
+        }
+        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 7); i++) {
+            validator.recordMissedBlock();
+        }
+        validator.updateUptime(sqlite3_column_double(stmt, 8));
+        
+        // Restore rewards
+        double totalRewards = sqlite3_column_double(stmt, 9);
+        double pendingRewards = sqlite3_column_double(stmt, 10);
+        validator.addReward(pendingRewards);
+        if (totalRewards > 0) {
+            validator.distributePendingRewards();
+            validator.addReward(totalRewards);
+            validator.distributePendingRewards();
+            validator.addReward(pendingRewards);
+        }
+        
+        validators.push_back(validator);
+    }
+    
+    sqlite3_finalize(stmt);
+    return validators;
 }

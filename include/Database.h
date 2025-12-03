@@ -7,6 +7,7 @@
 #include <sqlite3.h>
 #include "transaction.h"
 #include "Block.h"
+#include "Validator.h"
 
 class Database {
 private:
@@ -69,11 +70,12 @@ public:
     std::vector<std::string> getAllWalletAddresses() const;
     
     // Validator storage
-    bool storeValidator(const std::string& address, double stake, bool isActive);
-    bool getValidator(const std::string& address, double& stake, bool& isActive) const;
-    bool updateValidatorStake(const std::string& address, double newStake);
-    bool setValidatorActive(const std::string& address, bool isActive);
-    std::vector<std::string> getActiveValidators() const;
+    bool storeValidator(const Validator& validator);
+    bool getValidator(const std::string& address, Validator& validator) const;
+    bool updateValidator(const Validator& validator);
+    bool deleteValidator(const std::string& address);
+    std::vector<Validator> getAllValidators() const;
+    std::vector<Validator> getActiveValidators() const;
     
     // Governance storage
     bool storeProposal(const std::string& proposalId, const std::string& title, const std::string& description,

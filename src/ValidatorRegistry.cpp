@@ -1,5 +1,6 @@
 #include "../include/ValidatorRegistry.h"
 #include "../include/HashUtils.h"
+#include "../include/Database.h"
 #include <sstream>
 #include <iomanip>
 
@@ -41,6 +42,13 @@ bool ValidatorRegistry::registerValidator(const std::string& address, double sta
     totalStaked += static_cast<uint64_t>(stakeAmount);
     activeValidatorCount++;
     
+    // Persist to database
+    try {
+        Database::getInstance().storeValidator(*validator);
+    } catch (const std::exception& e) {
+        // Log error but don't fail registration
+    }
+    
     return true;
 }
 
@@ -59,6 +67,14 @@ bool ValidatorRegistry::unregisterValidator(const std::string& address) {
     }
     
     validators.erase(it);
+    
+    // Remove from database
+    try {
+        Database::getInstance().deleteValidator(address);
+    } catch (const std::exception& e) {
+        // Log error but don't fail unregistration
+    }
+    
     return true;
 }
 
@@ -75,6 +91,13 @@ bool ValidatorRegistry::updateValidatorStake(const std::string& address, double 
     
     if (validator->getIsActive()) {
         totalStaked += static_cast<uint64_t>(additionalStake);
+    }
+    
+    // Persist to database
+    try {
+        Database::getInstance().updateValidator(*validator);
+    } catch (const std::exception& e) {
+        // Log error but don't fail update
     }
     
     return true;
@@ -260,6 +283,13 @@ void ValidatorRegistry::distributeBlockReward(const std::string& validatorAddres
     if (it != validators.end()) {
         it->second->addReward(reward);
         it->second->recordBlockProduced();
+        
+        // Persist to database
+        try {
+            Database::getInstance().updateValidator(*it->second);
+        } catch (const std::exception& e) {
+            // Log error but don't fail reward distribution
+        }
     }
 }
 
@@ -335,4 +365,43 @@ void ValidatorRegistry::clear() {
     validators.clear();
     totalStaked = 0;
     activeValidatorCount = 0;
+}
+
+bool ValidatorRegistry::loadFromDatabase() {
+    std::lock_guard<std::mutex> lock(registryMutex);
+    
+    try {
+        auto dbValidators = Database::getInstance().getAllValidators();
+        
+        validators.clear();
+        totalStaked = 0;
+        activeValidatorCount = 0;
+        
+        for (const auto& v : dbValidators) {
+            auto validator = std::make_shared<Validator>(v);
+            validators[v.getAddress()] = validator;
+            
+            if (v.getIsActive()) {
+                totalStaked += static_cast<uint64_t>(v.getStakeAmount());
+                activeValidatorCount++;
+            }
+        }
+        
+        return true;
+    } catch (const std::exception& e) {
+        return false;
+    }
+}
+
+bool ValidatorRegistry::saveToDatabase() {
+    std::lock_guard<std::mutex> lock(registryMutex);
+    
+    try {
+        for (const auto& pair : validators) {
+            Database::getInstance().storeValidator(*pair.second);
+        }
+        return true;
+    } catch (const std::exception& e) {
+        return false;
+    }
 }
