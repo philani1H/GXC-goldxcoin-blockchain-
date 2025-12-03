@@ -524,9 +524,16 @@ void RPCAPI::serverLoop() {
             }
             
             // Handle client in a separate thread
-            std::thread([this, clientSocket]() {
-                handleClient(clientSocket);
-            }).detach();
+            try {
+                std::thread([this, clientSocket]() {
+                    handleClient(clientSocket);
+                }).detach();
+            } catch (const std::system_error& e) {
+                LOG_API(LogLevel::ERROR, "Failed to create thread for client: " + std::string(e.what()));
+                close(clientSocket);
+                // Sleep longer if we are out of resources
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
             
         } catch (const std::exception& e) {
             LOG_API(LogLevel::ERROR, "Error in RPC server loop: " + std::string(e.what()));
@@ -866,10 +873,39 @@ JsonValue RPCAPI::transactionToJson(const Transaction& tx, uint32_t blockHeight,
     for (const auto& output : tx.getOutputs()) {
         totalOutput += output.amount;
     }
-    txJson["value"] = totalOutput;
-    txJson["amount"] = totalOutput;
     
-    txJson["fee"] = tx.getFee();
+    double fee = tx.getFee();
+    txJson["fee"] = fee;
+
+    // Calculate value based on transaction type
+    if (tx.getType() == TransactionType::STAKE) {
+        // For stake, the value is implicit (Input - Output - Fee)
+        // We need to calculate input total to verify
+        // But we might not have inputs readily available if they are pruned/UTXO set
+        // However, Transaction object has inputs.
+        double totalInput = 0.0;
+        for(const auto& input : tx.getInputs()) totalInput += input.amount;
+
+        double stakedAmount = totalInput - totalOutput - fee;
+
+        // Show as negative amount for sender (deduction)
+        txJson["amount"] = -stakedAmount;
+        txJson["value"] = stakedAmount; // True value of the stake
+        txJson["staked_amount"] = stakedAmount;
+        txJson["category"] = "stake";
+    } else if (tx.getType() == TransactionType::UNSTAKE) {
+        txJson["value"] = totalOutput;
+        txJson["amount"] = totalOutput; // Positive amount (credit)
+        txJson["category"] = "unstake";
+    } else if (tx.isCoinbaseTransaction()) {
+        txJson["value"] = totalOutput;
+        txJson["amount"] = totalOutput;
+        txJson["category"] = "generate"; // Standard for mining rewards
+    } else {
+        txJson["value"] = totalOutput;
+        txJson["amount"] = totalOutput;
+        // Default categories handled in listTransactions, but can be hinted here
+    }
     txJson["gas_price"] = 0.0;
     txJson["gasPrice"] = 0.0;
     txJson["gas_used"] = 0;
@@ -1204,6 +1240,8 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
              std::string amountStr = params[1].dump();
              amount = std::stod(amountStr);
         }
+    } catch (const std::exception& e) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount type or format: " + std::string(e.what()));
     } catch (...) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount type or format");
     }
