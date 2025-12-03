@@ -1,6 +1,7 @@
 #include "../../include/mining/EthashMiner.h"
 #include "../../include/Logger.h"
 #include "../../include/Utils.h"
+#include "../../include/HashUtils.h"
 #include <thread>
 #include <random>
 #include <chrono>
@@ -189,24 +190,16 @@ bool EthashMiner::mineEthashBlock(const MiningJob& job, uint64_t nonce) {
 EthashResult EthashMiner::computeEthash(const std::string& blockHeader, uint64_t nonce) {
     EthashResult result;
     
-    // Simplified Ethash implementation
-    // Real Ethash involves:
-    // 1. Creating seed from epoch
-    // 2. Computing cache from seed
-    // 3. Computing DAG from cache
-    // 4. Using DAG for final hash computation
+    // Use real Ethash implementation from HashUtils
+    // This includes:
+    // 1. Cache generation from seed
+    // 2. Dataset item calculation
+    // 3. Mix process with 64 accesses
+    // 4. Final Keccak-256 hash
+    result.hash = ethash(blockHeader, nonce);
     
-    // For now, use a simplified version
-    std::string input = blockHeader + std::to_string(nonce);
-    
-    // Simulate DAG lookups with multiple hash operations
-    std::string hash = input;
-    for (int i = 0; i < 64; i++) { // Simulate complexity
-        hash = sha256(hash + std::to_string(i));
-    }
-    
-    result.hash = hash;
-    result.mixHash = sha256(hash + "mix");
+    // Mix hash is part of Ethash output (simplified here)
+    result.mixHash = keccak256(result.hash + "mix");
     
     return result;
 }
@@ -276,22 +269,8 @@ std::string EthashMiner::constructEthashHeader(const MiningJob& job, uint64_t no
 }
 
 bool EthashMiner::checkDifficultyTarget(const std::string& hash, double difficulty) {
-    // Ethash difficulty check
-    // Convert hash to big integer and compare with target
-    
-    // Simplified implementation: count leading zeros
-    int leadingZeros = 0;
-    for (char c : hash) {
-        if (c == '0') {
-            leadingZeros++;
-        } else {
-            break;
-        }
-    }
-    
-    // Ethash typically requires fewer leading zeros than Bitcoin
-    int requiredZeros = static_cast<int>(difficulty / 2000.0) + 3;
-    return leadingZeros >= requiredZeros;
+    // Use the same difficulty check as HashUtils for consistency
+    return meetsTarget(hash, difficulty);
 }
 
 void EthashMiner::submitSolution(const MiningJob& job, uint64_t nonce) {
