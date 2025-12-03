@@ -204,38 +204,63 @@ bool Blockchain::addBlock(const Block& block) {
         }
         
         // If no coinbase and we have miner address, create one
+        // WARNING: Modifying the block content (adding coinbase) invalidates the miner's hash
+        // unless the miner pre-calculated the hash including this exact coinbase.
+        // In strict mode, we should REJECT blocks that don't have a coinbase, but for compatibility
+        // with existing miners that might rely on the node to add it (and re-mine?), we handle this carefully.
+        //
+        // However, restoring the original hash `blockToAdd.setHash(originalHash)` after changing content
+        // is invalid because `calculateHash()` will no longer match `originalHash`.
+        // This fails the strict validation we just added.
+        //
+        // STRICT MODE FIX:
+        // 1. If we add a coinbase, the block hash changes.
+        // 2. If the block hash changes, the PoW done by the miner on `originalHash` is NOT valid for the new hash.
+        // 3. Therefore, we cannot just add a coinbase and keep the old hash.
+        //
+        // If we are here, it means the miner submitted a block WITHOUT coinbase.
+        // The only way this is valid is if the PoW was done on the block WITHOUT coinbase.
+        // But a block without coinbase is invalid for the chain (no reward, no money supply increase).
+        //
+        // Conclusion: Miners MUST submit blocks WITH coinbase transactions included.
+        //
+        // To support legacy/broken miners during transition, we might try to be lenient, BUT the user requested STRICT validation.
+        // So we will NOT fake the hash. We will add the coinbase, recalculate the hash, and check if THAT new hash meets the target.
+        // (Spoiler: It won't, unless the miner got incredibly lucky or the difficulty is zero).
+        //
+        // However, looking at the previous logic: `blockToAdd.setHash(originalHash);` implies the code was willfully ignoring the mismatch.
+        // Since we enabled strict checks in `validateBlockInternal`, this `addBlock` call will FAIL later when `validateBlockInternal` is called.
+        //
+        // To avoid confusion, we should log a severe error here if we have to add a coinbase, because it implies the block will likely be rejected.
+
         if (!hasCoinbase && !minerAddress.empty()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "addBlock: Block missing coinbase transaction! "
+                "In strict mode, blocks must be submitted with coinbase included. "
+                "Adding one now will invalidate the Proof of Work hash.");
+
+            // We still add it to try, but we do NOT restore the fake hash.
+            // We let validBlockInternal fail naturally if the new hash doesn't meet difficulty (which it won't).
+            // OR, if the difficulty is trivial (testnet), maybe it passes?
+
             // Calculate block reward with halving
             double blockReward = calculateBlockReward(block.getIndex());
             
-            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Creating coinbase transaction for miner: " + minerAddress.substr(0, 20) + 
-                          "..., Reward: " + std::to_string(blockReward) + " GXC");
-            
             Transaction coinbase(minerAddress, blockReward);
-            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Coinbase TX hash: " + coinbase.getHash().substr(0, 16) + 
-                          "..., Outputs: " + std::to_string(coinbase.getOutputs().size()));
-            
-            // Add coinbase transaction to the block
             blockToAdd.addTransaction(coinbase);
             
-            // If this is a PoS block, the reward goes to the validator's spendable balance.
-            // Our logic automatically handles this because the coinbase transaction creates a UTXO
-            // for the minerAddress (which is the validator's address).
-            // So, rewards are NOT locked in the stake, they are liquid.
-            // This behavior is correct per requirements.
-
-            // Recalculate merkle root
+            // Recalculate merkle root and hash to ensure internal consistency
             blockToAdd.calculateMerkleRoot();
+            blockToAdd.calculateHash(); // Updates the hash in the object to match content
             
-            // CRITICAL: Restore the original hash (miner's proof of work)
-            // The hash must not change when we add the coinbase
-            blockToAdd.setHash(originalHash);
+            // We do NOT call setHash(originalHash). We respect the new content.
+            // If the miner didn't hash this content, the block is invalid.
             
-            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Coinbase added, hash restored: " + blockToAdd.getHash().substr(0, 16) + "...");
+            LOG_BLOCKCHAIN(LogLevel::WARNING, "addBlock: Coinbase added. New Hash: " + blockToAdd.getHash().substr(0, 16) + "...");
         } else if (hasCoinbase) {
             LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Using existing coinbase transaction");
         } else {
-            LOG_BLOCKCHAIN(LogLevel::WARNING, "addBlock: No coinbase and no miner address!");
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "addBlock: No coinbase and no miner address! Block is invalid.");
+            return false;
         }
         
         // Validate block
@@ -806,15 +831,48 @@ bool Blockchain::validateBlockInternal(const Block& block, uint32_t expectedInde
     LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: All transactions valid");
 
     
-    // Validate merkle root - Note: For blocks submitted by miners, the merkle root might differ
-    // if we added a coinbase transaction, but we still accept the miner's hash as proof of work
+    // Validate merkle root - STRICT CHECK
     std::string calculatedMerkle = block.calculateMerkleRoot();
     std::string blockMerkle = block.getMerkleRoot();
-    if (blockMerkle != calculatedMerkle && !blockMerkle.empty()) {
-        LOG_BLOCKCHAIN(LogLevel::WARNING, "Merkle root mismatch (may be due to coinbase addition): block has " + 
-                      blockMerkle.substr(0, 16) + "..., calculated " + calculatedMerkle.substr(0, 16) + "...");
-        // Don't fail validation for merkle root mismatch if hash is valid (miner's hash proves work)
-        // The merkle root will be recalculated when coinbase is added
+
+    if (blockMerkle != calculatedMerkle) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Merkle root mismatch! Block header: " +
+                      blockMerkle.substr(0, 16) + "..., Calculated: " + calculatedMerkle.substr(0, 16) + "...");
+        return false;
+    }
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Merkle root OK");
+
+    // Validate Block Hash Integrity - STRICT CHECK
+    // Ensure the block hash matches the content of the block header
+    std::string calculatedHash = block.calculateHash();
+    if (block.getHash() != calculatedHash) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Block hash mismatch! Header Hash: " +
+                      block.getHash().substr(0, 16) + "..., Calculated from content: " + calculatedHash.substr(0, 16) + "...");
+        return false;
+    }
+    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Block hash integrity OK");
+
+    // Validate Timestamp - STRICT CHECK
+    // 1. Block time must be greater than median time of past 11 blocks (to prevent mining in the past)
+    // 2. Block time must be less than network adjusted time + 2 hours (to prevent mining in the future)
+    uint64_t blockTime = block.getTimestamp();
+    uint64_t currentTime = Utils::getCurrentTimestamp();
+
+    if (blockTime > currentTime + 7200) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Block timestamp too far in future: " + std::to_string(blockTime) +
+                      " (current: " + std::to_string(currentTime) + ")");
+        return false;
+    }
+
+    // For MTP (Median Time Past) check, we need access to previous blocks
+    // Simple check: strict monotonic increase from last block (less robust than MTP but better than nothing for now)
+    // or simply > last block time
+    if (lastBlock && blockTime <= lastBlock->getTimestamp()) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Block timestamp not strictly increasing: " + std::to_string(blockTime) +
+                      " <= " + std::to_string(lastBlock->getTimestamp()));
+        // In strict Bitcoin MTP, this is allowed, but for our simple strictness, let's warn.
+        // If we want MTP, we need to implement getMedianTimePast().
+        // For now, let's stick to future limit as the critical strictness for "production ready" to prevent easy drift.
     }
     
     return true;
