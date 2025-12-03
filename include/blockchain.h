@@ -87,6 +87,7 @@ public:
     ~Blockchain();
     bool initialize();
     bool loadBlocksFromDatabase();
+    bool loadValidatorsFromDatabase();
     void rebuildUtxoSet();
     void shutdown();
     void createGenesisBlock();

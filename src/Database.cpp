@@ -502,13 +502,13 @@ bool Database::saveBlock(const Block& block) {
         }
         
         sqlite3_bind_int(stmt, 1, static_cast<int>(block.getIndex()));
-        sqlite3_bind_text(stmt, 2, block.getHash().c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_text(stmt, 3, block.getPreviousHash().c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_text(stmt, 4, block.getMerkleRoot().c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 2, block.getHash().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, block.getPreviousHash().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 4, block.getMerkleRoot().c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int64(stmt, 5, block.getTimestamp());
         sqlite3_bind_double(stmt, 6, block.getDifficulty());
         sqlite3_bind_int64(stmt, 7, block.getNonce());
-        sqlite3_bind_text(stmt, 8, block.getMinerAddress().c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 8, block.getMinerAddress().c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 9, static_cast<int>(block.getBlockType()));
         sqlite3_bind_int(stmt, 10, static_cast<int>(block.getTransactions().size()));
         // Calculate block size from transactions
@@ -576,11 +576,11 @@ bool Database::saveTransaction(const Transaction& tx, const std::string& blockHa
             return false;
         }
         
-        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_text(stmt, 2, blockHash.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, blockHash.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 3, static_cast<int>(blockHeight));
-        sqlite3_bind_text(stmt, 4, tx.getSenderAddress().c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_text(stmt, 5, tx.getReceiverAddress().c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 4, tx.getSenderAddress().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 5, tx.getReceiverAddress().c_str(), -1, SQLITE_TRANSIENT);
         // Calculate total amount from outputs
         double totalAmount = 0.0;
         for (const auto& output : tx.getOutputs()) {
@@ -595,9 +595,9 @@ bool Database::saveTransaction(const Transaction& tx, const std::string& blockHa
         if (!tx.getInputs().empty()) {
             signature = tx.getInputs()[0].signature;
         }
-        sqlite3_bind_text(stmt, 10, signature.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 10, signature.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 11, tx.isCoinbaseTransaction() ? 1 : 0);
-        sqlite3_bind_text(stmt, 12, tx.getPrevTxHash().c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 12, tx.getPrevTxHash().c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_double(stmt, 13, tx.getReferencedAmount());
         sqlite3_bind_int(stmt, 14, tx.isTraceabilityValid() ? 1 : 0);
         
@@ -661,12 +661,12 @@ bool Database::saveTransactionInputs(const Transaction& tx) {
             return false;
         }
         
-        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 2, static_cast<int>(i));
-        sqlite3_bind_text(stmt, 3, input.txHash.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 3, input.txHash.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 4, static_cast<int>(input.outputIndex));
         sqlite3_bind_double(stmt, 5, input.amount);
-        sqlite3_bind_text(stmt, 6, input.signature.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 6, input.signature.c_str(), -1, SQLITE_TRANSIENT);
         
         rc = sqlite3_step(stmt);
         sqlite3_finalize(stmt);
@@ -699,9 +699,9 @@ bool Database::saveTransactionOutputs(const Transaction& tx) {
             return false;
         }
         
-        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 2, static_cast<int>(i));
-        sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_double(stmt, 4, output.amount);
         
         rc = sqlite3_step(stmt);
@@ -725,7 +725,7 @@ bool Database::updateUtxoSet(const Transaction& tx, size_t blockHeight) {
         int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
         
         if (rc == SQLITE_OK) {
-            sqlite3_bind_text(stmt, 1, input.txHash.c_str(), -1, SQLITE_STATIC);
+            sqlite3_bind_text(stmt, 1, input.txHash.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_int(stmt, 2, static_cast<int>(input.outputIndex));
             
             sqlite3_step(stmt);
@@ -751,9 +751,9 @@ bool Database::updateUtxoSet(const Transaction& tx, size_t blockHeight) {
             return false;
         }
         
-        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int(stmt, 2, static_cast<int>(i));
-        sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_double(stmt, 4, output.amount);
         sqlite3_bind_int(stmt, 5, static_cast<int>(blockHeight)); // Use actual block height
         
@@ -787,8 +787,8 @@ bool Database::saveTraceabilityRecord(const Transaction& tx, size_t blockHeight)
         return false;
     }
     
-    sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, tx.getPrevTxHash().c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, tx.getPrevTxHash().c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_double(stmt, 3, tx.getReferencedAmount());
     sqlite3_bind_int64(stmt, 4, tx.getTimestamp());
     sqlite3_bind_int(stmt, 5, static_cast<int>(blockHeight));
