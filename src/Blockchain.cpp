@@ -538,6 +538,13 @@ void Blockchain::updateUtxoSet(const Block& block) {
                 if (utxoSet.find(utxoKey) != utxoSet.end()) {
                     utxoSet.erase(utxoKey);
                     inputsRemoved++;
+                    
+                    // Remove UTXO from database
+                    try {
+                        Database::getInstance().deleteUTXO(input.txHash, input.outputIndex);
+                    } catch (const std::exception& e) {
+                        LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to delete UTXO from database: " + std::string(e.what()));
+                    }
                 }
             }
         }
@@ -549,6 +556,13 @@ void Blockchain::updateUtxoSet(const Block& block) {
             utxoSet[utxoKey] = output;
             outputIndex++;
             outputsAdded++;
+            
+            // Persist UTXO to database
+            try {
+                Database::getInstance().storeUTXO(tx.getHash(), outputIndex - 1, output);
+            } catch (const std::exception& e) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to persist UTXO to database: " + std::string(e.what()));
+            }
             
             // Log all UTXO additions at INFO level for debugging
             if (tx.isCoinbaseTransaction()) {
