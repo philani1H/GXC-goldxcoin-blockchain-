@@ -103,6 +103,12 @@ public:
     std::vector<Transaction> getTransactionsByBlockHash(const std::string& blockHash) const;
     std::vector<TransactionInput> getTransactionInputs(const std::string& txHash) const;
     std::vector<TransactionOutput> getTransactionOutputs(const std::string& txHash) const;
+
+    // UTXO management
+    bool storeUTXO(const std::string& txHash, uint32_t outputIndex, const TransactionOutput& output, uint32_t blockHeight);
+    bool getUTXO(const std::string& txHash, uint32_t outputIndex, TransactionOutput& output) const;
+    bool deleteUTXO(const std::string& txHash, uint32_t outputIndex);
+    std::vector<TransactionOutput> getUTXOsByAddress(const std::string& address) const;
     
     // Additional query operations
     double getAddressBalance(const std::string& address) const;
