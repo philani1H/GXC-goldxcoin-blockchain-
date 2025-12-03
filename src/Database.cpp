@@ -529,7 +529,7 @@ bool Database::saveTransaction(const Transaction& tx, const std::string& blockHa
         sqlite3_finalize(stmt);
         
         if (rc != SQLITE_DONE) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to insert transaction");
+            LOG_DATABASE(LogLevel::ERROR, "Failed to insert transaction: " + std::string(sqlite3_errmsg(db)));
             return false;
         }
         
@@ -549,6 +549,53 @@ bool Database::saveTransaction(const Transaction& tx, const std::string& blockHa
             if (!saveTraceabilityRecord(tx, blockHeight)) {
                 return false;
             }
+        }
+
+        // Update address statistics
+        // For coinbase, only receiver gets updated
+        if (tx.isCoinbaseTransaction()) {
+            // Calculate total output amount
+            double totalOutput = 0.0;
+            for (const auto& output : tx.getOutputs()) {
+                totalOutput += output.amount;
+            }
+            // Use receiver address from first output or explicit receiver
+            std::string receiver = tx.getReceiverAddress();
+            if (receiver.empty() && !tx.getOutputs().empty()) {
+                receiver = tx.getOutputs()[0].address;
+            }
+
+            if (!receiver.empty()) {
+                updateAddressStats(receiver, totalOutput, true);
+            }
+        } else {
+            // For regular transactions:
+            // 1. Sender balance decreases (amount + fee)
+            // 2. Receiver balance increases (amount)
+
+            // Sender
+            std::string sender = tx.getSenderAddress();
+            if (!sender.empty()) {
+                // Calculate total input amount (approximate as output + fee for now)
+                // ideally we should sum inputs, but let's just subtract outputs + fee
+                // actually, getting exact input amount requires looking up previous TXs
+                // simpler: just track net change based on outputs + fee
+                double totalSent = 0.0;
+                for (const auto& output : tx.getOutputs()) {
+                    totalSent += output.amount;
+                }
+                totalSent += tx.getFee();
+                updateAddressStats(sender, -totalSent, true);
+            }
+
+            // Receivers (handle multiple outputs)
+            for (const auto& output : tx.getOutputs()) {
+                if (!updateAddressStats(output.address, output.amount, true)) {
+                    LOG_DATABASE(LogLevel::WARNING, "Failed to update stats for address: " + output.address);
+                }
+            }
+            // If there's a main receiver not in outputs (legacy format), update them
+            // but usually receiver IS in outputs.
         }
         
         return true;
@@ -1396,4 +1443,60 @@ std::vector<TransactionOutput> Database::getUTXOsByAddress(const std::string& ad
     
     sqlite3_finalize(stmt);
     return utxos;
+}
+
+bool Database::updateAddressStats(const std::string& address, double amountChange, bool isNewTransaction) {
+    if (!db || address.empty()) {
+        return false;
+    }
+
+    // Check if address exists
+    std::string checkSql = "SELECT count(*) FROM addresses WHERE address = ?";
+    sqlite3_stmt* checkStmt;
+    if (sqlite3_prepare_v2(db, checkSql.c_str(), -1, &checkStmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    sqlite3_bind_text(checkStmt, 1, address.c_str(), -1, SQLITE_STATIC);
+
+    bool exists = false;
+    if (sqlite3_step(checkStmt) == SQLITE_ROW) {
+        exists = sqlite3_column_int(checkStmt, 0) > 0;
+    }
+    sqlite3_finalize(checkStmt);
+
+    if (exists) {
+        // Update existing address
+        std::string updateSql = "UPDATE addresses SET balance = balance + ?, transaction_count = transaction_count + ? WHERE address = ?";
+        sqlite3_stmt* updateStmt;
+        if (sqlite3_prepare_v2(db, updateSql.c_str(), -1, &updateStmt, nullptr) != SQLITE_OK) {
+            return false;
+        }
+        sqlite3_bind_double(updateStmt, 1, amountChange);
+        sqlite3_bind_int(updateStmt, 2, isNewTransaction ? 1 : 0);
+        sqlite3_bind_text(updateStmt, 3, address.c_str(), -1, SQLITE_STATIC);
+
+        if (sqlite3_step(updateStmt) != SQLITE_DONE) {
+            sqlite3_finalize(updateStmt);
+            return false;
+        }
+        sqlite3_finalize(updateStmt);
+    } else {
+        // Insert new address
+        std::string insertSql = "INSERT INTO addresses (address, balance, transaction_count) VALUES (?, ?, ?)";
+        sqlite3_stmt* insertStmt;
+        if (sqlite3_prepare_v2(db, insertSql.c_str(), -1, &insertStmt, nullptr) != SQLITE_OK) {
+            return false;
+        }
+        sqlite3_bind_text(insertStmt, 1, address.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_double(insertStmt, 2, amountChange > 0 ? amountChange : 0); // Don't start with negative balance
+        sqlite3_bind_int(insertStmt, 3, isNewTransaction ? 1 : 0);
+
+        if (sqlite3_step(insertStmt) != SQLITE_DONE) {
+            sqlite3_finalize(insertStmt);
+            return false;
+        }
+        sqlite3_finalize(insertStmt);
+    }
+
+    return true;
 }
