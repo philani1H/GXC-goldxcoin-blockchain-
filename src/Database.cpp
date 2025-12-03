@@ -1280,3 +1280,118 @@ std::vector<Validator> Database::getActiveValidators() const {
     sqlite3_finalize(stmt);
     return validators;
 }
+// UTXO management functions
+bool Database::storeUTXO(const std::string& txHash, uint32_t outputIndex, const TransactionOutput& output) {
+    std::string sql = R"(
+        INSERT OR REPLACE INTO utxo (tx_hash, output_index, address, amount, script)
+        VALUES (?, ?, ?, ?, ?)
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare UTXO insert: " + std::string(sqlite3_errmsg(db)));
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, txHash.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, outputIndex);
+    sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(stmt, 4, output.amount);
+    sqlite3_bind_text(stmt, 5, output.script.c_str(), -1, SQLITE_TRANSIENT);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to store UTXO: " + std::string(sqlite3_errmsg(db)));
+        return false;
+    }
+    
+    return true;
+}
+
+bool Database::getUTXO(const std::string& txHash, uint32_t outputIndex, TransactionOutput& output) const {
+    std::string sql = R"(
+        SELECT address, amount, script
+        FROM utxo
+        WHERE tx_hash = ? AND output_index = ?
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, txHash.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, outputIndex);
+    
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        output.address = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        output.amount = sqlite3_column_double(stmt, 1);
+        output.script = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        found = true;
+    }
+    
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+bool Database::deleteUTXO(const std::string& txHash, uint32_t outputIndex) {
+    std::string sql = "DELETE FROM utxo WHERE tx_hash = ? AND output_index = ?";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare UTXO delete: " + std::string(sqlite3_errmsg(db)));
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, txHash.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, outputIndex);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to delete UTXO: " + std::string(sqlite3_errmsg(db)));
+        return false;
+    }
+    
+    return true;
+}
+
+std::vector<TransactionOutput> Database::getUTXOsByAddress(const std::string& address) const {
+    std::vector<TransactionOutput> utxos;
+    
+    std::string sql = R"(
+        SELECT address, amount, script
+        FROM utxo
+        WHERE address = ?
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    
+    if (rc != SQLITE_OK) {
+        return utxos;
+    }
+    
+    sqlite3_bind_text(stmt, 1, address.c_str(), -1, SQLITE_TRANSIENT);
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        TransactionOutput output;
+        output.address = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        output.amount = sqlite3_column_double(stmt, 1);
+        output.script = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        utxos.push_back(output);
+    }
+    
+    sqlite3_finalize(stmt);
+    return utxos;
+}
