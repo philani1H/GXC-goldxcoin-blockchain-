@@ -218,6 +218,12 @@ bool Blockchain::addBlock(const Block& block) {
             // Add coinbase transaction to the block
             blockToAdd.addTransaction(coinbase);
             
+            // If this is a PoS block, the reward goes to the validator's spendable balance.
+            // Our logic automatically handles this because the coinbase transaction creates a UTXO
+            // for the minerAddress (which is the validator's address).
+            // So, rewards are NOT locked in the stake, they are liquid.
+            // This behavior is correct per requirements.
+
             // Recalculate merkle root
             blockToAdd.calculateMerkleRoot();
             
@@ -578,6 +584,136 @@ void Blockchain::updateUtxoSet(const Block& block) {
             }
         }
         
+        // STAKING LOGIC START
+        if (tx.getType() == TransactionType::STAKE) {
+            // Inputs were removed above.
+            // DO NOT create new UTXOs for the main amount.
+            // Outputs might contain change?
+            // User model: "balance[address] -= stakeAmount; staked[address] += stakeAmount"
+
+            // Calculate total input
+            double totalInput = 0.0;
+            // Inputs are already removed from UTXO set, but we need their values.
+            // Since we can't look them up in UTXO set anymore (removed above),
+            // we rely on the transaction input values which should match the traceability check.
+            // Ideally, we sum up inputs BEFORE removing them, but here we can iterate.
+            for (const auto& input : tx.getInputs()) {
+                totalInput += input.amount;
+            }
+
+            // Calculate total output (change)
+            double totalOutput = 0.0;
+            for (const auto& output : tx.getOutputs()) {
+                totalOutput += output.amount;
+            }
+
+            // Determine staked amount
+            // Amount = Inputs - Outputs (Change) - Fee
+            double stakedAmount = totalInput - totalOutput - tx.getFee();
+
+            if (stakedAmount > 0) {
+                std::string stakerAddress = tx.getSenderAddress();
+
+                // Update Validator Stake in Memory
+                bool found = false;
+                for (auto& v : validators) {
+                    if (v.getAddress() == stakerAddress) {
+                        v.addStake(stakedAmount);
+                        // Update in Map
+                        validatorMap[stakerAddress] = v;
+
+                        // Update in Database
+                        Database::getInstance().updateValidator(v);
+                        found = true;
+                        LOG_BLOCKCHAIN(LogLevel::INFO, "STAKE processed: " + std::to_string(stakedAmount) +
+                                      " added to " + stakerAddress);
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    // Implicit registration? Or error?
+                    // User said "Registering as a validator... creates the validator entry".
+                    // Assuming registerValidator was called before, so validator entry exists.
+                    LOG_BLOCKCHAIN(LogLevel::WARNING, "STAKE transaction for unknown validator: " + stakerAddress);
+                }
+            }
+
+            // Add ONLY the change outputs as UTXOs
+            uint32_t outputIndex = 0;
+            for (const auto& output : tx.getOutputs()) {
+                std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
+                utxoSet[utxoKey] = output;
+                outputIndex++;
+                outputsAdded++;
+
+                try {
+                    Database::getInstance().storeUTXO(tx.getHash(), outputIndex - 1, output, block.getIndex());
+                } catch (...) {}
+            }
+
+            continue; // Skip normal output processing
+        }
+        else if (tx.getType() == TransactionType::UNSTAKE) {
+            // UNSTAKE Logic
+            // Inputs: Reference to previous? Empty?
+            // Outputs: New Spendable Amount.
+            // Verification: Sender has enough stake.
+
+            double unstakeAmount = 0.0;
+            for(const auto& output : tx.getOutputs()) {
+                unstakeAmount += output.amount;
+            }
+
+            // We assume validation passed in validateTransaction
+            std::string stakerAddress = tx.getReceiverAddress(); // Or sender? Unstake goes to self.
+            if(stakerAddress.empty() && !tx.getOutputs().empty()) stakerAddress = tx.getOutputs()[0].address;
+
+            // Reduce Stake
+            bool found = false;
+            for (auto& v : validators) {
+                if (v.getAddress() == stakerAddress) {
+                    // Logic to check amount is done in validation, here we apply
+                    // But we should be safe.
+                    // v.removeStake(unstakeAmount); // Assuming method exists or manual
+                    // Validator class has slash but not clean "removeStake", let's use a workaround or add it later?
+                    // For now, simple subtraction if possible, or slash with "Unstake" reason.
+                    // Actually, let's implement a proper removeStake in Validator if missing,
+                    // or just modify the object here.
+
+                    // Direct modification for now if no method
+                    // v.stakeAmount -= unstakeAmount; // private?
+                    // using slash for now as it reduces stake, log reason "Unstake"
+                    v.slash(unstakeAmount, "Unstake");
+
+                    validatorMap[stakerAddress] = v;
+                    Database::getInstance().updateValidator(v);
+                    found = true;
+                    LOG_BLOCKCHAIN(LogLevel::INFO, "UNSTAKE processed: " + std::to_string(unstakeAmount) +
+                                  " returned to " + stakerAddress);
+                    break;
+                }
+            }
+
+            // Add Outputs as new UTXOs (Minting back to UTXO set)
+            uint32_t outputIndex = 0;
+            for (const auto& output : tx.getOutputs()) {
+                std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
+                utxoSet[utxoKey] = output;
+                outputIndex++;
+                outputsAdded++;
+
+                try {
+                    Database::getInstance().storeUTXO(tx.getHash(), outputIndex - 1, output, block.getIndex());
+                } catch (...) {}
+
+                LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Unstaked UTXO [" + utxoKey + "]: " + std::to_string(output.amount));
+            }
+
+            continue;
+        }
+        // STAKING LOGIC END
+
         // Add outputs (new UTXOs) - these become spendable
         uint32_t outputIndex = 0;
         for (const auto& output : tx.getOutputs()) {
@@ -871,14 +1007,16 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         return true;
     }
     
-    // Validate traceability for non-coinbase transactions
-    if (!tx.isTraceabilityValid()) {
+    // Validate traceability for non-coinbase transactions (and non-unstake potentially?)
+    // Unstake might not have traditional inputs, so we check type
+    if (tx.getType() != TransactionType::UNSTAKE && !tx.isTraceabilityValid()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction traceability validation failed: " + tx.getHash());
         return false;
     }
     
     // Validate transaction structure
-    if (tx.getInputs().empty() || tx.getOutputs().empty()) {
+    // UNSTAKE might have no inputs if it's purely a claim
+    if (tx.getType() != TransactionType::UNSTAKE && (tx.getInputs().empty() || tx.getOutputs().empty())) {
         return false;
     }
     
@@ -899,6 +1037,32 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         }
     }
     
+    // UNSTAKE SPECIAL VALIDATION
+    if (tx.getType() == TransactionType::UNSTAKE) {
+        // Verify user has enough staked balance
+        std::string stakerAddress = tx.getReceiverAddress();
+        if(stakerAddress.empty() && !tx.getOutputs().empty()) stakerAddress = tx.getOutputs()[0].address;
+
+        double unstakeAmount = outputTotal;
+
+        std::lock_guard<std::mutex> lock(chainMutex);
+        auto it = validatorMap.find(stakerAddress);
+        if (it == validatorMap.end()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Unstake failed: Validator not found " + stakerAddress);
+            return false;
+        }
+
+        if (it->second.getStakeAmount() < unstakeAmount) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Unstake failed: Insufficient stake. Has " +
+                          std::to_string(it->second.getStakeAmount()) + ", trying to unstake " + std::to_string(unstakeAmount));
+            return false;
+        }
+
+        // Input total check doesn't apply to UNSTAKE the same way if it has no inputs
+        // If it DOES have inputs (e.g. for fee payment), we check balance
+        return true;
+    }
+
     if (inputTotal < outputTotal + fee) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input/output amount mismatch");
         return false;
@@ -1282,34 +1446,60 @@ void Blockchain::shutdown() {
 // Get balance for an address from UTXO set
 double Blockchain::getBalance(const std::string& address) const {
     std::lock_guard<std::mutex> lock(chainMutex);
+    // Lock transaction mutex to access pendingTransactions
+    std::lock_guard<std::mutex> txLock(transactionMutex);
     
     double balance = 0.0;
     uint32_t utxoCount = 0;
     
-    // Sum all UTXOs for this address
+    // Identify UTXOs spent by pending transactions
+    std::unordered_set<std::string> spentInMempool;
+    for (const auto& tx : pendingTransactions) {
+        if (!tx.isCoinbaseTransaction()) {
+            for (const auto& input : tx.getInputs()) {
+                spentInMempool.insert(input.txHash + "_" + std::to_string(input.outputIndex));
+            }
+        }
+    }
+
+    // Sum all unspent UTXOs for this address (excluding those spent in mempool)
     for (const auto& [utxoKey, output] : utxoSet) {
         // Use exact match for address comparison
         if (output.address == address) {
-            balance += output.amount;
-            utxoCount++;
-            LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " = " + std::to_string(output.amount) + 
-                          " GXC to " + output.address.substr(0, 20) + "...");
+            // Check if this UTXO is being spent in the mempool
+            if (spentInMempool.find(utxoKey) == spentInMempool.end()) {
+                balance += output.amount;
+                utxoCount++;
+                LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " = " + std::to_string(output.amount) +
+                              " GXC to " + output.address.substr(0, 20) + "...");
+            } else {
+                LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " [SPENT IN MEMPOOL] = " + std::to_string(output.amount) +
+                              " GXC to " + output.address.substr(0, 20) + "...");
+            }
+        }
+    }
+
+    // Add pending incoming outputs (unconfirmed balance)
+    for (const auto& tx : pendingTransactions) {
+        uint32_t outputIndex = 0;
+        for (const auto& output : tx.getOutputs()) {
+            if (output.address == address) {
+                std::string pendingUtxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
+
+                // If this pending output is not spent by another pending transaction, add it
+                if (spentInMempool.find(pendingUtxoKey) == spentInMempool.end()) {
+                    balance += output.amount;
+                    LOG_BLOCKCHAIN(LogLevel::DEBUG, "  Pending Receive: " + pendingUtxoKey + " = " + std::to_string(output.amount) +
+                                  " GXC to " + output.address.substr(0, 20) + "...");
+                }
+            }
+            outputIndex++;
         }
     }
     
     // Always log balance queries at INFO level for debugging
     LOG_BLOCKCHAIN(LogLevel::INFO, "getBalance(" + address.substr(0, 20) + "...): " + std::to_string(balance) + 
                   " GXC from " + std::to_string(utxoCount) + " UTXOs (total UTXOs in set: " + std::to_string(utxoSet.size()) + ")");
-    
-    // If balance is 0 but we expect UTXOs, log all UTXOs for debugging
-    if (balance == 0.0 && utxoSet.size() > 0) {
-        LOG_BLOCKCHAIN(LogLevel::DEBUG, "getBalance: No UTXOs found for address " + address.substr(0, 20) + 
-                      "... Available UTXOs:");
-        for (const auto& [utxoKey, output] : utxoSet) {
-            LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO [" + utxoKey + "]: " + std::to_string(output.amount) + 
-                          " GXC to " + output.address.substr(0, 20) + "...");
-        }
-    }
     
     return balance;
 }

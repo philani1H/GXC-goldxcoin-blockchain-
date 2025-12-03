@@ -9,7 +9,7 @@
 // Default constructor
 Transaction::Transaction() 
     : timestamp(std::time(nullptr)), referencedAmount(0.0), nonce(0),
-      isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0) {
+      isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0), type(TransactionType::NORMAL) {
     txHash = "";
     prevTxHash = "";
 }
@@ -18,7 +18,7 @@ Transaction::Transaction(const std::vector<TransactionInput>& inputsIn,
                         const std::vector<TransactionOutput>& outputsIn,
                         const std::string& prevTxHashIn)
     : inputs(inputsIn), outputs(outputsIn), prevTxHash(prevTxHashIn), 
-      isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0) {
+      isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0), type(TransactionType::NORMAL) {
     timestamp = std::time(nullptr);
     nonce = Utils::randomUint32();
     
@@ -26,7 +26,7 @@ Transaction::Transaction(const std::vector<TransactionInput>& inputsIn,
     if (!inputs.empty() && !outputs.empty()) {
         senderAddress = ""; // Would be derived from input signatures
         receiverAddress = outputs[0].address;
-        referencedAmount = getTotalInputAmount();
+        referencedAmount = inputs[0].amount;
     }
     
     txHash = calculateHash();
@@ -37,14 +37,14 @@ Transaction::Transaction(const std::vector<TransactionInput>& inputsIn,
                         const std::string& prevTxHashIn,
                         const std::string& popReferenceIn)
     : inputs(inputsIn), outputs(outputsIn), prevTxHash(prevTxHashIn), 
-      popReference(popReferenceIn), isGoldBacked(true), isCoinbase(false), fee(0.0), lockTime(0) {
+      popReference(popReferenceIn), isGoldBacked(true), isCoinbase(false), fee(0.0), lockTime(0), type(TransactionType::NORMAL) {
     timestamp = std::time(nullptr);
     nonce = Utils::randomUint32();
     
     if (!inputs.empty() && !outputs.empty()) {
         senderAddress = "";
         receiverAddress = outputs[0].address;
-        referencedAmount = getTotalInputAmount();
+        referencedAmount = inputs[0].amount;
     }
     
     txHash = calculateHash();
@@ -53,7 +53,7 @@ Transaction::Transaction(const std::vector<TransactionInput>& inputsIn,
 // Constructor for coinbase transaction
 Transaction::Transaction(const std::string& minerAddress, double blockReward)
     : prevTxHash("0"), referencedAmount(0.0), receiverAddress(minerAddress),
-      isGoldBacked(false), isCoinbase(true), fee(0.0), lockTime(0) {
+      isGoldBacked(false), isCoinbase(true), fee(0.0), lockTime(0), type(TransactionType::NORMAL) {
     timestamp = std::time(nullptr);
     nonce = Utils::randomUint32();
     
@@ -87,6 +87,9 @@ std::string Transaction::calculateHash() const {
     ss << timestamp << prevTxHash << referencedAmount << senderAddress 
        << receiverAddress << nonce << fee << memo << lockTime;
     
+    // Include type
+    ss << static_cast<int>(type);
+
     // Include special fields
     if (isGoldBacked) {
         ss << popReference;
