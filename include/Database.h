@@ -23,6 +23,7 @@ private:
     bool createTables();
     bool executeSQL(const std::string& sql);
     std::string getLastError() const;
+    bool checkDatabaseNetwork(bool isTestnet);
 
 public:
     // Static methods for singleton-like access

@@ -46,6 +46,11 @@ bool Blockchain::initialize() {
             // Rebuild UTXO set from loaded blocks
             rebuildUtxoSet();
         }
+
+    // Load validators from database
+    if (!loadValidatorsFromDatabase()) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to load validators from database");
+    }
         
         // Validate existing chain
         if (!isValid()) {
@@ -66,6 +71,30 @@ bool Blockchain::initialize() {
         
     } catch (const std::exception& e) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to initialize blockchain: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool Blockchain::loadValidatorsFromDatabase() {
+    try {
+        Database& db = Database::getInstance();
+        std::vector<Validator> loadedValidators = db.getAllValidators();
+
+        std::lock_guard<std::mutex> lock(chainMutex);
+        validators.clear();
+        validatorMap.clear();
+
+        for (const auto& validator : loadedValidators) {
+            validators.push_back(validator);
+            validatorMap[validator.getAddress()] = validator;
+        }
+
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Loaded " + std::to_string(loadedValidators.size()) +
+                      " validators from database");
+        return true;
+
+    } catch (const std::exception& e) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Error loading validators from database: " + std::string(e.what()));
         return false;
     }
 }
@@ -1478,6 +1507,15 @@ void Blockchain::registerValidator(const Validator& validator) {
                       ", Stake: " + std::to_string(validator.getStakeAmount()) + 
                       " GXC, Days: " + std::to_string(validator.getStakingDays()));
     }
+
+    // Persist validator
+    try {
+        if (!Database::getInstance().storeValidator(validator)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to persist validator: " + validator.getAddress());
+        }
+    } catch (const std::exception& e) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Exception persisting validator: " + std::string(e.what()));
+    }
 }
 
 void Blockchain::unregisterValidator(const std::string& address) {
@@ -1487,6 +1525,7 @@ void Blockchain::unregisterValidator(const std::string& address) {
     if (it != validatorMap.end()) {
         // Mark as inactive instead of removing (for history)
         it->second.setIsActive(false);
+        Validator updatedValidator = it->second;
         
         // Remove from validators vector
         validators.erase(
@@ -1496,6 +1535,15 @@ void Blockchain::unregisterValidator(const std::string& address) {
         );
         
         LOG_BLOCKCHAIN(LogLevel::INFO, "Validator unregistered: " + address);
+
+        // Update persistence (store as inactive)
+        try {
+            if (!Database::getInstance().updateValidator(updatedValidator)) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to update validator persistence: " + address);
+            }
+        } catch (const std::exception& e) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Exception updating validator persistence: " + std::string(e.what()));
+        }
     } else {
         LOG_BLOCKCHAIN(LogLevel::WARNING, "Validator not found: " + address);
     }
@@ -1507,8 +1555,19 @@ bool Blockchain::slashValidator(const std::string& address, double amount, const
     auto it = validatorMap.find(address);
     if (it != validatorMap.end()) {
         it->second.slash(amount, reason);
+        Validator updatedValidator = it->second;
         LOG_BLOCKCHAIN(LogLevel::WARNING, "Validator slashed: " + address + 
                       ", Amount: " + std::to_string(amount) + " GXC, Reason: " + reason);
+
+        // Update persistence
+        try {
+            if (!Database::getInstance().updateValidator(updatedValidator)) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to update slashed validator persistence: " + address);
+            }
+        } catch (const std::exception& e) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Exception updating slashed validator persistence: " + std::string(e.what()));
+        }
+
         return true;
     }
     
