@@ -1,6 +1,7 @@
 #include "../include/Wallet.h"
 #include "../include/HashUtils.h"
 #include "../include/Crypto.h"
+#include "../include/Config.h"
 
 #include <random>
 #include <sstream>
@@ -20,7 +21,7 @@ void Wallet::generateKeyPair() {
     
     // Generate address from public key (testnet detection would be done elsewhere)
     // For now, generate mainnet address
-    address = Crypto::generateAddress(publicKey, false);
+    address = Crypto::generateAddress(publicKey, Config::isTestnet());
     
     // Initialize last transaction hash
     lastTxHash = "";
@@ -56,6 +57,13 @@ bool Wallet::loadFromFile(const std::string& filepath) {
         if (std::getline(file, line)) publicKey = line;
         if (std::getline(file, line)) address = line;
         if (std::getline(file, line)) lastTxHash = line;
+
+        // Re-derive address to match current network configuration
+        // This ensures that if we are on testnet, we use the testnet address format
+        // for the same keypair, even if the file stored the mainnet format.
+        if (!publicKey.empty()) {
+            address = Crypto::generateAddress(publicKey, Config::isTestnet());
+        }
 
         return !privateKey.empty() && !publicKey.empty() && !address.empty();
     } catch (...) {
