@@ -206,20 +206,37 @@ std::string SHA256Miner::constructBlockHeader(const MiningJob& job, uint64_t non
 }
 
 bool SHA256Miner::checkDifficultyTarget(const std::string& hash, double difficulty) {
-    // Convert hash to big integer and compare with target
-    // Simplified implementation: count leading zeros
-    int leadingZeros = 0;
-    for (char c : hash) {
-        if (c == '0') {
-            leadingZeros++;
-        } else {
-            break;
+    // Bitcoin-style difficulty check
+    // Convert hash string to bytes for proper comparison
+    std::vector<uint8_t> hashBytes;
+    for (size_t i = 0; i < hash.length(); i += 2) {
+        std::string byteString = hash.substr(i, 2);
+        uint8_t byte = static_cast<uint8_t>(std::stoi(byteString, nullptr, 16));
+        hashBytes.push_back(byte);
+    }
+    
+    // Calculate target from difficulty
+    // Target = 0x00000000FFFF0000000000000000000000000000000000000000000000000000 / difficulty
+    // For simplicity, we check leading zero bytes
+    size_t requiredZeroBytes = static_cast<size_t>(difficulty / 256.0);
+    
+    // Check leading zero bytes
+    for (size_t i = 0; i < requiredZeroBytes && i < hashBytes.size(); i++) {
+        if (hashBytes[i] != 0) {
+            return false;
         }
     }
     
-    // Calculate required zeros based on difficulty
-    int requiredZeros = static_cast<int>(difficulty / 1000.0) + 4;
-    return leadingZeros >= requiredZeros;
+    // For fractional difficulty, check the next byte
+    if (requiredZeroBytes < hashBytes.size()) {
+        double fractionalPart = difficulty - (requiredZeroBytes * 256.0);
+        uint8_t maxValue = static_cast<uint8_t>(256.0 - fractionalPart);
+        if (hashBytes[requiredZeroBytes] > maxValue) {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 void SHA256Miner::submitSolution(const MiningJob& job, uint64_t nonce) {

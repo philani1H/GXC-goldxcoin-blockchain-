@@ -222,12 +222,42 @@ std::string calculateMerkleRoot(const std::vector<std::string>& txHashes) {
 
 // Verify if a hash meets the target difficulty
 bool meetsTarget(const std::string& hash, double difficulty) {
-    // Convert difficulty to target number of leading zeros
-    size_t targetZeros = static_cast<size_t>(difficulty);
+    // Bitcoin-style difficulty check
+    // Convert hash string to bytes for proper comparison
+    std::vector<uint8_t> hashBytes;
+    for (size_t i = 0; i < hash.length() && i < 64; i += 2) {
+        if (i + 1 < hash.length()) {
+            std::string byteString = hash.substr(i, 2);
+            try {
+                uint8_t byte = static_cast<uint8_t>(std::stoi(byteString, nullptr, 16));
+                hashBytes.push_back(byte);
+            } catch (...) {
+                return false;
+            }
+        }
+    }
     
-    // Check if the hash has at least targetZeros leading zeros
-    for (size_t i = 0; i < targetZeros; i++) {
-        if (hash[i] != '0') {
+    if (hashBytes.empty()) {
+        return false;
+    }
+    
+    // Calculate target from difficulty
+    // For Bitcoin-style: higher difficulty = more leading zeros required
+    // We check leading zero bytes
+    size_t requiredZeroBytes = static_cast<size_t>(difficulty / 256.0);
+    
+    // Check leading zero bytes
+    for (size_t i = 0; i < requiredZeroBytes && i < hashBytes.size(); i++) {
+        if (hashBytes[i] != 0) {
+            return false;
+        }
+    }
+    
+    // For fractional difficulty, check the next byte
+    if (requiredZeroBytes < hashBytes.size()) {
+        double fractionalPart = difficulty - (requiredZeroBytes * 256.0);
+        uint8_t maxValue = static_cast<uint8_t>(256.0 - fractionalPart);
+        if (hashBytes[requiredZeroBytes] > maxValue) {
             return false;
         }
     }
