@@ -1126,7 +1126,21 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
     }
     
     std::string address = params[0].get<std::string>();
-    double amount = params[1].get<double>();
+    double amount = 0.0;
+
+    // Handle amount as number or string (for React Native compatibility)
+    if (params[1].is_number()) {
+        amount = params[1].get<double>();
+    } else if (params[1].is_string()) {
+        try {
+            amount = std::stod(params[1].get<std::string>());
+        } catch (...) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount format");
+        }
+    } else {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount type");
+    }
+
     std::string comment = params.size() > 2 ? params[2].get<std::string>() : "";
     std::string commentTo = params.size() > 3 ? params[3].get<std::string>() : "";
     
