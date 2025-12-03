@@ -361,6 +361,7 @@ class RPCAPI {
 private:
     Blockchain* blockchain;
     Network* network;
+    std::unique_ptr<Wallet> wallet; // Node wallet
     uint16_t serverPort;
     std::atomic<bool> isRunning;
     std::thread serverThread;

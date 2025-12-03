@@ -6,6 +6,7 @@
 #include "../include/Utils.h"
 #include "../include/Network.h"
 #include "../include/Config.h"
+#include "../include/Wallet.h"
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
@@ -16,15 +17,55 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <filesystem>
 
 RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
     : blockchain(blockchain), network(nullptr), serverPort(port), isRunning(false) {
+
+    // Initialize node wallet
+    wallet = std::make_unique<Wallet>();
+    std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+
+    // Try to load existing wallet
+    if (wallet->loadFromFile(walletPath)) {
+        LOG_API(LogLevel::INFO, "Loaded existing node wallet: " + wallet->getAddress());
+    } else {
+        // Create new wallet and save it
+        LOG_API(LogLevel::INFO, "Creating new node wallet: " + wallet->getAddress());
+        // Ensure directory exists
+        std::filesystem::create_directories(std::filesystem::path(walletPath).parent_path());
+        if (wallet->saveToFile(walletPath)) {
+            LOG_API(LogLevel::INFO, "Saved node wallet to " + walletPath);
+        } else {
+            LOG_API(LogLevel::ERROR, "Failed to save node wallet to " + walletPath);
+        }
+    }
+
     registerMethods();
 }
 
 RPCAPI::RPCAPI(Blockchain* blockchain, Network* network, uint16_t port)
     : blockchain(blockchain), network(network), serverPort(port), isRunning(false) {
     
+    // Initialize node wallet
+    wallet = std::make_unique<Wallet>();
+    std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+
+    // Try to load existing wallet
+    if (wallet->loadFromFile(walletPath)) {
+        LOG_API(LogLevel::INFO, "Loaded existing node wallet: " + wallet->getAddress());
+    } else {
+        // Create new wallet and save it
+        LOG_API(LogLevel::INFO, "Creating new node wallet: " + wallet->getAddress());
+        // Ensure directory exists
+        std::filesystem::create_directories(std::filesystem::path(walletPath).parent_path());
+        if (wallet->saveToFile(walletPath)) {
+            LOG_API(LogLevel::INFO, "Saved node wallet to " + walletPath);
+        } else {
+            LOG_API(LogLevel::ERROR, "Failed to save node wallet to " + walletPath);
+        }
+    }
+
     // Register RPC methods
     registerMethods();
     
@@ -1116,7 +1157,11 @@ JsonValue RPCAPI::getBalance(const JsonValue& params) {
 JsonValue RPCAPI::getNewAddress(const JsonValue& params) {
     std::string account = params.size() > 0 ? params[0].get<std::string>() : "";
     
-    // In a real implementation, would generate a new address
+    // Return the node wallet address
+    if (wallet) {
+        return wallet->getAddress();
+    }
+
     return "GXC" + Utils::randomString(30);
 }
 
@@ -1141,21 +1186,38 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount type");
     }
 
-    std::string comment = params.size() > 2 ? params[2].get<std::string>() : "";
-    std::string commentTo = params.size() > 3 ? params[3].get<std::string>() : "";
-    
     if (amount <= 0) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount");
     }
     
-    // Calculate recommended fee (dynamic fees)
-    double recommendedFee = blockchain->calculateRecommendedFee();
+    // Check wallet
+    if (!wallet) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
+    }
     
-    // In a real implementation, would create and send transaction with fee
-    LOG_API(LogLevel::INFO, "Sending " + std::to_string(amount) + " GXC to " + address + 
-            " (recommended fee: " + std::to_string(recommendedFee) + " GXC)");
+    // Get UTXOs
+    const auto& utxoSet = blockchain->getUtxoSet();
     
-    return "transaction_hash";
+    try {
+        // Create transaction using wallet
+        Transaction tx = wallet->createTransaction(address, amount, utxoSet);
+
+        // Add to blockchain
+        if (blockchain->addTransaction(tx)) {
+            // Save wallet state (lastTxHash updated)
+            std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+            wallet->saveToFile(walletPath);
+
+            LOG_API(LogLevel::INFO, "Sent " + std::to_string(amount) + " GXC to " + address +
+                    ", TX: " + tx.getHash());
+            return tx.getHash();
+        } else {
+            throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to add transaction to pool");
+        }
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Failed to create transaction: " + std::string(e.what()));
+        throw RPCException(RPCException::RPC_WALLET_ERROR, "Transaction creation failed: " + std::string(e.what()));
+    }
 }
 
 JsonValue RPCAPI::estimateFee(const JsonValue& params) {
@@ -1815,6 +1877,35 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
             "Insufficient balance. Required: " + std::to_string(stakeAmount) + 
             " GXC, Available: " + std::to_string(balance) + " GXC");
     }
+
+    // Process Staking Transaction if this node controls the address
+    if (wallet && wallet->getAddress() == address) {
+        try {
+            const auto& utxoSet = blockchain->getUtxoSet();
+            // Send to self but mark as STAKE type. The logic in updateUtxoSet will consume inputs but NOT create outputs
+            // effectively locking the coins.
+            Transaction stakeTx = wallet->createTransaction(address, stakeAmount, utxoSet);
+            stakeTx.setType(TransactionType::STAKE);
+            stakeTx.setMemo("Staking for validator: " + address);
+
+            if (blockchain->addTransaction(stakeTx)) {
+                 // Save wallet state
+                std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+                wallet->saveToFile(walletPath);
+
+                LOG_API(LogLevel::INFO, "Staking transaction created: " + stakeTx.getHash());
+            } else {
+                 throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to create staking transaction");
+            }
+        } catch (const std::exception& e) {
+             throw RPCException(RPCException::RPC_WALLET_ERROR, "Staking transaction failed: " + std::string(e.what()));
+        }
+    } else {
+         // If we don't control the wallet, we assume the user has already sent the funds or will send them
+         // Or we could enforce it if we had a way to verify signed messages/txs here.
+         // Given the request implies we are fixing the flow where user "registers", we assume it's the node owner.
+         LOG_API(LogLevel::WARNING, "Registering validator for external address (or wallet not loaded). Staking TX not created automatically.");
+    }
     
     // Create validator
     Validator validator(address, stakeAmount, stakingDays);
@@ -1847,18 +1938,72 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
     }
     
     std::string address = params[0].get<std::string>();
+    double amount = params.size() > 1 ? params[1].get<double>() : 0.0; // Optional amount? Or full?
+
+    // Check if we control the wallet
+    if (!wallet || wallet->getAddress() != address) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Wallet does not control this address");
+    }
+
+    // If amount is 0, try to get full stake
+    if (amount <= 0) {
+        try {
+            JsonValue validatorInfo = getValidatorInfo(params);
+            amount = validatorInfo["stake_amount"].get<double>();
+        } catch (...) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Could not determine stake amount. Please specify amount.");
+        }
+    }
     
-    // Unregister validator
-    blockchain->unregisterValidator(address);
+    // Create UNSTAKE transaction
+    Transaction unstakeTx;
+    unstakeTx.setType(TransactionType::UNSTAKE);
+    unstakeTx.setTimestamp(Utils::getCurrentTimestamp());
+    unstakeTx.setSenderAddress(address); // Self
+    unstakeTx.setReceiverAddress(address); // Self
     
-    LOG_API(LogLevel::INFO, "Validator unregistered: " + address);
+    // Traceability & Security: Link to wallet's last transaction
+    // This input serves two purposes:
+    // 1. Provides a way to sign the transaction to prove ownership (Wallet::signTransaction/createTransaction signs inputs)
+    // 2. Maintains the traceability chain
+    TransactionInput input;
+    input.txHash = wallet->getLastTxHash();
+    if (input.txHash.empty()) input.txHash = "0"; // Genesis/fallback
+    input.outputIndex = 0; // Dummy index, not spent
+    input.amount = 0.0;    // Zero amount, not spending UTXO
+    unstakeTx.addInput(input);
     
-    JsonValue result;
-    result["success"] = true;
-    result["address"] = address;
-    result["message"] = "Stake withdrawn successfully";
+    // Create an output for the amount to be returned
+    TransactionOutput output;
+    output.address = address;
+    output.amount = amount;
+    unstakeTx.addOutput(output);
     
-    return result;
+    // Sign the transaction using the wallet's private key
+    // We reuse the existing input signing mechanism. Since we added an input (dummy), it will be signed.
+    wallet->signTransaction(unstakeTx);
+
+    if (blockchain->addTransaction(unstakeTx)) {
+        // Update wallet's last tx hash
+        wallet->updateLastTxHash(unstakeTx.getHash());
+        std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+        wallet->saveToFile(walletPath);
+        // Also unregister/update validator state
+        // This happens when block is mined in updateUtxoSet.
+        // But we might want to mark it pending?
+
+        LOG_API(LogLevel::INFO, "Unstake transaction created: " + unstakeTx.getHash());
+
+        JsonValue result;
+        result["success"] = true;
+        result["address"] = address;
+        result["amount"] = amount;
+        result["txid"] = unstakeTx.getHash();
+        result["message"] = "Unstake transaction broadcasted";
+        return result;
+    } else {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to broadcast unstake transaction");
+    }
 }
 
 JsonValue RPCAPI::addStake(const JsonValue& params) {

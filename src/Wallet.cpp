@@ -5,6 +5,7 @@
 #include <random>
 #include <sstream>
 #include <iomanip>
+#include <fstream>
 
 Wallet::Wallet() {
     generateKeyPair();
@@ -25,6 +26,47 @@ void Wallet::generateKeyPair() {
     lastTxHash = "";
 }
 
+bool Wallet::saveToFile(const std::string& filepath) const {
+    try {
+        std::ofstream file(filepath);
+        if (!file.is_open()) {
+            return false;
+        }
+
+        file << privateKey << "\n";
+        file << publicKey << "\n";
+        file << address << "\n";
+        file << lastTxHash << "\n";
+
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool Wallet::loadFromFile(const std::string& filepath) {
+    try {
+        std::ifstream file(filepath);
+        if (!file.is_open()) {
+            return false;
+        }
+
+        std::string line;
+        if (std::getline(file, line)) privateKey = line;
+        if (std::getline(file, line)) publicKey = line;
+        if (std::getline(file, line)) address = line;
+        if (std::getline(file, line)) lastTxHash = line;
+
+        return !privateKey.empty() && !publicKey.empty() && !address.empty();
+    } catch (...) {
+        return false;
+    }
+}
+
+void Wallet::signTransaction(Transaction& tx) {
+    tx.signInputs(privateKey);
+}
+
 Transaction Wallet::createTransaction(const std::string& recipientAddress, double amount, 
                                      const std::unordered_map<std::string, TransactionOutput>& utxoSet) {
     // Find unspent outputs to use as inputs
@@ -33,26 +75,65 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
     
     double availableAmount = 0.0;
     
-    // Find unspent outputs belonging to this wallet
-    for (const auto& [utxoKey, utxo] : utxoSet) {
-        if (utxo.address == address) {
-            // Parse the UTXO key to get the transaction hash and output index
-            size_t colonPos = utxoKey.find(':');
-            if (colonPos != std::string::npos) {
-                std::string txHash = utxoKey.substr(0, colonPos);
-                uint32_t outputIndex = std::stoul(utxoKey.substr(colonPos + 1));
-                
-                // Create an input
-                TransactionInput input;
-                input.txHash = txHash;
-                input.outputIndex = outputIndex;
-                inputs.push_back(input);
-                
-                availableAmount += utxo.amount;
-                
-                // If we have enough funds, break
-                if (availableAmount >= amount) {
-                    break;
+    // Traceability Requirement: Prioritize UTXO from last transaction (chaining)
+    if (!lastTxHash.empty()) {
+        for (const auto& [utxoKey, utxo] : utxoSet) {
+            if (utxo.address == address) {
+                size_t sepPos = utxoKey.find('_');
+                if (sepPos != std::string::npos) {
+                    std::string txHash = utxoKey.substr(0, sepPos);
+                    if (txHash == lastTxHash) {
+                        // Found previous transaction output, use it first
+                        uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
+
+                        TransactionInput input;
+                        input.txHash = txHash;
+                        input.outputIndex = outputIndex;
+                        input.amount = utxo.amount; // Critical for traceability
+                        inputs.push_back(input);
+
+                        availableAmount += utxo.amount;
+                        // Don't break immediately, keep collecting outputs from the last tx if multiple exist
+                        // break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Find other unspent outputs if needed
+    if (availableAmount < amount) {
+        for (const auto& [utxoKey, utxo] : utxoSet) {
+            if (utxo.address == address) {
+                // Parse the UTXO key to get the transaction hash and output index
+                size_t sepPos = utxoKey.find('_');
+                if (sepPos != std::string::npos) {
+                    std::string txHash = utxoKey.substr(0, sepPos);
+                    uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
+
+                    // Check if already added (avoid duplicates)
+                    bool alreadyAdded = false;
+                    for (const auto& inp : inputs) {
+                        if (inp.txHash == txHash && inp.outputIndex == outputIndex) {
+                            alreadyAdded = true;
+                            break;
+                        }
+                    }
+                    if (alreadyAdded) continue;
+
+                    // Create an input
+                    TransactionInput input;
+                    input.txHash = txHash;
+                    input.outputIndex = outputIndex;
+                    input.amount = utxo.amount;
+                    inputs.push_back(input);
+
+                    availableAmount += utxo.amount;
+
+                    // If we have enough funds, break
+                    if (availableAmount >= amount) {
+                        break;
+                    }
                 }
             }
         }
@@ -102,10 +183,10 @@ Transaction Wallet::createGoldBackedTransaction(const std::string& recipientAddr
     for (const auto& [utxoKey, utxo] : utxoSet) {
         if (utxo.address == address) {
             // Parse the UTXO key to get the transaction hash and output index
-            size_t colonPos = utxoKey.find(':');
-            if (colonPos != std::string::npos) {
-                std::string txHash = utxoKey.substr(0, colonPos);
-                uint32_t outputIndex = std::stoul(utxoKey.substr(colonPos + 1));
+            size_t sepPos = utxoKey.find('_');
+            if (sepPos != std::string::npos) {
+                std::string txHash = utxoKey.substr(0, sepPos);
+                uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
                 
                 // Create an input
                 TransactionInput input;
