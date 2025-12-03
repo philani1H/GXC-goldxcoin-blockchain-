@@ -1204,6 +1204,8 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
              std::string amountStr = params[1].dump();
              amount = std::stod(amountStr);
         }
+    } catch (const std::exception& e) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount type or format: " + std::string(e.what()));
     } catch (...) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount type or format");
     }
