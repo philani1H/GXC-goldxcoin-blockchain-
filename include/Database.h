@@ -110,6 +110,9 @@ public:
     bool deleteUTXO(const std::string& txHash, uint32_t outputIndex);
     std::vector<TransactionOutput> getUTXOsByAddress(const std::string& address) const;
     
+    // Address management
+    bool updateAddressStats(const std::string& address, double amountChange, bool isNewTransaction);
+
     // Additional query operations
     double getAddressBalance(const std::string& address) const;
     size_t getBlockCount() const;
