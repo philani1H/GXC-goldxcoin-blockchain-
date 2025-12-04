@@ -49,6 +49,20 @@ struct MiningSolution {
     uint64_t extraNonce;
     std::time_t timestamp;
     MiningAlgorithm algorithm;
+    // GXHash traceability fields
+    std::string traceabilityHash;
+    std::string crossValidationHash;
+    bool traceabilityValid = false;
+};
+
+// GXHash algorithm constants
+constexpr uint32_t GXHASH_ROUNDS = 24;
+
+struct GXHashResult {
+    std::string hash;
+    std::string traceabilityHash;
+    std::string crossValidationHash;
+    bool traceabilityValid;
 };
 
 using SolutionCallback = std::function<void(const MiningSolution&)>;
@@ -87,8 +101,10 @@ private:
     std::string constructBlockHeader(const MiningJob& job, uint64_t nonce);
     bool checkDifficultyTarget(const std::string& hash, double difficulty);
     void submitSolution(const MiningJob& job, uint64_t nonce);
-    void updateThreadStats(uint32_t threadId, uint64_t hashCount, std::time_t startTime);
+    void updateThreadStats(uint32_t threadId, uint64_t hashCount, std::time_t startTime, uint64_t traceabilityChecks = 0);
     void statsLoop();
+    std::string constructGXHashHeader(const MiningJob& job, uint64_t nonce);
+    GXHashResult computeGXHash(const std::string& header, uint64_t nonce, const std::vector<std::string>& txs);
 
 public:
     GXHashMiner();
@@ -101,4 +117,5 @@ public:
     void setSolutionCallback(const SolutionCallback& callback);
     bool isMiningCapable();
     std::string getOptimizationInfo();
+    void setTraceabilityOptimization(bool enabled);
 };

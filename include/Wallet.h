@@ -55,4 +55,20 @@ public:
     std::string getAddress() const { return address; }
     std::string getPublicKey() const { return publicKey; }
     std::string getLastTxHash() const { return lastTxHash; }
+    
+    // Static address validation methods
+    static bool isValidAddress(const std::string& address) {
+        // GXC addresses start with "GXC" (mainnet) or "tGXC" (testnet)
+        if (address.length() < 30) return false;
+        return address.substr(0, 3) == "GXC" || address.substr(0, 4) == "tGXC";
+    }
+    
+    static bool isTestnetAddress(const std::string& address) {
+        return address.length() >= 4 && address.substr(0, 4) == "tGXC";
+    }
+    
+    static bool isMainnetAddress(const std::string& address) {
+        return address.length() >= 3 && address.substr(0, 3) == "GXC" && 
+               (address.length() < 4 || address[3] != 'C' || address.substr(0,4) != "tGXC");
+    }
 };
