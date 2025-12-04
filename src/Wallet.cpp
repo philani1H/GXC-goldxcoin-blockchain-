@@ -1,6 +1,8 @@
 #include "../include/Wallet.h"
 #include "../include/HashUtils.h"
 #include "../include/Crypto.h"
+#include "../include/Config.h" // Added to access Config::isTestnet()
+#include "../include/Utils.h"
 
 #include <random>
 #include <sstream>
@@ -18,9 +20,12 @@ void Wallet::generateKeyPair() {
     privateKey = keyPair.privateKey;
     publicKey = keyPair.publicKey;
     
-    // Generate address from public key (testnet detection would be done elsewhere)
-    // For now, generate mainnet address
-    address = Crypto::generateAddress(publicKey, false);
+    // Generate address from public key based on network configuration
+    // This fixes the issue where wallet generated Mainnet addresses (GXC...)
+    // while running on Testnet (expecting tGXC...), causing "Insufficient funds"
+    // because UTXOs were not recognized as belonging to the wallet.
+    bool isTestnet = Config::isTestnet();
+    address = Crypto::generateAddress(publicKey, isTestnet);
     
     // Initialize last transaction hash
     lastTxHash = "";
@@ -52,10 +57,15 @@ bool Wallet::loadFromFile(const std::string& filepath) {
         }
 
         std::string line;
-        if (std::getline(file, line)) privateKey = line;
-        if (std::getline(file, line)) publicKey = line;
-        if (std::getline(file, line)) address = line;
-        if (std::getline(file, line)) lastTxHash = line;
+        if (std::getline(file, line)) privateKey = Utils::trim(line);
+        if (std::getline(file, line)) publicKey = Utils::trim(line);
+        if (std::getline(file, line)) address = Utils::trim(line);
+        if (std::getline(file, line)) lastTxHash = Utils::trim(line);
+
+        // Re-derive address based on current network configuration to ensure correctness
+        // regardless of what's in the file (e.g. if file was from Mainnet but running Testnet)
+        bool isTestnet = Config::isTestnet();
+        address = Crypto::generateAddress(publicKey, isTestnet);
 
         return !privateKey.empty() && !publicKey.empty() && !address.empty();
     } catch (...) {
@@ -74,6 +84,8 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
     std::vector<TransactionOutput> outputs;
     
     double availableAmount = 0.0;
+    double fee = 0.001; // Standard transaction fee
+    double requiredTotal = amount + fee;
     
     // Traceability Requirement: Prioritize UTXO from last transaction (chaining)
     if (!lastTxHash.empty()) {
@@ -102,7 +114,7 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
     }
 
     // Find other unspent outputs if needed
-    if (availableAmount < amount) {
+    if (availableAmount < requiredTotal) {
         for (const auto& [utxoKey, utxo] : utxoSet) {
             if (utxo.address == address) {
                 // Parse the UTXO key to get the transaction hash and output index
@@ -131,7 +143,7 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
                     availableAmount += utxo.amount;
 
                     // If we have enough funds, break
-                    if (availableAmount >= amount) {
+                    if (availableAmount >= requiredTotal) {
                         break;
                     }
                 }
@@ -140,8 +152,8 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
     }
     
     // Check if we have enough funds
-    if (availableAmount < amount) {
-        throw std::runtime_error("Insufficient funds");
+    if (availableAmount < requiredTotal) {
+        throw std::runtime_error("Insufficient funds (Amount + Fee required: " + std::to_string(requiredTotal) + ")");
     }
     
     // Create the output to the recipient
@@ -151,22 +163,183 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
     outputs.push_back(recipientOutput);
     
     // If there's change, create an output back to our address
-    if (availableAmount > amount) {
+    if (availableAmount > requiredTotal) {
         TransactionOutput changeOutput;
         changeOutput.address = address;
-        changeOutput.amount = availableAmount - amount;
+        changeOutput.amount = availableAmount - requiredTotal;
+        outputs.push_back(changeOutput);
+    }
+
+    // Create the transaction
+    // Explicitly set prevTxHash to inputs[0].txHash to ensure traceability
+    // if we are not using lastTxHash as input
+    std::string correctPrevTxHash = !inputs.empty() ? inputs[0].txHash : lastTxHash;
+    Transaction tx(inputs, outputs, correctPrevTxHash);
+    tx.setFee(fee);
+
+    // Sign the inputs
+    tx.signInputs(privateKey);
+
+    // Update last transaction hash
+    lastTxHash = tx.getHash();
+
+    return tx;
+}
+
+Transaction Wallet::createStakeTransaction(double stakeAmount,
+                                         const std::unordered_map<std::string, TransactionOutput>& utxoSet) {
+    // Find unspent outputs to use as inputs
+    std::vector<TransactionInput> inputs;
+    std::vector<TransactionOutput> outputs;
+
+    double availableAmount = 0.0;
+    double fee = 0.001; // Standard fee
+    double requiredTotal = stakeAmount + fee;
+
+    // Traceability Requirement: Prioritize UTXO from last transaction (chaining)
+    if (!lastTxHash.empty()) {
+        for (const auto& [utxoKey, utxo] : utxoSet) {
+            if (utxo.address == address) {
+                size_t sepPos = utxoKey.find('_');
+                if (sepPos != std::string::npos) {
+                    std::string txHash = utxoKey.substr(0, sepPos);
+                    if (txHash == lastTxHash) {
+                        // Found previous transaction output, use it first
+                        uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
+
+                        TransactionInput input;
+                        input.txHash = txHash;
+                        input.outputIndex = outputIndex;
+                        input.amount = utxo.amount; // Critical for traceability
+                        inputs.push_back(input);
+
+                        availableAmount += utxo.amount;
+                    }
+                }
+            }
+        }
+    }
+
+    // Find other unspent outputs if needed
+    if (availableAmount < requiredTotal) {
+        for (const auto& [utxoKey, utxo] : utxoSet) {
+            if (utxo.address == address) {
+                // Parse the UTXO key
+                size_t sepPos = utxoKey.find('_');
+                if (sepPos != std::string::npos) {
+                    std::string txHash = utxoKey.substr(0, sepPos);
+                    uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
+
+                    // Check if already added (avoid duplicates)
+                    bool alreadyAdded = false;
+                    for (const auto& inp : inputs) {
+                        if (inp.txHash == txHash && inp.outputIndex == outputIndex) {
+                            alreadyAdded = true;
+                            break;
+                        }
+                    }
+                    if (alreadyAdded) continue;
+
+                    // Create an input
+                    TransactionInput input;
+                    input.txHash = txHash;
+                    input.outputIndex = outputIndex;
+                    input.amount = utxo.amount;
+                    inputs.push_back(input);
+
+                    availableAmount += utxo.amount;
+
+                    // If we have enough funds, break
+                    if (availableAmount >= requiredTotal) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Check if we have enough funds
+    if (availableAmount < requiredTotal) {
+        throw std::runtime_error("Insufficient funds for stake + fee");
+    }
+
+    // Create NO output for the stake amount (it is burned/locked)
+    // Only create change output if there is excess
+    if (availableAmount > requiredTotal) {
+        TransactionOutput changeOutput;
+        changeOutput.address = address;
+        changeOutput.amount = availableAmount - requiredTotal;
         outputs.push_back(changeOutput);
     }
     
     // Create the transaction
-    Transaction tx(inputs, outputs, lastTxHash);
+    // Explicitly set prevTxHash to inputs[0].txHash to ensure traceability
+    std::string correctPrevTxHash = !inputs.empty() ? inputs[0].txHash : lastTxHash;
+    Transaction tx(inputs, outputs, correctPrevTxHash);
+    tx.setType(TransactionType::STAKE);
+    tx.setFee(fee);
     
+    // Explicitly set ReferencedAmount to match Input[0].amount for traceability
+    if (!inputs.empty()) {
+        tx.setReferencedAmount(inputs[0].amount);
+    }
+
     // Sign the inputs
     tx.signInputs(privateKey);
     
     // Update last transaction hash
     lastTxHash = tx.getHash();
     
+    return tx;
+}
+
+Transaction Wallet::createUnstakeTransaction(double unstakeAmount,
+                                           const std::unordered_map<std::string, TransactionOutput>& utxoSet) {
+    // UNSTAKE Transaction Strategy:
+    // We create a special transaction that "mints" the staked coins back.
+    // To satisfy traceability, we link to the last transaction hash (dummy input).
+    // We do NOT consume real UTXOs because the blockchain logic treats (OutputTotal) as the Unstaked Amount.
+    // If we included real inputs, the blockchain would think we are unstaking (Input + Stake), causing "Insufficient Stake" error.
+
+    std::vector<TransactionInput> inputs;
+    std::vector<TransactionOutput> outputs;
+
+    // Create a marker input pointing to lastTxHash with 0 amount.
+    // This maintains the chain of hashes without consuming funds.
+    TransactionInput input;
+    input.txHash = lastTxHash.empty() ? "0" : lastTxHash;
+    input.outputIndex = 0; // Use index 0 (exists in most txs)
+    input.amount = 0.0;    // Zero amount effectively
+    inputs.push_back(input);
+
+    double fee = 0.001;
+    // Fee is paid from the unstaked amount
+    double totalOutput = unstakeAmount - fee;
+
+    if (totalOutput < 0) {
+        // Should not happen unless unstakeAmount is tiny and input is 0 and fee is high
+        throw std::runtime_error("Unstake amount too small to cover fee");
+    }
+
+    TransactionOutput output;
+    output.address = address;
+    output.amount = totalOutput;
+    outputs.push_back(output);
+
+    // Explicitly set prevTxHash to inputs[0].txHash to ensure traceability
+    std::string correctPrevTxHash = !inputs.empty() ? inputs[0].txHash : lastTxHash;
+    Transaction tx(inputs, outputs, correctPrevTxHash);
+    tx.setType(TransactionType::UNSTAKE);
+    tx.setFee(fee);
+
+    // Explicitly set ReferencedAmount to match Input[0].amount for traceability
+    if (!inputs.empty()) {
+        tx.setReferencedAmount(inputs[0].amount);
+    }
+
+    tx.signInputs(privateKey);
+    lastTxHash = tx.getHash();
+
     return tx;
 }
 
