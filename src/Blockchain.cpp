@@ -10,7 +10,12 @@
 #include <unordered_set>
 #include <random>
 
-Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0) {
+Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0),
+    currentHashrate(0.0), lastBlockTime(0.0), recentPoWBlocks(0), recentPoSBlocks(0) {
+    
+    // Initialize Security Engine
+    securityEngine = std::make_unique<GXCSecurity::SecurityEngine>();
+    
     // Set difficulty based on network type
     bool isTestnet = Config::isTestnet();
     if (isTestnet) {
@@ -20,6 +25,8 @@ Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0) {
         difficulty = 1000.0;  // Harder for mainnet
         LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created (MAINNET mode, difficulty: 1000.0)");
     }
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Security Engine initialized - AI Hashrate Sentinel active");
 }
 
 Blockchain::~Blockchain() {
@@ -1880,4 +1887,75 @@ std::vector<Validator> Blockchain::getActiveValidators() const {
     }
     
     return active;
+}
+
+// =========================================================
+//           SECURITY ENGINE INTEGRATION
+// =========================================================
+
+double Blockchain::getSecurityAdjustedDifficulty() const {
+    if (!securityEngine) return difficulty;
+    
+    // Get base difficulty from security engine
+    double adjustedDiff = securityEngine->calculateNextDifficulty(
+        difficulty, 
+        currentHashrate, 
+        lastBlockTime
+    );
+    
+    return adjustedDiff;
+}
+
+double Blockchain::getSecurityAdjustedReward(double blockTime) const {
+    if (!securityEngine) return blockReward;
+    
+    // Apply emission guard
+    return securityEngine->calculateBlockReward(blockTime);
+}
+
+double Blockchain::getRecommendedFee() const {
+    if (!securityEngine) return 0.0001; // Default min fee
+    
+    return securityEngine->getRecommendedFee();
+}
+
+bool Blockchain::detectPotentialAttack() const {
+    if (!securityEngine) return false;
+    
+    return securityEngine->detectAttack(currentHashrate, lastBlockTime);
+}
+
+std::string Blockchain::getAttackStatus() const {
+    if (!securityEngine) return "SECURITY_ENGINE_NOT_INITIALIZED";
+    
+    if (securityEngine->detectAttack(currentHashrate, lastBlockTime)) {
+        return securityEngine->getAttackType(currentHashrate, lastBlockTime);
+    }
+    
+    return "NETWORK_SECURE";
+}
+
+void Blockchain::updateHashrate(double hashrate) {
+    currentHashrate = hashrate;
+    
+    if (securityEngine) {
+        // Update security engine with new hashrate
+        securityEngine->predictHashrate(hashrate);
+        
+        // Update staking metrics
+        double stakedAmount = 0.0;
+        for (const auto& validator : validators) {
+            if (validator.getIsActive()) {
+                stakedAmount += validator.getStakeAmount();
+            }
+        }
+        securityEngine->updateStakingMetrics(stakedAmount, totalSupply);
+        
+        // Check for attacks
+        if (securityEngine->detectHashrateSurge(hashrate)) {
+            LOG_BLOCKCHAIN(LogLevel::WARNING, 
+                "SECURITY ALERT: Hashrate surge detected! Current: " + 
+                std::to_string(hashrate) + " H/s");
+        }
+    }
 }

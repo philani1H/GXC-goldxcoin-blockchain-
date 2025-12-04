@@ -12,6 +12,7 @@
 #include "Governance.h"
 #include "GoldToken.h"
 #include "StockContract.h"
+#include "security/SecurityEngine.h"
 #include <mutex>
 
 class Blockchain {
@@ -57,6 +58,15 @@ private:
     
     // Stock contracts
     std::unordered_map<std::string, StockContract> stockContracts;
+    
+    // Security Engine - protects against attacks
+    std::unique_ptr<GXCSecurity::SecurityEngine> securityEngine;
+    
+    // Security metrics tracking
+    double currentHashrate;
+    double lastBlockTime;
+    uint32_t recentPoWBlocks;
+    uint32_t recentPoSBlocks;
     
     // Private methods
     bool isValidChain() const;
@@ -214,6 +224,21 @@ public:
     // Enhanced transaction validation with traceability
     bool validateTransactionTraceability(const Transaction& tx) const;
     bool verifyInputReferences(const Transaction& tx) const;
+    
+    // Security Engine Access
+    GXCSecurity::SecurityEngine* getSecurityEngine() { return securityEngine.get(); }
+    const GXCSecurity::SecurityEngine* getSecurityEngine() const { return securityEngine.get(); }
+    
+    // Security-aware difficulty and reward calculation
+    double getSecurityAdjustedDifficulty() const;
+    double getSecurityAdjustedReward(double blockTime) const;
+    double getRecommendedFee() const;
+    bool detectPotentialAttack() const;
+    std::string getAttackStatus() const;
+    
+    // Hashrate tracking
+    void updateHashrate(double hashrate);
+    double getCurrentHashrate() const { return currentHashrate; }
     
     // Constants
     static const uint32_t MAX_SUPPLY = 31000000; // 31 million GXC
