@@ -72,6 +72,27 @@ RPCAPI::RPCAPI(Blockchain* blockchain, Network* network, uint16_t port)
     LOG_API(LogLevel::INFO, "RPC API initialized on port " + std::to_string(port));
 }
 
+// Helper to parse amount from various JSON types (string, number, etc.)
+double RPCAPI::parseAmount(const JsonValue& val) {
+    if (val.is_number()) {
+        return val.get<double>();
+    } else if (val.is_string()) {
+        std::string s = val.get<std::string>();
+        // Handle comma as decimal separator for international support
+        std::replace(s.begin(), s.end(), ',', '.');
+        // Remove whitespace
+        s.erase(std::remove_if(s.begin(), s.end(), ::isspace), s.end());
+        if (s.empty()) throw std::runtime_error("Empty amount string");
+        try {
+            return std::stod(s);
+        } catch (...) {
+            throw std::runtime_error("Invalid number format: " + s);
+        }
+    } else {
+        throw std::runtime_error("Invalid amount type: must be number or string");
+    }
+}
+
 RPCAPI::~RPCAPI() {
     stop();
 }
@@ -524,9 +545,16 @@ void RPCAPI::serverLoop() {
             }
             
             // Handle client in a separate thread
-            std::thread([this, clientSocket]() {
-                handleClient(clientSocket);
-            }).detach();
+            try {
+                std::thread([this, clientSocket]() {
+                    handleClient(clientSocket);
+                }).detach();
+            } catch (const std::system_error& e) {
+                LOG_API(LogLevel::ERROR, "Failed to create thread for client: " + std::string(e.what()));
+                close(clientSocket);
+                // Sleep longer if we are out of resources
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
             
         } catch (const std::exception& e) {
             LOG_API(LogLevel::ERROR, "Error in RPC server loop: " + std::string(e.what()));
@@ -866,10 +894,39 @@ JsonValue RPCAPI::transactionToJson(const Transaction& tx, uint32_t blockHeight,
     for (const auto& output : tx.getOutputs()) {
         totalOutput += output.amount;
     }
-    txJson["value"] = totalOutput;
-    txJson["amount"] = totalOutput;
     
-    txJson["fee"] = tx.getFee();
+    double fee = tx.getFee();
+    txJson["fee"] = fee;
+
+    // Calculate value based on transaction type
+    if (tx.getType() == TransactionType::STAKE) {
+        // For stake, the value is implicit (Input - Output - Fee)
+        // We need to calculate input total to verify
+        // But we might not have inputs readily available if they are pruned/UTXO set
+        // However, Transaction object has inputs.
+        double totalInput = 0.0;
+        for(const auto& input : tx.getInputs()) totalInput += input.amount;
+
+        double stakedAmount = totalInput - totalOutput - fee;
+
+        // Show as negative amount for sender (deduction)
+        txJson["amount"] = -stakedAmount;
+        txJson["value"] = stakedAmount; // True value of the stake
+        txJson["staked_amount"] = stakedAmount;
+        txJson["category"] = "stake";
+    } else if (tx.getType() == TransactionType::UNSTAKE) {
+        txJson["value"] = totalOutput;
+        txJson["amount"] = totalOutput; // Positive amount (credit)
+        txJson["category"] = "unstake";
+    } else if (tx.isCoinbaseTransaction()) {
+        txJson["value"] = totalOutput;
+        txJson["amount"] = totalOutput;
+        txJson["category"] = "generate"; // Standard for mining rewards
+    } else {
+        txJson["value"] = totalOutput;
+        txJson["amount"] = totalOutput;
+        // Default categories handled in listTransactions, but can be hinted here
+    }
     txJson["gas_price"] = 0.0;
     txJson["gasPrice"] = 0.0;
     txJson["gas_used"] = 0;
@@ -1189,23 +1246,10 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
     std::string address = params[0].get<std::string>();
     double amount = 0.0;
 
-    // Handle amount as number or string (for React Native compatibility)
     try {
-        if (params[1].is_number()) {
-            amount = params[1].get<double>();
-        } else if (params[1].is_string()) {
-            std::string amountStr = params[1].get<std::string>();
-            // Handle potential whitespace or commas
-            if (amountStr.empty()) throw std::runtime_error("Empty amount");
-            // Basic cleaning if necessary? std::stod handles whitespace.
-            amount = std::stod(amountStr);
-        } else {
-            // Try to dump to string and parse (last resort)
-             std::string amountStr = params[1].dump();
-             amount = std::stod(amountStr);
-        }
-    } catch (...) {
-        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount type or format");
+        amount = parseAmount(params[1]);
+    } catch (const std::exception& e) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount: " + std::string(e.what()));
     }
 
     if (amount <= 0) {
@@ -1876,7 +1920,14 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     }
     
     std::string address = params[0].get<std::string>();
-    double stakeAmount = params[1].get<double>();
+
+    double stakeAmount = 0.0;
+    try {
+        stakeAmount = parseAmount(params[1]);
+    } catch (const std::exception& e) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid stake amount: " + std::string(e.what()));
+    }
+
     uint32_t stakingDays = params[2].get<uint32_t>();
     
     // Validate minimum stake
@@ -2045,23 +2096,31 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
                         stakingTxCreated = true;
                     } else {
                         LOG_API(LogLevel::ERROR, "Failed to add staking transaction to blockchain");
+                        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to broadcast staking transaction");
                     }
                 } else {
                     LOG_API(LogLevel::ERROR, "Could not identify stake output to convert to burn");
+                    throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to construct staking transaction (output mismatch)");
                 }
             } else {
                 LOG_API(LogLevel::WARNING, "Wallet balance insufficient for staking: " + std::to_string(walletBalance) + " < " + std::to_string(stakeAmount));
+                throw RPCException(RPCException::RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient wallet balance for stake");
             }
+        } catch (const RPCException& e) {
+            throw; // Re-throw RPC exceptions
         } catch (const std::exception& e) {
             LOG_API(LogLevel::ERROR, "Error creating staking transaction: " + std::string(e.what()));
-            // Don't throw, just log. We still register the validator in DB (legacy behavior from logs)
-            // or should we fail? User said "no transaction was created... please fix".
-            // We should probably fail if we can't stake, but registerValidator acts as "intent".
+            throw RPCException(RPCException::RPC_WALLET_ERROR, "Staking failed: " + std::string(e.what()));
         }
     }
 
-    if (!stakingTxCreated) {
-         LOG_API(LogLevel::WARNING, "Validator registered but NO Staking Transaction created (External wallet or insufficient funds).");
+    // Only proceed to register if we didn't try to stake (external wallet) or if staking succeeded
+    // But here we are inside 'if (wallet)' block for local wallet logic.
+    // If the user provided a local wallet address but failed funds, we threw exception above.
+
+    if (!stakingTxCreated && wallet && wallet->getAddress() == address) {
+         // Should have thrown above
+         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Staking transaction failed to create");
     }
     
     // Create validator
@@ -2130,6 +2189,10 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
     input.amount = 0.0;    // Zero amount, not spending UTXO
     unstakeTx.addInput(input);
     
+    // STRICT TRACEABILITY: Set prevTxHash and referencedAmount to match the input
+    unstakeTx.setPrevTxHash(input.txHash);
+    unstakeTx.setReferencedAmount(input.amount);
+
     // Create an output for the amount to be returned
     TransactionOutput output;
     output.address = address;
