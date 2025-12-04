@@ -1031,6 +1031,36 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction hash is empty");
         return false;
     }
+
+    // Validate address network prefix
+    bool isTestnet = Config::isTestnet();
+    std::string expectedPrefix = isTestnet ? "tGXC" : "GXC";
+
+    // Helper to check address prefix
+    auto checkAddress = [&](const std::string& addr) -> bool {
+        if (addr.empty()) return true; // Empty addresses handled by other validation
+        if (addr.length() < expectedPrefix.length()) return false;
+        return addr.substr(0, expectedPrefix.length()) == expectedPrefix;
+    };
+
+    // Check outputs (receivers)
+    for (const auto& output : tx.getOutputs()) {
+        if (!checkAddress(output.address)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction output address network mismatch: " +
+                          output.address + " (Expected prefix: " + expectedPrefix + ")");
+            return false;
+        }
+    }
+
+    // Check sender (if not coinbase)
+    if (!tx.isCoinbaseTransaction()) {
+         std::string sender = tx.getSenderAddress();
+         if (!sender.empty() && !checkAddress(sender)) {
+             LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction sender address network mismatch: " +
+                          sender + " (Expected prefix: " + expectedPrefix + ")");
+             return false;
+         }
+    }
     
     // Skip validation for coinbase transactions
     if (tx.isCoinbaseTransaction()) {
