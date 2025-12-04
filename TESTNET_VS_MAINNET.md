@@ -1,287 +1,295 @@
-# 🔍 Testnet vs Mainnet - What's the Difference?
+# GXC Testnet vs Mainnet - Complete Comparison
 
-## 📊 Quick Comparison
+## Quick Summary
 
-| Feature | Testnet | Mainnet |
+| Feature | TESTNET | MAINNET |
 |---------|---------|---------|
 | **Purpose** | Testing & Development | Real Production |
-| **Block Time** | 60 seconds | 150 seconds |
-| **Difficulty** | 0.1 (Very Easy) | Higher (Harder) |
-| **Block Reward** | 12.5 GXC | 50 GXC (or configured) |
-| **Data Directory** | `./gxc_testnet_data` | `./gxc_data` |
+| **Coins** | Worthless (test coins) | Real value |
+| **Difficulty** | 0.1 (very easy) | 1000.0 (production) |
+| **Address Prefix** | `tGXC...` | `GXC...` |
+| **Database** | `blockchain_testnet.db` | `blockchain_mainnet.db` |
+| **Network Port** | 18333 | 8333 |
 | **RPC Port** | 18332 | 8332 |
-| **Coins Value** | ❌ No real value | ✅ Real value |
-| **Can Reset** | ✅ Yes, anytime | ❌ No, permanent |
-| **Mining Speed** | ⚡ Fast (easy) | 🐢 Slower (harder) |
+| **Genesis Block** | Separate | Separate |
+| **Security Level** | Relaxed | Full |
 
----
+## Visual Comparison
 
-## 🧪 TESTNET
-
-### What It Is:
 ```
-A "practice" blockchain for testing
-Like a sandbox or demo mode
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           TESTNET vs MAINNET                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   TESTNET (Development Network)           MAINNET (Production Network)      │
+│   ═════════════════════════════           ═════════════════════════════     │
+│                                                                              │
+│   Purpose: Testing & Development          Purpose: Real Transactions        │
+│   ┌─────────────────────────┐             ┌─────────────────────────┐       │
+│   │  👨‍💻 Developers           │             │  💰 Real Users           │       │
+│   │  🧪 Testing new features │             │  🏦 Real Value           │       │
+│   │  🐛 Bug hunting          │             │  🔒 Maximum Security     │       │
+│   │  📚 Learning             │             │  ⚡ Production Ready     │       │
+│   └─────────────────────────┘             └─────────────────────────┘       │
+│                                                                              │
+│   Difficulty: 0.1                         Difficulty: 1000.0                │
+│   ┌─────────────────────────┐             ┌─────────────────────────┐       │
+│   │  ⚡ Very easy mining     │             │  🔨 Real mining effort  │       │
+│   │  🚀 Fast block times    │             │  ⏱️ 10 second blocks    │       │
+│   │  📦 Quick testing       │             │  🛡️ Attack resistant    │       │
+│   └─────────────────────────┘             └─────────────────────────┘       │
+│                                                                              │
+│   Address: tGXC9fab7317...               Address: GXC9fab7317...           │
+│   ┌─────────────────────────┐             ┌─────────────────────────┐       │
+│   │  t = testnet prefix     │             │  No prefix = mainnet    │       │
+│   │  Cannot be used on main │             │  Real GXC coins         │       │
+│   │  Free to obtain         │             │  Must be mined/bought   │       │
+│   └─────────────────────────┘             └─────────────────────────┘       │
+│                                                                              │
+│   Database: blockchain_testnet.db         Database: blockchain_mainnet.db   │
+│   ┌─────────────────────────┐             ┌─────────────────────────┐       │
+│   │  Separate chain         │             │  Separate chain         │       │
+│   │  Can be reset           │             │  NEVER reset            │       │
+│   │  Test data only         │             │  Real transactions      │       │
+│   └─────────────────────────┘             └─────────────────────────┘       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Configuration:
-```python
-TESTNET_DATA_DIR = "./gxc_testnet_data"
-BLOCK_TIME = 60 seconds          # Faster blocks
-INITIAL_DIFFICULTY = 0.1         # Very easy mining
-BLOCK_REWARD = 12.5 GXC          # Lower rewards
-RPC_PORT = 18332
+## Detailed Differences
+
+### 1. Difficulty Settings
+
+```cpp
+// From Blockchain.cpp constructor:
+
+if (isTestnet) {
+    difficulty = 0.1;   // TESTNET: Very easy - mine blocks in seconds
+} else {
+    difficulty = 1000.0; // MAINNET: Production difficulty
+}
 ```
 
-### Pros ✅
-- **Fast mining** - Blocks every 60 seconds
-- **Easy difficulty** - Can mine on laptop
-- **Safe to test** - Can delete and restart
-- **No risk** - Mistakes don't matter
-- **Quick feedback** - See results fast
+**Why Testnet is Easier:**
+- Developers can mine blocks quickly for testing
+- No need for specialized hardware
+- Faster feedback during development
+- Can test many scenarios rapidly
 
-### Cons ❌
-- **Not real** - Coins have no value
-- **Temporary** - Can be reset anytime
-- **Lower rewards** - Only 12.5 GXC per block
-- **Not permanent** - Data can be wiped
+**Why Mainnet is Harder:**
+- Prevents spam and attacks
+- Ensures fair distribution
+- Maintains 10-second block target
+- Security Engine fully active
 
-### Use Testnet For:
+### 2. Address Formats
+
 ```
-✅ Testing wallet features
-✅ Testing sending/receiving
-✅ Testing staking
-✅ Making sure everything works
-✅ Learning how it works
-✅ Development & debugging
+TESTNET ADDRESS:
+┌──────────────────────────────────────────────────┐
+│  tGXC9fab7317231b966af85ac453e168c0932           │
+│  ↑                                               │
+│  └─ "t" prefix = TESTNET                        │
+│                                                  │
+│  • Clearly identifies test coins                 │
+│  • Cannot be sent to mainnet addresses           │
+│  • Prevents accidental mixing of networks        │
+└──────────────────────────────────────────────────┘
+
+MAINNET ADDRESS:
+┌──────────────────────────────────────────────────┐
+│  GXC9fab7317231b966af85ac453e168c0932            │
+│  ↑                                               │
+│  └─ No "t" prefix = MAINNET                     │
+│                                                  │
+│  • Real GXC coins with value                    │
+│  • Cannot be sent to testnet addresses           │
+│  • Protected by full security                   │
+└──────────────────────────────────────────────────┘
 ```
 
-### Example:
+### 3. Network Ports
+
+```
+TESTNET:                          MAINNET:
+═════════                         ═════════
+
+P2P Port:  18333                  P2P Port:  8333
+RPC Port:  18332                  RPC Port:  8332
+
+┌─────────────────┐               ┌─────────────────┐
+│   Testnet       │               │   Mainnet       │
+│   Nodes         │               │   Nodes         │
+│                 │               │                 │
+│  :18333 ←──────→│               │  :8333 ←──────→ │
+│  :18332 (RPC)   │               │  :8332 (RPC)    │
+└─────────────────┘               └─────────────────┘
+
+• Different ports prevent accidental connections
+• Testnet nodes only connect to other testnet nodes
+• Mainnet nodes only connect to other mainnet nodes
+```
+
+### 4. Database Separation
+
+```
+./gxc_data/
+├── blockchain_testnet.db    ← TESTNET chain
+│   ├── Test genesis block
+│   ├── Test transactions
+│   ├── Test validators
+│   └── Can be deleted/reset
+│
+└── blockchain_mainnet.db    ← MAINNET chain
+    ├── Real genesis block
+    ├── Real transactions
+    ├── Real validators
+    └── NEVER delete!
+```
+
+### 5. Security Engine Behavior
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    SECURITY ENGINE BY NETWORK                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   TESTNET Security:                       MAINNET Security:                  │
+│   ═════════════════                       ═════════════════                  │
+│                                                                              │
+│   • Security Engine: ACTIVE               • Security Engine: ACTIVE         │
+│   • Attack Detection: ON                  • Attack Detection: ON            │
+│   • Difficulty Adjustment: RELAXED        • Difficulty Adjustment: STRICT   │
+│   • Emission Guard: ACTIVE                • Emission Guard: ACTIVE          │
+│   • Fee Surge Guard: ACTIVE               • Fee Surge Guard: ACTIVE         │
+│                                                                              │
+│   Key Difference:                                                           │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  TESTNET: Base difficulty 0.1 allows quick mining                   │   │
+│   │  MAINNET: Base difficulty 1000.0 requires real work                 │   │
+│   │                                                                      │   │
+│   │  Security Engine adjusts FROM these base values                     │   │
+│   │  Both networks are protected - just with different baselines        │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 6. Genesis Block Differences
+
+```cpp
+// TESTNET Genesis:
+{
+    "height": 0,
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "miner": "tGXC9fab7317231b966af85ac453e168c0932",  // Testnet address
+    "reward": 50.0,
+    "network": "testnet"
+}
+
+// MAINNET Genesis:
+{
+    "height": 0,
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "miner": "GXC9fab7317231b966af85ac453e168c0932",   // Mainnet address
+    "reward": 50.0,
+    "network": "mainnet"
+}
+```
+
+## How to Start Each Network
+
+### Testnet (for Development)
 ```bash
-# Start testnet
-python3 testnet_blockchain_node.py
+# Start testnet node
+./gxc-node --testnet
 
-# Mine on testnet (easy)
-python3 mining/gxhash_miner.py --address GXC21d83ca607604df4f86bd60761e3c4ee30
+# Connect CLI to testnet
+./gxc-cli --testnet getblockchaininfo
 
-# Result:
-Block 0 mined! (took 10 seconds)
-Reward: 12.5 GXC → GXC21d83ca607604df4f86bd60761e3c4ee30
-
-Block 1 mined! (took 15 seconds)
-Reward: 12.5 GXC → GXC21d83ca607604df4f86bd60761e3c4ee30
-
-# Fast and easy! ⚡
+# Mine on testnet (easy difficulty)
+./gxc-miner --testnet --address tGXCyouraddress...
 ```
 
----
-
-## 🏭 MAINNET
-
-### What It Is:
-```
-The REAL blockchain
-Production environment
-Permanent and valuable
-```
-
-### Configuration:
-```python
-DATA_DIR = "./gxc_data"
-BLOCK_TIME = 150 seconds         # Slower blocks
-INITIAL_DIFFICULTY = Higher      # Harder mining
-BLOCK_REWARD = 50 GXC            # Full rewards
-RPC_PORT = 8332
-```
-
-### Pros ✅
-- **Real value** - Coins are worth something
-- **Permanent** - Blockchain never resets
-- **Higher rewards** - 50 GXC per block
-- **Official** - The actual GXC blockchain
-- **Secure** - Higher difficulty = more secure
-
-### Cons ❌
-- **Slower** - Blocks every 150 seconds
-- **Harder** - Needs more computing power
-- **Permanent** - Mistakes are forever
-- **Serious** - Real money involved
-- **Can't reset** - Once started, it's permanent
-
-### Use Mainnet For:
-```
-✅ Real mining
-✅ Real transactions
-✅ Real staking
-✅ Building real value
-✅ Production use
-✅ Actual cryptocurrency
-```
-
-### Example:
+### Mainnet (for Production)
 ```bash
-# Start mainnet (need to build C++ node first)
-./build/gxc_node --miner-address GXC21d83ca607604df4f86bd60761e3c4ee30
+# Start mainnet node (default)
+./gxc-node
 
-# Mine on mainnet (harder)
-./build/gxc-miner --address GXC21d83ca607604df4f86bd60761e3c4ee30
+# Connect CLI to mainnet
+./gxc-cli getblockchaininfo
 
-# Result:
-Block 0 mined! (took 2 minutes)
-Reward: 50 GXC → GXC21d83ca607604df4f86bd60761e3c4ee30
-
-Block 1 mined! (took 3 minutes)
-Reward: 50 GXC → GXC21d83ca607604df4f86bd60761e3c4ee30
-
-# Slower but REAL! 💰
+# Mine on mainnet (full difficulty)
+./gxc-miner --address GXCyouraddress...
 ```
 
----
+## When to Use Each
 
-## 🎯 Which Should You Use?
+### Use TESTNET When:
+- 🧪 Developing new features
+- 🐛 Testing bug fixes
+- 📚 Learning how the blockchain works
+- 🔄 Testing wallet integration
+- ⚡ Need fast block times
+- 💸 Need free test coins
+- 🧹 Want to reset and start fresh
 
-### Start with TESTNET if:
+### Use MAINNET When:
+- 💰 Handling real value
+- 🏦 Running production services
+- 👥 Serving real users
+- 🔒 Maximum security needed
+- 📊 Real network statistics
+- 🌐 Connecting to real miners/stakers
+
+## Coin Value Comparison
+
 ```
-✅ First time using the blockchain
-✅ Want to test features
-✅ Want to see how it works
-✅ Don't want to wait long
-✅ Want to experiment safely
-```
-
-### Use MAINNET if:
-```
-✅ Everything tested and working
-✅ Ready for real mining
-✅ Want real valuable coins
-✅ Ready to commit permanently
-✅ Have proper mining hardware
-```
-
----
-
-## 📋 Current Status
-
-### Testnet:
-```
-Status: Ready to use ✅
-Data: ./gxc_testnet_data
-Blocks: 0 (fresh start)
-Script: testnet_blockchain_node.py
-```
-
-### Mainnet:
-```
-Status: Ready to use ✅
-Data: ./gxc_data
-Blocks: 0 (fresh start)
-Script: Need to build C++ node OR use Python version
-```
-
----
-
-## 🚀 Recommendation
-
-### For Your Situation:
-
-**Option 1: Test First (RECOMMENDED)** ⭐
-```
-1. Start testnet
-2. Mine a few blocks (fast!)
-3. Test sending/receiving
-4. Test staking
-5. Verify everything works
-6. Then switch to mainnet
-
-Time: 30 minutes
-Risk: Zero
-Benefit: Know everything works!
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           COIN VALUES                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   TESTNET COINS (tGXC):                   MAINNET COINS (GXC):              │
+│                                                                              │
+│   Value: $0.00 (worthless)               Value: Real market price           │
+│   Purpose: Testing only                  Purpose: Real transactions         │
+│   Obtained: Free faucets, easy mining    Obtained: Mining, staking, buying  │
+│   Transferable: No                       Transferable: Yes, to exchanges    │
+│                                                                              │
+│   ┌───────────────────────┐              ┌───────────────────────┐          │
+│   │  1000 tGXC = $0       │              │  1 GXC = Real Value   │          │
+│   │  Cannot be exchanged  │              │  Trade on exchanges   │          │
+│   │  Cannot be sold       │              │  Store of value       │          │
+│   └───────────────────────┘              └───────────────────────┘          │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Option 2: Go Straight to Mainnet**
-```
-1. Start mainnet
-2. Mine genesis block
-3. Start earning real GXC
-4. Hope everything works
+## Summary Table
 
-Time: Immediate
-Risk: If something breaks, harder to fix
-Benefit: Start earning real coins now
-```
+| Aspect | TESTNET | MAINNET |
+|--------|---------|---------|
+| **Start Command** | `./gxc-node --testnet` | `./gxc-node` |
+| **Difficulty** | 0.1 | 1000.0 |
+| **Block Time** | ~1 second (easy) | ~10 seconds |
+| **Address Prefix** | `tGXC` | `GXC` |
+| **P2P Port** | 18333 | 8333 |
+| **RPC Port** | 18332 | 8332 |
+| **Database** | `blockchain_testnet.db` | `blockchain_mainnet.db` |
+| **Coin Value** | $0 (test coins) | Real value |
+| **Can Reset** | Yes | **NEVER** |
+| **Security Engine** | Active (relaxed base) | Active (strict base) |
+| **Purpose** | Development/Testing | Production |
 
----
+## Production Checklist
 
-## 💡 My Recommendation
+Before going to MAINNET, ensure:
 
-**Start with TESTNET for 30 minutes:**
-
-```bash
-# 1. Start testnet (1 minute)
-python3 testnet_blockchain_node.py
-
-# 2. Mine a few blocks (10 minutes)
-python3 mining/gxhash_miner.py --address GXC21d83ca607604df4f86bd60761e3c4ee30
-
-# 3. Check balance (1 minute)
-# Verify you received coins
-
-# 4. Test sending (5 minutes)
-# Send coins to another address
-
-# 5. Test staking (5 minutes)
-# Stake some coins
-
-# 6. Verify everything works (5 minutes)
-
-# 7. Switch to mainnet (1 minute)
-# Now you know it all works!
-```
-
-**Then switch to MAINNET:**
-```bash
-# Start real blockchain
-./build/gxc_node --miner-address GXC21d83ca607604df4f86bd60761e3c4ee30
-
-# Mine real blocks
-# Earn real GXC
-# Build real value
-```
-
----
-
-## 🎊 Summary
-
-**Testnet:**
-- ⚡ Fast (60s blocks)
-- 🎮 Easy (low difficulty)
-- 🧪 Safe (can reset)
-- 📚 Learning (practice mode)
-- ❌ Not valuable (test coins)
-
-**Mainnet:**
-- 🐢 Slower (150s blocks)
-- 💪 Harder (higher difficulty)
-- 🔒 Permanent (can't reset)
-- 💼 Production (real use)
-- ✅ Valuable (real coins)
-
----
-
-## ❓ Your Choice
-
-**What would you like to do?**
-
-**A) Test first on testnet** (30 min, safe, recommended)
-- See everything work
-- Fast results
-- No risk
-- Then switch to mainnet
-
-**B) Go straight to mainnet** (immediate, real coins)
-- Start earning now
-- Real blockchain
-- Permanent
-- Higher risk if issues
-
-**Which do you prefer?** 🤔
+- [ ] All tests pass (63/63 ✅)
+- [ ] Security Engine integrated ✅
+- [ ] Testnet testing complete
+- [ ] No hardcoded testnet values
+- [ ] Proper address validation
+- [ ] Database backups configured
+- [ ] Monitoring in place
+- [ ] Security audit completed
