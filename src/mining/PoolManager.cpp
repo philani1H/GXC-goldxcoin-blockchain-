@@ -1,8 +1,9 @@
 // PoolManager.cpp
 // Stub implementation for mining pool manager.
 
-#include "GXCMiner.h"
-#include "blockchain.h"
+#include "../../include/mining/PoolManager.h"
+#include "../../include/blockchain.h"
+#include "../../include/Logger.h"
 #include <iostream>
 
 PoolManager::PoolManager(Blockchain* blockchainPtr) : blockchain(blockchainPtr), socketFd(-1), connected(false), shouldStop(false), poolHashRate(0.0), poolDifficulty(1), poolShares(0) {}
@@ -53,7 +54,7 @@ double PoolManager::getPoolHashRate() const { return poolHashRate; }
 uint32_t PoolManager::getPoolDifficulty() const { return poolDifficulty; }
 uint64_t PoolManager::getPoolShares() const { return poolShares; }
 std::chrono::time_point<std::chrono::steady_clock> PoolManager::getLastWorkTime() const { return lastWorkTime; }
-void PoolManager::setWorkCallback(std::function<void(const MiningWork&)> callback) { workCallback = callback; }
+void PoolManager::setWorkCallback(std::function<void(const MiningWork&)> cb) { workCallback = cb; }
 void PoolManager::setDifficultyCallback(std::function<void(uint32_t)> callback) { difficultyCallback = callback; }
 void PoolManager::setConnectionCallback(std::function<void(bool)> callback) { connectionCallback = callback; }
 // Private methods (stubs)
@@ -62,3 +63,7 @@ void PoolManager::handleStratumMessage(const std::string&) {}
 void PoolManager::sendStratumMessage(const std::string&) {}
 bool PoolManager::parseStratumWork(const std::string&, MiningWork&) { return false; }
 void PoolManager::processShareResponse(const std::string&) {}
+void PoolManager::startStratumClient() { std::cout << "[PoolManager] Starting Stratum client..." << std::endl; }
+void PoolManager::stopStratumClient() { std::cout << "[PoolManager] Stopping Stratum client..." << std::endl; }
+void PoolManager::processStratumMessage(const std::string& message) { handleStratumMessage(message); }
+void PoolManager::handleNetworkError(const std::string& error) { std::cerr << "[PoolManager] Network error: " << error << std::endl; }

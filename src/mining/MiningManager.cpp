@@ -126,10 +126,10 @@ void MiningManager::setPoolInfo(const std::string& poolUrl, const std::string& u
     }
 }
 
-MiningStats MiningManager::getStats() const {
+MiningManagerStats MiningManager::getStats() const {
     std::lock_guard<std::mutex> lock(miningMutex);
     
-    MiningStats stats;
+    MiningManagerStats stats;
     stats.algorithm = currentAlgorithm;
     stats.hashRate = hashRate;
     stats.acceptedShares = acceptedShares;

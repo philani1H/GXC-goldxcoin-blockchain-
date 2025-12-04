@@ -871,10 +871,9 @@ endif()
 
 # Mining client executables
 if(BUILD_MINING_CLIENT)
-    # GXC Miner (all algorithms) - CLI
+    # GXC Miner (all algorithms) - CLI (no GUI dependencies)
     add_executable(gxc-miner
         mining/main.cpp
-        mining/MinerGUI.cpp
     )
     target_link_libraries(gxc-miner gxc_mining gxc_core)
     

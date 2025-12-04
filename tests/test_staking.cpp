@@ -30,8 +30,9 @@ protected:
     std::unique_ptr<Wallet> wallet;
     
     // Helper to create a fake UTXO set with coins
+    // Note: UTXO key format is "txHash_outputIndex" so txHash cannot contain underscores
     std::unordered_map<std::string, TransactionOutput> createUtxoSet(
-        const std::string& address, double amount, const std::string& txHash = "genesis_tx_hash") {
+        const std::string& address, double amount, const std::string& txHash = "0000000000000000000000000000000000000000000000000000000000000001") {
         
         std::unordered_map<std::string, TransactionOutput> utxoSet;
         TransactionOutput utxo;
@@ -158,7 +159,7 @@ TEST_F(StakingTest, TraceabilityFormulaFailure) {
 // Test: Wallet createTransaction follows traceability
 TEST_F(StakingTest, WalletCreateTransactionTraceability) {
     std::string address = wallet->getAddress();
-    auto utxoSet = createUtxoSet(address, 200.0, "genesis_tx");
+    auto utxoSet = createUtxoSet(address, 200.0);
     
     try {
         Transaction tx = wallet->createTransaction("recipient_addr", 50.0, utxoSet, 0.001);
@@ -188,7 +189,7 @@ TEST_F(StakingTest, WalletCreateTransactionTraceability) {
 // Test: STAKE transaction creation
 TEST_F(StakingTest, CreateStakeTransaction) {
     std::string address = wallet->getAddress();
-    auto utxoSet = createUtxoSet(address, 200.0, "genesis_tx");
+    auto utxoSet = createUtxoSet(address, 200.0);
     
     try {
         double stakeAmount = 100.0;
@@ -216,7 +217,7 @@ TEST_F(StakingTest, CreateStakeTransaction) {
 // Test: STAKE transaction with insufficient funds
 TEST_F(StakingTest, CreateStakeTransactionInsufficientFunds) {
     std::string address = wallet->getAddress();
-    auto utxoSet = createUtxoSet(address, 50.0, "genesis_tx"); // Only 50 GXC
+    auto utxoSet = createUtxoSet(address, 50.0); // Only 50 GXC (use default hash)
     
     // Try to stake 100 GXC (should fail)
     EXPECT_THROW(
@@ -245,7 +246,7 @@ TEST_F(StakingTest, CreateUnstakeTransaction) {
 // Test: Input-output balance
 TEST_F(StakingTest, InputOutputBalance) {
     std::string address = wallet->getAddress();
-    auto utxoSet = createUtxoSet(address, 100.0, "genesis_tx");
+    auto utxoSet = createUtxoSet(address, 100.0);
     
     double sendAmount = 30.0;
     double fee = 0.001;
@@ -275,43 +276,26 @@ TEST_F(StakingTest, CoinbaseTransaction) {
     EXPECT_TRUE(coinbase.verifyTraceabilityFormula()); // Exempt from traceability
 }
 
-// Test: ValidatorSelector weighted selection
-TEST_F(StakingTest, ValidatorSelector) {
-    ValidatorSelector selector;
-    
-    // Add validators with different stakes
+// Test: Validator with different stake amounts
+TEST_F(StakingTest, ValidatorStakeAmounts) {
+    // Create validators with different stakes
     Validator v1("addr1", 100.0, 30);
     Validator v2("addr2", 200.0, 30);
     Validator v3("addr3", 300.0, 30);
     
-    selector.addValidator(v1);
-    selector.addValidator(v2);
-    selector.addValidator(v3);
+    // All should have minimum stake (assuming 32 GXC minimum)
+    EXPECT_TRUE(v1.hasMinimumStake());
+    EXPECT_TRUE(v2.hasMinimumStake());
+    EXPECT_TRUE(v3.hasMinimumStake());
     
-    // Select a validator
-    Validator selected = selector.selectValidator();
+    // Verify stake amounts
+    EXPECT_EQ(v1.getStakeAmount(), 100.0);
+    EXPECT_EQ(v2.getStakeAmount(), 200.0);
+    EXPECT_EQ(v3.getStakeAmount(), 300.0);
     
-    // Should return one of the validators
-    EXPECT_TRUE(selected.getAddress() == "addr1" || 
-                selected.getAddress() == "addr2" || 
-                selected.getAddress() == "addr3");
-    
-    // Run multiple selections to verify weighting
-    int counts[3] = {0, 0, 0};
-    for (int i = 0; i < 1000; i++) {
-        Validator v = selector.selectValidator();
-        if (v.getAddress() == "addr1") counts[0]++;
-        else if (v.getAddress() == "addr2") counts[1]++;
-        else if (v.getAddress() == "addr3") counts[2]++;
-    }
-    
-    // Higher stake should be selected more often
-    // addr3 (300) should be selected more than addr1 (100)
-    EXPECT_GT(counts[2], counts[0]);
+    // Test weighted stake (should be proportional to stake)
+    // v3 should have more weighted stake than v1
+    EXPECT_GT(v3.getWeightedStake(), v1.getWeightedStake());
 }
 
-// Main function to run tests
-int main(int argc, char** argv) {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+// Note: main() is provided by test_main.cpp

@@ -4,10 +4,27 @@
 #include <iostream>
 #include <signal.h>
 #include <thread>
+#include <iomanip>
+#include <sstream>
 
 // Global variables for clean shutdown
 bool g_running = true;
 SHA256Miner* g_miner = nullptr;
+
+// Helper function to format hash rate
+std::string formatHashRate(double rate) {
+    std::ostringstream oss;
+    if (rate >= 1e9) {
+        oss << std::fixed << std::setprecision(2) << (rate / 1e9) << " GH/s";
+    } else if (rate >= 1e6) {
+        oss << std::fixed << std::setprecision(2) << (rate / 1e6) << " MH/s";
+    } else if (rate >= 1e3) {
+        oss << std::fixed << std::setprecision(2) << (rate / 1e3) << " KH/s";
+    } else {
+        oss << std::fixed << std::setprecision(2) << rate << " H/s";
+    }
+    return oss.str();
+}
 
 void signalHandler(int signum) {
     std::cout << "\nReceived signal " << signum << ". Shutting down SHA256 miner..." << std::endl;
@@ -140,7 +157,7 @@ void runBenchmark(uint32_t threads) {
     testJob.previousHash = "0000000000000000000000000000000000000000000000000000000000000000";
     testJob.merkleRoot = "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b";
     testJob.timestamp = Utils::getCurrentTimestamp();
-    testJob.bits = 0x1d00ffff;
+    testJob.bits = "1d00ffff";
     testJob.difficulty = 1000.0;
     
     miner.setJob(testJob);
@@ -154,7 +171,7 @@ void runBenchmark(uint32_t threads) {
         
         std::cout << "\rBenchmark Progress: " 
                   << (Utils::getCurrentTimestamp() - startTime) << "/30s - "
-                  << "Hash Rate: " << Utils::formatAmount(stats.hashRate, 2) << " H/s    ";
+                  << "Hash Rate: " << formatHashRate(stats.hashRate) << "    ";
         std::cout.flush();
         
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -167,9 +184,9 @@ void runBenchmark(uint32_t threads) {
     std::cout << std::endl;
     std::cout << std::endl;
     std::cout << "=== Benchmark Results ===" << std::endl;
-    std::cout << "Average Hash Rate: " << Utils::formatAmount(finalStats.hashRate, 2) << " H/s" << std::endl;
+    std::cout << "Average Hash Rate: " << formatHashRate(finalStats.hashRate) << std::endl;
     std::cout << "Total Hashes: " << finalStats.totalHashes << std::endl;
-    std::cout << "Efficiency: " << Utils::formatAmount(finalStats.hashRate / threads, 2) << " H/s per thread" << std::endl;
+    std::cout << "Efficiency: " << formatHashRate(finalStats.hashRate / threads) << " per thread" << std::endl;
     std::cout << "=========================" << std::endl;
 }
 
@@ -179,10 +196,10 @@ void printMiningStats(SHA256Miner* miner) {
     auto stats = miner->getStats();
     
     std::cout << "\r"; // Clear line
-    std::cout << "SHA256 - Hash Rate: " << Utils::formatAmount(stats.hashRate, 2) << " H/s | ";
+    std::cout << "SHA256 - Hash Rate: " << formatHashRate(stats.hashRate) << " | ";
     std::cout << "Total: " << stats.totalHashes << " | ";
     std::cout << "Threads: " << stats.threadsActive << " | ";
-    std::cout << "Uptime: " << Utils::formatAmount(stats.uptime, 0) << "s    ";
+    std::cout << "Uptime: " << stats.uptime << "s    ";
     std::cout.flush();
 }
 
@@ -202,7 +219,7 @@ int main(int argc, char* argv[]) {
     
     // Initialize logging
     Logger::initialize();
-    Logger::setLogLevel(config.verbose ? LogLevel::DEBUG : LogLevel::INFO);
+    Logger::getInstance().setLogLevel(config.verbose ? LogLevel::DEBUG : LogLevel::INFO);
     
     LOG_MINING(LogLevel::INFO, "Starting GXC SHA256 Miner");
     
@@ -236,7 +253,7 @@ int main(int argc, char* argv[]) {
         job.previousHash = "0000000000000000000000000000000000000000000000000000000000000000";
         job.merkleRoot = "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b";
         job.timestamp = Utils::getCurrentTimestamp();
-        job.bits = 0x1d00ffff;
+        job.bits = "1d00ffff";
         job.difficulty = 1000.0;
         
         g_miner->setJob(job);
@@ -287,10 +304,10 @@ int main(int argc, char* argv[]) {
         auto finalStats = g_miner->getStats();
         std::cout << std::endl;
         std::cout << "=== Final SHA256 Mining Statistics ===" << std::endl;
-        std::cout << "Total Runtime: " << Utils::formatAmount(finalStats.uptime, 0) << " seconds" << std::endl;
-        std::cout << "Average Hash Rate: " << Utils::formatAmount(finalStats.hashRate, 2) << " H/s" << std::endl;
+        std::cout << "Total Runtime: " << finalStats.uptime << " seconds" << std::endl;
+        std::cout << "Average Hash Rate: " << formatHashRate(finalStats.hashRate) << std::endl;
         std::cout << "Total Hashes: " << finalStats.totalHashes << std::endl;
-        std::cout << "Efficiency: " << Utils::formatAmount(finalStats.hashRate / finalStats.threadsActive, 2) << " H/s per thread" << std::endl;
+        std::cout << "Efficiency: " << formatHashRate(finalStats.hashRate / finalStats.threadsActive) << " per thread" << std::endl;
         std::cout << "=======================================" << std::endl;
         
         delete g_miner;
