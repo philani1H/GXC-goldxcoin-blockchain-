@@ -759,6 +759,11 @@ set(GOVERNANCE_SOURCES
     src/tokens/TokenManager.cpp
 )
 
+# Security Engine
+set(SECURITY_SOURCES
+    src/security/SecurityEngine.cpp
+)
+
 # Header files
 set(HEADERS
     include/Block.h
@@ -795,6 +800,7 @@ add_library(gxc_core STATIC
     ${CORE_SOURCES}
     ${NETWORK_SOURCES}
     ${GOVERNANCE_SOURCES}
+    ${SECURITY_SOURCES}
 )
 
 target_link_libraries(gxc_core
@@ -1070,6 +1076,7 @@ if(BUILD_TESTS)
             tests/test_wallet.cpp
             tests/test_mining.cpp
             tests/test_staking.cpp
+            tests/test_security.cpp
             tests/test_network.cpp
             tests/test_api.cpp
             tests/test_governance.cpp
