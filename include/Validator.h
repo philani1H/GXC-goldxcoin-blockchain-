@@ -37,6 +37,7 @@ public:
     void stake(double amount, uint32_t days);
     void unstake();
     void addStake(double amount);
+    void removeStake(double amount);
     void extendStakingPeriod(uint32_t additionalDays);
     
     // Validator operations
