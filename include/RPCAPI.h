@@ -416,12 +416,20 @@ private:
     
     // Staking and Validator methods
     JsonValue registerValidator(const JsonValue& params);
+    JsonValue registerExternalValidator(const JsonValue& params);  // For third-party wallets
     JsonValue stake(const JsonValue& params);
     JsonValue unstake(const JsonValue& params);
     JsonValue addStake(const JsonValue& params);
     JsonValue getValidators(const JsonValue& params);
     JsonValue getValidatorInfo(const JsonValue& params);
     JsonValue getStakingInfo(const JsonValue& params);
+    
+    // Third-party wallet support methods
+    JsonValue importPrivKey(const JsonValue& params);
+    JsonValue importAddress(const JsonValue& params);
+    JsonValue listImportedAddresses(const JsonValue& params);
+    JsonValue signMessageWithAddress(const JsonValue& params);
+    JsonValue verifySignedMessage(const JsonValue& params);
     
 public:
     RPCAPI(Blockchain* blockchain, uint16_t port);

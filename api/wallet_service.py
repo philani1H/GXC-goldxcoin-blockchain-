@@ -333,15 +333,51 @@ class BlockchainClient:
             return None
     
     def submit_transaction(self, tx_data):
-        """Submit transaction to blockchain"""
+        """Submit transaction to blockchain - uses RPC for better third-party wallet support"""
         try:
-            url = f"{self.rest_url}/api/v1/transactions"
-            response = requests.post(url, json=tx_data, timeout=self.timeout)
-            if response.status_code == 200:
-                return response.json()
+            # Extract transaction details
+            from_address = tx_data.get('from_address', '')
+            to_address = tx_data.get('to_address', '')
+            amount = float(tx_data.get('amount', 0))
+            
+            if not to_address or amount <= 0:
+                return {'success': False, 'error': 'Invalid transaction: missing to_address or amount'}
+            
+            # Use RPC sendfrom for third-party wallet support
+            # This ensures the node uses the correct from_address
+            if from_address:
+                # Use sendfrom RPC method
+                payload = {
+                    "jsonrpc": "2.0",
+                    "method": "sendfrom",
+                    "params": [from_address, to_address, amount],
+                    "id": 1
+                }
+                logger.info(f"Using RPC sendfrom: {from_address[:16]}... -> {to_address[:16]}... amount={amount}")
             else:
-                logger.error(f"Failed to submit transaction: {response.status_code}")
-                return {'success': False, 'error': f'HTTP {response.status_code}'}
+                # Use regular sendtoaddress (uses node's wallet)
+                payload = {
+                    "jsonrpc": "2.0",
+                    "method": "sendtoaddress",
+                    "params": [to_address, amount],
+                    "id": 1
+                }
+                logger.info(f"Using RPC sendtoaddress: -> {to_address[:16]}... amount={amount}")
+            
+            response = requests.post(self.rpc_url, json=payload, timeout=self.timeout)
+            if response.status_code == 200:
+                result = response.json()
+                if 'result' in result and result['result']:
+                    txid = result['result']
+                    return {'success': True, 'txid': txid, 'transaction_hash': txid}
+                elif 'error' in result:
+                    error_msg = result['error'].get('message', 'Unknown error')
+                    logger.error(f"RPC transaction error: {error_msg}")
+                    return {'success': False, 'error': error_msg}
+            
+            logger.error(f"Failed to submit transaction: HTTP {response.status_code}")
+            return {'success': False, 'error': f'HTTP {response.status_code}'}
+            
         except Exception as e:
             logger.error(f"Error submitting transaction: {e}")
             return {'success': False, 'error': str(e)}
@@ -391,10 +427,100 @@ class BlockchainClient:
                 if 'result' in result:
                     return result['result']
                 elif 'error' in result:
-                    return {'success': False, 'error': result['error'].get('message', 'Unknown error')}
+                    error_msg = result['error'].get('message', 'Unknown error')
+                    # Check if this is a "wallet does not control address" error
+                    if 'does not control address' in error_msg.lower() or 'importprivkey' in error_msg.lower():
+                        # Try external validator registration instead
+                        logger.info(f"Standard registration failed, trying external validator registration for {address}")
+                        return self.register_external_validator(address, stake_amount, staking_days, public_key)
+                    return {'success': False, 'error': error_msg}
             return {'success': False, 'error': f'HTTP {response.status_code}'}
         except Exception as e:
             logger.error(f"Error registering validator: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def register_external_validator(self, address, stake_amount, staking_days, public_key, signature=None, message=None):
+        """Register as a validator for third-party/external wallets via RPC
+        
+        This method allows developers using third-party wallets to register as validators.
+        If signature is provided, it proves ownership of the address.
+        If not provided, the system will check if the address has sufficient balance.
+        """
+        try:
+            rpc_url = self.rest_url.replace('/api/v1', '') if '/api/v1' in self.rest_url else self.rest_url
+            
+            # Create a message if not provided
+            if not message:
+                message = f"register_validator:{address}:{int(stake_amount)}:{staking_days}"
+            
+            # Use signature if provided, otherwise use empty string
+            sig = signature if signature else ""
+            
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "registerexternalvalidator",
+                "params": [address, stake_amount, staking_days, sig, message, public_key],
+                "id": 1
+            }
+            
+            response = requests.post(rpc_url, json=payload, timeout=self.timeout)
+            if response.status_code == 200:
+                result = response.json()
+                if 'result' in result:
+                    return result['result']
+                elif 'error' in result:
+                    return {'success': False, 'error': result['error'].get('message', 'Unknown error')}
+            return {'success': False, 'error': f'HTTP {response.status_code}'}
+        except Exception as e:
+            logger.error(f"Error registering external validator: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def import_private_key(self, private_key_hex, label=""):
+        """Import a private key to the node wallet for third-party wallet support"""
+        try:
+            rpc_url = self.rest_url.replace('/api/v1', '') if '/api/v1' in self.rest_url else self.rest_url
+            
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "importprivkey",
+                "params": [private_key_hex, label],
+                "id": 1
+            }
+            
+            response = requests.post(rpc_url, json=payload, timeout=self.timeout)
+            if response.status_code == 200:
+                result = response.json()
+                if 'result' in result:
+                    return result['result']
+                elif 'error' in result:
+                    return {'success': False, 'error': result['error'].get('message', 'Unknown error')}
+            return {'success': False, 'error': f'HTTP {response.status_code}'}
+        except Exception as e:
+            logger.error(f"Error importing private key: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def import_address(self, address, label=""):
+        """Import an address as watch-only to the node wallet"""
+        try:
+            rpc_url = self.rest_url.replace('/api/v1', '') if '/api/v1' in self.rest_url else self.rest_url
+            
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "importaddress",
+                "params": [address, label],
+                "id": 1
+            }
+            
+            response = requests.post(rpc_url, json=payload, timeout=self.timeout)
+            if response.status_code == 200:
+                result = response.json()
+                if 'result' in result:
+                    return result['result']
+                elif 'error' in result:
+                    return {'success': False, 'error': result['error'].get('message', 'Unknown error')}
+            return {'success': False, 'error': f'HTTP {response.status_code}'}
+        except Exception as e:
+            logger.error(f"Error importing address: {e}")
             return {'success': False, 'error': str(e)}
     
     def get_validators(self):
@@ -1139,7 +1265,7 @@ class WalletService:
             conn.close()
     
     def send_transaction(self, wallet_id, user_id, to_address, amount, password, fee=None):
-        """Send transaction using real blockchain"""
+        """Send transaction using real blockchain - supports third-party wallets"""
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
@@ -1162,29 +1288,40 @@ class WalletService:
             if not self.blockchain.network_detected:
                 self.blockchain.detect_server_network()
             real_balance = self.blockchain.get_address_balance(from_address)
-            if real_balance < amount + (fee or 0.001):
-                return {'success': False, 'error': 'Insufficient balance'}
+            
+            total_required = amount + (fee or 0.001)
+            if real_balance < total_required:
+                return {
+                    'success': False, 
+                    'error': f'Insufficient balance. Required: {total_required} GXC, Available: {real_balance} GXC'
+                }
             
             # Decrypt private key
             private_key = self.decrypt_private_key(encrypted_private_key, password)
             if not private_key:
                 return {'success': False, 'error': 'Invalid password'}
             
-            # Get UTXOs for transaction
-            utxos = self.blockchain.get_utxos(from_address)
-            if not utxos:
-                return {'success': False, 'error': 'No UTXOs available'}
+            # THIRD-PARTY WALLET SUPPORT:
+            # Import the private key into the node so it can sign the transaction
+            # This is necessary because the web wallet stores keys separately from the node
+            logger.info(f"Importing private key for address {from_address[:16]}... to enable transaction signing")
+            import_result = self.blockchain.import_private_key(private_key, f"wallet_{wallet_id[:8]}")
             
-            # Create transaction (simplified - in production, use proper transaction builder)
+            if not import_result.get('success') and 'error' in import_result:
+                # Log but don't fail - the key might already be imported or node might handle it differently
+                logger.warning(f"Private key import warning: {import_result.get('error')}")
+            else:
+                logger.info(f"Private key imported/confirmed for address: {from_address[:16]}...")
+            
+            # Create transaction data
             tx_data = {
                 'from_address': from_address,
                 'to_address': to_address,
                 'amount': amount,
-                'fee': fee or 0.001,
-                'utxos': utxos[:10]  # Use first 10 UTXOs
+                'fee': fee or 0.001
             }
             
-            # Submit to blockchain
+            # Submit to blockchain using RPC (which now uses sendfrom for proper address support)
             result = self.blockchain.submit_transaction(tx_data)
             
             if result.get('success') or 'txid' in result:
@@ -1203,16 +1340,26 @@ class WalletService:
                 
                 conn.commit()
                 
+                logger.info(f"Transaction sent: {from_address[:16]}... -> {to_address[:16]}... amount={amount} GXC, txid={tx_hash}")
+                
                 return {
                     'success': True,
                     'transaction_hash': tx_hash,
+                    'from_address': from_address,
+                    'to_address': to_address,
+                    'amount': amount,
+                    'fee': fee or 0.001,
                     'message': 'Transaction submitted successfully'
                 }
             else:
-                return {'success': False, 'error': result.get('error', 'Transaction submission failed')}
+                error_msg = result.get('error', 'Transaction submission failed')
+                logger.error(f"Transaction failed: {error_msg}")
+                return {'success': False, 'error': error_msg}
                 
         except Exception as e:
             logger.error(f"Error sending transaction: {e}")
+            import traceback
+            traceback.print_exc()
             conn.rollback()
             return {'success': False, 'error': str(e)}
         finally:
@@ -1253,8 +1400,28 @@ class WalletService:
             if not self.blockchain.network_detected:
                 self.blockchain.detect_server_network()
             balance = self.blockchain.get_address_balance(address)
-            if balance < stake_amount:
-                return {'success': False, 'error': 'Insufficient balance'}
+            
+            total_required = stake_amount + 0.001  # stake + fee
+            if balance < total_required:
+                return {
+                    'success': False, 
+                    'error': f'Insufficient balance. Required: {total_required} GXC (stake: {stake_amount} + fee: 0.001), Available: {balance} GXC'
+                }
+            
+            # THIRD-PARTY WALLET SUPPORT:
+            # Decrypt and import the private key into the node so it can sign the stake transaction
+            private_key = self.decrypt_private_key(encrypted_private_key, password)
+            if not private_key:
+                return {'success': False, 'error': 'Invalid password'}
+            
+            logger.info(f"Importing private key for validator registration: {address[:16]}...")
+            import_result = self.blockchain.import_private_key(private_key, f"validator_{address[:8]}")
+            
+            if not import_result.get('success') and 'error' in import_result:
+                # Log but continue - key might already be imported
+                logger.warning(f"Private key import note: {import_result.get('error')}")
+            else:
+                logger.info(f"Private key imported/confirmed for validator: {address[:16]}...")
             
             # Register validator via blockchain
             result = self.blockchain.register_validator(address, stake_amount, staking_days, public_key)
@@ -2070,6 +2237,229 @@ def health_check():
         'version': '1.0.0',
         'timestamp': datetime.now(timezone.utc).isoformat()
     })
+
+# ============= THIRD-PARTY WALLET SUPPORT API ENDPOINTS =============
+
+@app.route('/api/v1/external-validator/register', methods=['POST'])
+def register_external_validator_api():
+    """
+    Register as a validator using a third-party wallet address.
+    
+    This endpoint is designed for developers using external wallets (not the built-in wallet)
+    to register as validators on the GXC blockchain.
+    
+    Required fields:
+    - address: The wallet address to register (GXC or tGXC prefix)
+    - stake_amount: Amount of GXC to stake (minimum 100 GXC)
+    - staking_days: Number of days to stake (14-365)
+    
+    Optional fields:
+    - signature: Cryptographic signature proving ownership
+    - message: The message that was signed
+    - public_key: The public key corresponding to the address
+    
+    If signature is not provided, the system will verify the address has sufficient balance.
+    """
+    data = request.get_json()
+    
+    required_fields = ['address', 'stake_amount', 'staking_days']
+    if not all(field in data for field in required_fields):
+        return jsonify({
+            'success': False, 
+            'error': 'Missing required fields. Required: address, stake_amount, staking_days',
+            'required': required_fields,
+            'optional': ['signature', 'message', 'public_key']
+        }), 400
+    
+    address = data['address']
+    stake_amount = float(data['stake_amount'])
+    staking_days = int(data['staking_days'])
+    signature = data.get('signature', '')
+    message = data.get('message', '')
+    public_key = data.get('public_key', '')
+    
+    # Validate address format
+    if not (address.startswith('GXC') or address.startswith('tGXC')):
+        return jsonify({
+            'success': False,
+            'error': f'Invalid address format: {address}. Must start with GXC (mainnet) or tGXC (testnet)'
+        }), 400
+    
+    # Validate stake amount
+    MIN_STAKE = 100.0
+    if stake_amount < MIN_STAKE:
+        return jsonify({
+            'success': False,
+            'error': f'Stake amount must be at least {MIN_STAKE} GXC'
+        }), 400
+    
+    # Validate staking days
+    MIN_DAYS = 14
+    MAX_DAYS = 365
+    if staking_days < MIN_DAYS or staking_days > MAX_DAYS:
+        return jsonify({
+            'success': False,
+            'error': f'Staking days must be between {MIN_DAYS} and {MAX_DAYS}'
+        }), 400
+    
+    result = wallet_service.blockchain.register_external_validator(
+        address, stake_amount, staking_days, public_key, signature, message
+    )
+    
+    if result.get('success'):
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/v1/wallet/import-key', methods=['POST'])
+def import_private_key_api():
+    """
+    Import a private key to enable full wallet control.
+    
+    This allows developers to import their third-party wallet's private key
+    so the node can sign transactions on their behalf.
+    
+    Required fields:
+    - private_key: 64-character hex string (32 bytes)
+    
+    Optional fields:
+    - label: A label to identify this imported key
+    
+    Security Warning: Only use this in secure environments. 
+    The private key will be stored by the node.
+    """
+    data = request.get_json()
+    
+    if 'private_key' not in data:
+        return jsonify({
+            'success': False,
+            'error': 'Missing required field: private_key (64-character hex string)'
+        }), 400
+    
+    private_key = data['private_key']
+    label = data.get('label', 'imported')
+    
+    # Basic validation
+    if len(private_key) != 64:
+        return jsonify({
+            'success': False,
+            'error': 'Private key must be 64 characters (32 bytes in hex)'
+        }), 400
+    
+    result = wallet_service.blockchain.import_private_key(private_key, label)
+    
+    if result.get('success'):
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/v1/wallet/import-address', methods=['POST'])
+def import_address_api():
+    """
+    Import an address for watch-only tracking.
+    
+    This allows developers to track balances and transactions for an address
+    without importing the private key. Cannot sign transactions.
+    
+    Required fields:
+    - address: The wallet address to import
+    
+    Optional fields:
+    - label: A label to identify this address
+    """
+    data = request.get_json()
+    
+    if 'address' not in data:
+        return jsonify({
+            'success': False,
+            'error': 'Missing required field: address'
+        }), 400
+    
+    address = data['address']
+    label = data.get('label', 'watch-only')
+    
+    # Validate address format
+    if not (address.startswith('GXC') or address.startswith('tGXC')):
+        return jsonify({
+            'success': False,
+            'error': f'Invalid address format: {address}. Must start with GXC (mainnet) or tGXC (testnet)'
+        }), 400
+    
+    result = wallet_service.blockchain.import_address(address, label)
+    
+    if result.get('success'):
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/v1/address/<address>/fund', methods=['POST'])
+def fund_address_api(address):
+    """
+    Request testnet funds for development/testing.
+    
+    This is a faucet endpoint for testnet only.
+    Provides a small amount of tGXC for testing purposes.
+    """
+    # Only allow on testnet
+    if wallet_service.network != 'testnet':
+        return jsonify({
+            'success': False,
+            'error': 'Faucet only available on testnet'
+        }), 400
+    
+    # Validate address format
+    if not address.startswith('tGXC'):
+        return jsonify({
+            'success': False,
+            'error': f'Invalid testnet address format: {address}. Must start with tGXC'
+        }), 400
+    
+    data = request.get_json() or {}
+    amount = min(float(data.get('amount', 100.0)), 1000.0)  # Max 1000 tGXC per request
+    
+    try:
+        # Try to fund from the node's wallet
+        rpc_url = wallet_service.blockchain.rpc_url
+        
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "sendtoaddress",
+            "params": [address, amount],
+            "id": 1
+        }
+        
+        response = requests.post(rpc_url, json=payload, timeout=30)
+        if response.status_code == 200:
+            result = response.json()
+            if 'result' in result:
+                return jsonify({
+                    'success': True,
+                    'address': address,
+                    'amount': amount,
+                    'txid': result['result'],
+                    'message': f'Successfully sent {amount} tGXC to {address}'
+                }), 200
+            elif 'error' in result:
+                return jsonify({
+                    'success': False,
+                    'error': result['error'].get('message', 'Unknown error'),
+                    'hint': 'The faucet may have insufficient funds. Contact the node operator.'
+                }), 400
+        
+        return jsonify({
+            'success': False,
+            'error': f'HTTP {response.status_code}',
+            'hint': 'Failed to communicate with blockchain node'
+        }), 500
+        
+    except Exception as e:
+        logger.error(f"Error funding address: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ============= END THIRD-PARTY WALLET SUPPORT =============
 
 @app.route('/api/v1/docs', methods=['GET'])
 @app.route('/docs', methods=['GET'])

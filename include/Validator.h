@@ -28,6 +28,9 @@ private:
     bool isSlashed;
     double slashedAmount;
     
+    // Pending status (for external validators waiting for stake confirmation)
+    bool isPending;
+    
 public:
     // Constructor
     Validator();
@@ -82,6 +85,8 @@ public:
     void setAddress(const std::string& addr) { address = addr; }
     void setPublicKey(const std::string& pubKey) { publicKey = pubKey; }
     void setIsActive(bool active) { isActive = active; }
+    void setPending(bool pending) { isPending = pending; }
+    bool getIsPending() const { return isPending; }
     
     // Validation
     bool isValidValidator() const;
