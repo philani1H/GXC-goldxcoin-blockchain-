@@ -1,0 +1,21 @@
+# GXC Pool Miner - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# GUI Framework
+customtkinter>=5.2.0
+
+# System Information
+psutil>=5.9.0
+
+# HTTP Client for RPC
+requests>=2.28.0
+
+# Plotting
+matplotlib>=3.7.0
+
+# Optional: Faster JSON (recommended)
+# ujson>=5.7.0
+
+# Optional: GPU Support
+# pycuda>=2022.1  # For NVIDIA CUDA
+# pyopencl>=2022.1  # For OpenCL (AMD/Intel)
