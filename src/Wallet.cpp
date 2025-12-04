@@ -12,6 +12,37 @@ Wallet::Wallet() {
     generateKeyPair();
 }
 
+bool Wallet::createFromPrivateKey(const std::string& privateKeyHex) {
+    try {
+        // Validate private key format (should be 64 hex chars = 32 bytes)
+        if (privateKeyHex.length() != 64) {
+            return false;
+        }
+        
+        // Derive public key from private key
+        publicKey = Crypto::derivePublicKey(privateKeyHex);
+        if (publicKey.empty()) {
+            return false;
+        }
+        
+        // Generate address from public key
+        address = Crypto::generateAddress(publicKey, Config::isTestnet());
+        if (address.empty()) {
+            return false;
+        }
+        
+        // Set private key
+        privateKey = privateKeyHex;
+        
+        // Initialize last transaction hash
+        lastTxHash = "";
+        
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 void Wallet::generateKeyPair() {
     // Use proper secp256k1 ECDSA key generation
     Crypto::KeyPair keyPair = Crypto::generateKeyPair();
@@ -83,6 +114,15 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
     
     double availableAmount = 0.0;
     
+    // Debug: Log wallet address and UTXO set info
+    uint32_t matchingUtxoCount = 0;
+    uint32_t totalUtxoCount = utxoSet.size();
+    for (const auto& [utxoKey, utxo] : utxoSet) {
+        if (utxo.address == address) {
+            matchingUtxoCount++;
+        }
+    }
+    
     // Traceability Requirement: Prioritize UTXO from last transaction (chaining)
     if (!lastTxHash.empty()) {
         for (const auto& [utxoKey, utxo] : utxoSet) {
@@ -147,9 +187,12 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
     
     // Check if we have enough funds (amount + fee)
     if (availableAmount < totalRequired) {
-        throw std::runtime_error("Insufficient funds: need " + std::to_string(totalRequired) + 
-                                " GXC (amount: " + std::to_string(amount) + " + fee: " + std::to_string(fee) + 
-                                "), have: " + std::to_string(availableAmount) + " GXC");
+        std::string errorMsg = "Insufficient funds: need " + std::to_string(totalRequired) + 
+                              " GXC (amount: " + std::to_string(amount) + " + fee: " + std::to_string(fee) + 
+                              "), have: " + std::to_string(availableAmount) + " GXC";
+        errorMsg += " [Wallet address: " + address.substr(0, 20) + "..., ";
+        errorMsg += "Matching UTXOs: " + std::to_string(matchingUtxoCount) + "/" + std::to_string(totalUtxoCount) + "]";
+        throw std::runtime_error(errorMsg);
     }
     
     // Create the output to the recipient
