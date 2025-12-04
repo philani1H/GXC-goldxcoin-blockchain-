@@ -413,3 +413,356 @@ double Wallet::getBalance(const std::unordered_map<std::string, TransactionOutpu
     return balance;
 }
 
+// ============= THIRD-PARTY WALLET SUPPORT IMPLEMENTATION =============
+
+bool Wallet::importPrivateKey(const std::string& privateKeyHex, const std::string& label) {
+    // Validate private key format (should be 64 hex chars = 32 bytes)
+    if (privateKeyHex.length() != 64) {
+        return false;
+    }
+    
+    // Check if all characters are valid hex
+    for (char c : privateKeyHex) {
+        if (!isxdigit(c)) {
+            return false;
+        }
+    }
+    
+    // Derive public key and address from private key
+    std::string derivedPubKey = Crypto::derivePublicKey(privateKeyHex);
+    if (derivedPubKey.empty()) {
+        return false;
+    }
+    
+    // Generate address from public key
+    // Detect if testnet based on current wallet or config
+    bool isTestnet = Config::isTestnet() || isTestnetAddress(address);
+    std::string derivedAddress = Crypto::generateAddress(derivedPubKey, isTestnet);
+    
+    if (derivedAddress.empty() || !isValidAddress(derivedAddress)) {
+        return false;
+    }
+    
+    // Store the imported key
+    importedPrivateKeys[derivedAddress] = privateKeyHex;
+    importedPublicKeys[derivedAddress] = derivedPubKey;
+    importedAddresses[derivedAddress] = label.empty() ? "imported" : label;
+    
+    return true;
+}
+
+bool Wallet::importAddress(const std::string& addr, const std::string& label) {
+    // Validate address format
+    if (!isValidAddress(addr)) {
+        return false;
+    }
+    
+    // Check if already imported with private key (don't downgrade to watch-only)
+    if (importedPrivateKeys.find(addr) != importedPrivateKeys.end()) {
+        // Already have full control, just update label
+        importedAddresses[addr] = label.empty() ? "imported" : label;
+        return true;
+    }
+    
+    // Add as watch-only address
+    importedAddresses[addr] = label.empty() ? "watch-only" : label;
+    
+    return true;
+}
+
+bool Wallet::controlsAddress(const std::string& addr) const {
+    // Check main wallet address
+    if (addr == address) {
+        return true;
+    }
+    
+    // Check imported addresses (with private keys)
+    if (importedPrivateKeys.find(addr) != importedPrivateKeys.end()) {
+        return true;
+    }
+    
+    // Watch-only addresses are "controlled" in the sense we can track them
+    if (importedAddresses.find(addr) != importedAddresses.end()) {
+        return true;
+    }
+    
+    return false;
+}
+
+bool Wallet::canSignForAddress(const std::string& addr) const {
+    // Check main wallet address
+    if (addr == address && !privateKey.empty()) {
+        return true;
+    }
+    
+    // Check imported addresses with private keys
+    if (importedPrivateKeys.find(addr) != importedPrivateKeys.end()) {
+        return true;
+    }
+    
+    return false;
+}
+
+std::string Wallet::getPrivateKeyForAddress(const std::string& addr) const {
+    // Main wallet address
+    if (addr == address) {
+        return privateKey;
+    }
+    
+    // Imported address
+    auto it = importedPrivateKeys.find(addr);
+    if (it != importedPrivateKeys.end()) {
+        return it->second;
+    }
+    
+    return "";
+}
+
+std::string Wallet::getPublicKeyForAddress(const std::string& addr) const {
+    // Main wallet address
+    if (addr == address) {
+        return publicKey;
+    }
+    
+    // Imported address
+    auto it = importedPublicKeys.find(addr);
+    if (it != importedPublicKeys.end()) {
+        return it->second;
+    }
+    
+    return "";
+}
+
+std::vector<std::string> Wallet::getAllControlledAddresses() const {
+    std::vector<std::string> addresses;
+    
+    // Add main wallet address
+    if (!address.empty()) {
+        addresses.push_back(address);
+    }
+    
+    // Add all imported addresses with private keys
+    for (const auto& [addr, key] : importedPrivateKeys) {
+        addresses.push_back(addr);
+    }
+    
+    return addresses;
+}
+
+std::vector<std::string> Wallet::getWatchOnlyAddresses() const {
+    std::vector<std::string> watchOnly;
+    
+    for (const auto& [addr, label] : importedAddresses) {
+        // Only return addresses that don't have private keys
+        if (importedPrivateKeys.find(addr) == importedPrivateKeys.end()) {
+            watchOnly.push_back(addr);
+        }
+    }
+    
+    return watchOnly;
+}
+
+bool Wallet::setActiveAddress(const std::string& addr) {
+    // Can only switch to addresses we can sign for
+    if (!canSignForAddress(addr)) {
+        return false;
+    }
+    
+    // If switching to an imported address, update main wallet
+    if (addr != address) {
+        auto privKeyIt = importedPrivateKeys.find(addr);
+        auto pubKeyIt = importedPublicKeys.find(addr);
+        
+        if (privKeyIt != importedPrivateKeys.end() && pubKeyIt != importedPublicKeys.end()) {
+            // Store old main wallet as imported
+            if (!address.empty() && !privateKey.empty()) {
+                importedPrivateKeys[address] = privateKey;
+                importedPublicKeys[address] = publicKey;
+                importedAddresses[address] = "previous_main";
+            }
+            
+            // Set new main wallet
+            privateKey = privKeyIt->second;
+            publicKey = pubKeyIt->second;
+            address = addr;
+            
+            // Remove from imported (now it's main)
+            importedPrivateKeys.erase(addr);
+            importedPublicKeys.erase(addr);
+            importedAddresses.erase(addr);
+            
+            return true;
+        }
+    }
+    
+    return addr == address; // Already active if it's the main address
+}
+
+Transaction Wallet::createTransactionFrom(const std::string& fromAddress,
+                                          const std::string& toAddress, 
+                                          double amount,
+                                          const std::unordered_map<std::string, TransactionOutput>& utxoSet,
+                                          double fee) {
+    // Verify we can sign for this address
+    if (!canSignForAddress(fromAddress)) {
+        throw std::runtime_error("Cannot sign for address: " + fromAddress);
+    }
+    
+    // Get the private key for signing
+    std::string signingKey = getPrivateKeyForAddress(fromAddress);
+    if (signingKey.empty()) {
+        throw std::runtime_error("No private key found for address: " + fromAddress);
+    }
+    
+    // Use default fee if not specified
+    if (fee <= 0) {
+        fee = 0.001;
+    }
+    
+    double totalRequired = amount + fee;
+    
+    std::vector<TransactionInput> inputs;
+    std::vector<TransactionOutput> outputs;
+    
+    double availableAmount = 0.0;
+    
+    // Find unspent outputs for the specified address
+    for (const auto& [utxoKey, utxo] : utxoSet) {
+        if (utxo.address == fromAddress) {
+            size_t sepPos = utxoKey.find('_');
+            if (sepPos != std::string::npos) {
+                std::string txHash = utxoKey.substr(0, sepPos);
+                uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
+                
+                TransactionInput input;
+                input.txHash = txHash;
+                input.outputIndex = outputIndex;
+                input.amount = utxo.amount;
+                inputs.push_back(input);
+                
+                availableAmount += utxo.amount;
+                
+                if (availableAmount >= totalRequired) {
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (availableAmount < totalRequired) {
+        throw std::runtime_error("Insufficient funds: need " + std::to_string(totalRequired) + 
+                                " GXC, have: " + std::to_string(availableAmount) + " GXC");
+    }
+    
+    // Create output to recipient
+    TransactionOutput recipientOutput;
+    recipientOutput.address = toAddress;
+    recipientOutput.amount = amount;
+    outputs.push_back(recipientOutput);
+    
+    // Calculate change
+    double change = availableAmount - amount - fee;
+    if (change > 0.00000001) {
+        TransactionOutput changeOutput;
+        changeOutput.address = fromAddress;
+        changeOutput.amount = change;
+        outputs.push_back(changeOutput);
+    }
+    
+    // Create transaction
+    std::string prevTxHash = inputs.empty() ? "0" : inputs[0].txHash;
+    double referencedAmount = inputs.empty() ? 0.0 : inputs[0].amount;
+    
+    Transaction tx(inputs, outputs, prevTxHash);
+    tx.setFee(fee);
+    tx.setSenderAddress(fromAddress);
+    tx.setReceiverAddress(toAddress);
+    tx.setReferencedAmount(referencedAmount);
+    
+    // Sign with the appropriate private key
+    tx.signInputs(signingKey);
+    
+    return tx;
+}
+
+Transaction Wallet::createStakeTransactionFrom(const std::string& fromAddress,
+                                               double stakeAmount, 
+                                               const std::unordered_map<std::string, TransactionOutput>& utxoSet,
+                                               double fee) {
+    // Verify we can sign for this address
+    if (!canSignForAddress(fromAddress)) {
+        throw std::runtime_error("Cannot sign for address: " + fromAddress);
+    }
+    
+    std::string signingKey = getPrivateKeyForAddress(fromAddress);
+    if (signingKey.empty()) {
+        throw std::runtime_error("No private key found for address: " + fromAddress);
+    }
+    
+    if (fee <= 0) {
+        fee = 0.001;
+    }
+    
+    double totalRequired = stakeAmount + fee;
+    
+    std::vector<TransactionInput> inputs;
+    std::vector<TransactionOutput> outputs;
+    
+    double availableAmount = 0.0;
+    
+    // Find unspent outputs for the specified address
+    for (const auto& [utxoKey, utxo] : utxoSet) {
+        if (utxo.address == fromAddress) {
+            size_t sepPos = utxoKey.find('_');
+            if (sepPos != std::string::npos) {
+                std::string txHash = utxoKey.substr(0, sepPos);
+                uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
+                
+                TransactionInput input;
+                input.txHash = txHash;
+                input.outputIndex = outputIndex;
+                input.amount = utxo.amount;
+                inputs.push_back(input);
+                
+                availableAmount += utxo.amount;
+                
+                if (availableAmount >= totalRequired) {
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (availableAmount < totalRequired) {
+        throw std::runtime_error("Insufficient funds for staking: need " + std::to_string(totalRequired) + 
+                                " GXC, have: " + std::to_string(availableAmount) + " GXC");
+    }
+    
+    // Calculate change (staked amount is locked, not an output)
+    double change = availableAmount - stakeAmount - fee;
+    if (change > 0.00000001) {
+        TransactionOutput changeOutput;
+        changeOutput.address = fromAddress;
+        changeOutput.amount = change;
+        outputs.push_back(changeOutput);
+    }
+    
+    std::string prevTxHash = inputs.empty() ? "0" : inputs[0].txHash;
+    double referencedAmount = inputs.empty() ? 0.0 : inputs[0].amount;
+    
+    Transaction tx(inputs, outputs, prevTxHash);
+    tx.setType(TransactionType::STAKE);
+    tx.setFee(fee);
+    tx.setSenderAddress(fromAddress);
+    tx.setReceiverAddress(fromAddress);
+    tx.setMemo("Stake: " + std::to_string(stakeAmount) + " GXC");
+    tx.setReferencedAmount(referencedAmount);
+    
+    // Sign with the appropriate private key
+    tx.signInputs(signingKey);
+    
+    return tx;
+}
+
+// ============= END THIRD-PARTY WALLET SUPPORT =============
+

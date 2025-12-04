@@ -13,7 +13,7 @@ Validator::Validator()
       isActive(false), publicKey(""), signature(""),
       blocksProduced(0), missedBlocks(0), uptime(0.0),
       totalRewards(0.0), pendingRewards(0.0),
-      isSlashed(false), slashedAmount(0.0) {
+      isSlashed(false), slashedAmount(0.0), isPending(false) {
 }
 
 Validator::Validator(const std::string& addressIn, double stakeAmountIn, uint32_t stakingDaysIn)
@@ -21,7 +21,7 @@ Validator::Validator(const std::string& addressIn, double stakeAmountIn, uint32_
       isActive(true), publicKey(""), signature(""),
       blocksProduced(0), missedBlocks(0), uptime(1.0),
       totalRewards(0.0), pendingRewards(0.0),
-      isSlashed(false), slashedAmount(0.0) {
+      isSlashed(false), slashedAmount(0.0), isPending(false) {
     stakeStartTime = std::time(nullptr);
 }
 
