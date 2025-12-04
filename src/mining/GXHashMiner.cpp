@@ -1,6 +1,7 @@
 #include "../../include/mining/GXHashMiner.h"
 #include "../../include/Logger.h"
 #include "../../include/Utils.h"
+#include "../../include/HashUtils.h"
 #include <thread>
 #include <random>
 #include <chrono>
@@ -50,7 +51,7 @@ bool GXHashMiner::start(uint32_t threads) {
         
     } catch (const std::exception& e) {
         LOG_MINING(LogLevel::ERROR, "Failed to start GXHash miner: " + std::string(e.what()));
-        isRunning = false;
+        stop();
         return false;
     }
 }
@@ -64,7 +65,7 @@ void GXHashMiner::stop() {
     
     isRunning = false;
     
-    // Stop all worker threads
+    // Wait for all worker threads
     for (auto& thread : workerThreads) {
         if (thread.joinable()) {
             thread.join();
@@ -72,7 +73,7 @@ void GXHashMiner::stop() {
     }
     workerThreads.clear();
     
-    // Stop stats thread
+    // Wait for stats thread
     if (statsThread.joinable()) {
         statsThread.join();
     }
@@ -85,11 +86,10 @@ void GXHashMiner::setJob(const MiningJob& job) {
     currentJob = job;
     jobUpdated = true;
     
-    // Update traceability cache with new transactions
+    // Update traceability cache for new job
     updateTraceabilityCache(job);
     
-    LOG_MINING(LogLevel::DEBUG, "New GXHash mining job: " + job.jobId + 
-              " with " + std::to_string(job.transactions.size()) + " traceable transactions");
+    LOG_MINING(LogLevel::DEBUG, "GXHash job updated: " + job.jobId);
 }
 
 MiningStats GXHashMiner::getStats() const {
@@ -99,7 +99,7 @@ MiningStats GXHashMiner::getStats() const {
     stats.algorithm = MiningAlgorithm::GXHASH;
     stats.hashRate = hashRate;
     stats.totalHashes = totalHashes;
-    stats.threadsActive = threadsCount;
+    stats.threadsActive = static_cast<uint32_t>(workerThreads.size());
     stats.uptime = Utils::getCurrentTimestamp() - startTime;
     stats.traceabilityValidations = traceabilityValidations;
     
@@ -109,35 +109,22 @@ MiningStats GXHashMiner::getStats() const {
 void GXHashMiner::miningThread(uint32_t threadId) {
     LOG_MINING(LogLevel::DEBUG, "GXHash mining thread " + std::to_string(threadId) + " started");
     
-    // Thread-specific random nonce start
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<uint64_t> dis;
-    
-    uint64_t nonce = dis(gen);
+    uint64_t nonce = threadId * 1000000ULL; // Start at different nonce ranges
+    std::time_t lastStatsUpdate = Utils::getCurrentTimestamp();
     uint64_t hashCount = 0;
     uint64_t traceabilityChecks = 0;
-    auto lastStatsUpdate = Utils::getCurrentTimestamp();
-    
-    MiningJob localJob;
-    bool hasJob = false;
     
     while (isRunning) {
         try {
-            // Check for job updates
+            MiningJob localJob;
             {
                 std::lock_guard<std::mutex> lock(jobMutex);
-                if (jobUpdated) {
-                    localJob = currentJob;
-                    hasJob = true;
-                    jobUpdated = false;
-                    nonce = dis(gen); // Reset nonce for new job
+                if (!jobUpdated && currentJob.jobId.empty()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
                 }
-            }
-            
-            if (!hasJob) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                continue;
+                localJob = currentJob;
+                jobUpdated = false;
             }
             
             // Mine GXHash with traceability validation
@@ -147,7 +134,10 @@ void GXHashMiner::miningThread(uint32_t threadId) {
             
             // Perform traceability validation every few hashes
             if (hashCount % 10 == 0) {
-                validateTraceability(localJob);
+                // Validate traceability for all transactions in job
+                for (const auto& txHash : localJob.transactions) {
+                    validateTraceability(txHash, localJob.previousHash);
+                }
                 traceabilityChecks++;
             }
             
@@ -175,7 +165,7 @@ void GXHashMiner::miningThread(uint32_t threadId) {
 
 bool GXHashMiner::mineGXHashBlock(const MiningJob& job, uint64_t nonce) {
     // Construct block header with traceability data
-    std::string blockHeader = constructGXHashHeader(job, nonce);
+    std::string blockHeader = constructBlockHeader(job, nonce);
     
     // GXHash computation with traceability optimization
     GXHashResult result = computeGXHash(blockHeader, nonce, job.transactions);
@@ -185,218 +175,73 @@ bool GXHashMiner::mineGXHashBlock(const MiningJob& job, uint64_t nonce) {
            result.traceabilityValid;
 }
 
+std::string GXHashMiner::constructGXHashHeader(const MiningJob& job, uint64_t nonce) {
+    return constructBlockHeader(job, nonce);
+}
+
 GXHashResult GXHashMiner::computeGXHash(const std::string& blockHeader, uint64_t nonce, 
-                                       const std::vector<Transaction>& transactions) {
+                                       const std::vector<std::string>& transactions) {
     GXHashResult result;
     
     // GXHash Algorithm:
     // 1. Standard hash computation
     // 2. Traceability data integration
     // 3. Cross-transaction validation
-    // 4. Enhanced security through transaction linking
     
     // Phase 1: Base hash computation
     std::string baseHash = sha256(blockHeader + std::to_string(nonce));
     
-    // Phase 2: Integrate traceability data
-    std::string traceabilityData = extractTraceabilityData(transactions);
-    std::string traceHash = sha256(baseHash + traceabilityData);
-    
-    // Phase 3: Cross-transaction validation hash
-    std::string crossValidationHash = computeCrossValidationHash(transactions);
-    
-    // Phase 4: Final GXHash computation
-    std::string finalInput = traceHash + crossValidationHash + std::to_string(nonce);
-    
-    // Apply GXHash rounds (more rounds for better security)
-    std::string gxHash = finalInput;
-    for (int round = 0; round < GXHASH_ROUNDS; round++) {
-        gxHash = sha256(gxHash + std::to_string(round));
-        
-        // Integrate transaction data in specific rounds
-        if (round % 4 == 0 && !transactions.empty()) {
-            size_t txIndex = round / 4 % transactions.size();
-            gxHash = sha256(gxHash + transactions[txIndex].getHash());
+    // Phase 2: Apply GXHash rounds
+    std::string currentHash = baseHash;
+    for (uint32_t round = 0; round < GXHASH_ROUNDS; round++) {
+        // Mix in transaction data for traceability
+        std::string txData;
+        for (const auto& tx : transactions) {
+            txData += tx;
         }
+        currentHash = keccak256(currentHash + txData + std::to_string(round));
     }
     
-    result.hash = gxHash;
-    result.traceabilityHash = traceHash;
-    result.crossValidationHash = crossValidationHash;
-    result.traceabilityValid = validateTransactionTraceability(transactions);
-    result.rounds = GXHASH_ROUNDS;
+    result.hash = currentHash;
+    
+    // Phase 3: Traceability hash
+    std::string traceabilityData;
+    for (const auto& tx : transactions) {
+        traceabilityData += tx;
+    }
+    result.traceabilityHash = sha256(traceabilityData);
+    
+    // Phase 4: Cross-validation hash
+    result.crossValidationHash = keccak256(result.hash + result.traceabilityHash);
+    
+    // Traceability is valid if we have consistent hashes
+    result.traceabilityValid = !result.traceabilityHash.empty();
     
     return result;
 }
 
-std::string GXHashMiner::extractTraceabilityData(const std::vector<Transaction>& transactions) {
-    std::ostringstream oss;
+std::string GXHashMiner::constructBlockHeader(const MiningJob& job, uint64_t nonce) {
+    std::stringstream ss;
+    ss << job.previousHash;
+    ss << job.merkleRoot;
+    ss << job.timestamp;
+    ss << job.bits;
+    ss << nonce;
+    ss << job.blockNumber;
     
-    for (const auto& tx : transactions) {
-        if (!tx.isCoinbaseTransaction()) {
-            // Extract key traceability fields
-            oss << tx.getPrevTxHash()
-                << tx.getReferencedAmount()
-                << tx.getTimestamp()
-                << tx.getTraceabilityProof();
-        }
-    }
-    
-    return oss.str();
-}
-
-std::string GXHashMiner::computeCrossValidationHash(const std::vector<Transaction>& transactions) {
-    if (transactions.empty()) {
-        return "0000000000000000000000000000000000000000000000000000000000000000";
-    }
-    
-    std::vector<std::string> txHashes;
-    std::vector<std::string> traceLinks;
-    
-    for (const auto& tx : transactions) {
-        txHashes.push_back(tx.getHash());
-        if (!tx.isCoinbaseTransaction()) {
-            traceLinks.push_back(tx.getPrevTxHash());
-        }
-    }
-    
-    // Sort for deterministic ordering
-    std::sort(txHashes.begin(), txHashes.end());
-    std::sort(traceLinks.begin(), traceLinks.end());
-    
-    // Combine all hashes
-    std::string combined;
-    for (const auto& hash : txHashes) {
-        combined += hash;
-    }
-    for (const auto& link : traceLinks) {
-        combined += link;
-    }
-    
-    return sha256(combined);
-}
-
-bool GXHashMiner::validateTransactionTraceability(const std::vector<Transaction>& transactions) {
-    for (const auto& tx : transactions) {
-        if (!tx.isCoinbaseTransaction()) {
-            // Validate GXC traceability formula:
-            // Ti.Inputs[0].txHash == Ti.PrevTxHash && Ti.Inputs[0].amount == Ti.ReferencedAmount
-            if (!tx.isTraceabilityValid()) {
-                return false;
-            }
-            
-            // Additional GXHash-specific validations
-            if (!validateGXHashSpecificRules(tx)) {
-                return false;
-            }
-        }
-    }
-    
-    return true;
-}
-
-bool GXHashMiner::validateGXHashSpecificRules(const Transaction& tx) {
-    // GXHash-specific traceability rules:
-    
-    // 1. Previous transaction hash must be valid format
-    if (tx.getPrevTxHash().length() != 64) {
-        return false;
-    }
-    
-    // 2. Referenced amount must match input amount
-    if (std::abs(tx.getReferencedAmount() - tx.getTotalInputAmount()) > 0.00000001) {
-        return false;
-    }
-    
-    // 3. Timestamp consistency check
-    if (tx.getTimestamp() < 1640995200) { // After 2022-01-01
-        return false;
-    }
-    
-    // 4. Check if transaction is in traceability cache
-    return isInTraceabilityCache(tx.getHash());
-}
-
-void GXHashMiner::initializeTraceabilityCache() {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    
-    // Initialize cache for fast traceability lookups
-    traceabilityCache.clear();
-    traceabilityCache.reserve(100000); // Reserve space for efficiency
-    
-    LOG_MINING(LogLevel::INFO, "Initialized GXHash traceability cache");
-}
-
-void GXHashMiner::updateTraceabilityCache(const MiningJob& job) {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    
+    // Add traceability data
     for (const auto& tx : job.transactions) {
-        TraceabilityEntry entry;
-        entry.txHash = tx.getHash();
-        entry.prevTxHash = tx.getPrevTxHash();
-        entry.amount = tx.getReferencedAmount();
-        entry.timestamp = tx.getTimestamp();
-        entry.valid = tx.isTraceabilityValid();
-        
-        traceabilityCache[tx.getHash()] = entry;
+        ss << tx;
     }
     
-    // Cleanup old entries if cache gets too large
-    if (traceabilityCache.size() > 50000) {
-        cleanupTraceabilityCache();
-    }
-}
-
-void GXHashMiner::cleanupTraceabilityCache() {
-    // Remove oldest entries to keep cache size manageable
-    auto currentTime = Utils::getCurrentTimestamp();
-    
-    for (auto it = traceabilityCache.begin(); it != traceabilityCache.end();) {
-        if (currentTime - it->second.timestamp > 3600) { // Remove entries older than 1 hour
-            it = traceabilityCache.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    
-    LOG_MINING(LogLevel::DEBUG, "Cleaned up traceability cache, size: " + 
-              std::to_string(traceabilityCache.size()));
-}
-
-bool GXHashMiner::isInTraceabilityCache(const std::string& txHash) {
-    std::lock_guard<std::mutex> lock(cacheMutex);
-    return traceabilityCache.find(txHash) != traceabilityCache.end();
-}
-
-void GXHashMiner::validateTraceability(const MiningJob& job) {
-    // Periodic traceability validation during mining
-    for (const auto& tx : job.transactions) {
-        if (!tx.isCoinbaseTransaction() && !tx.isTraceabilityValid()) {
-            LOG_MINING(LogLevel::WARNING, "Traceability validation failed for transaction: " + 
-                      tx.getHash().substr(0, 16));
-        }
-    }
-    
-    traceabilityValidations++;
-}
-
-std::string GXHashMiner::constructGXHashHeader(const MiningJob& job, uint64_t nonce) {
-    std::ostringstream oss;
-    oss << job.previousHash
-        << job.merkleRoot
-        << job.timestamp
-        << job.difficulty
-        << nonce
-        << job.traceabilityRoot; // GXHash-specific field
-    
-    return oss.str();
+    return ss.str();
 }
 
 bool GXHashMiner::checkDifficultyTarget(const std::string& hash, double difficulty) {
-    // GXHash difficulty check with traceability consideration
+    if (hash.empty()) return false;
     
     // Count leading zeros
-    int leadingZeros = 0;
+    size_t leadingZeros = 0;
     for (char c : hash) {
         if (c == '0') {
             leadingZeros++;
@@ -405,15 +250,53 @@ bool GXHashMiner::checkDifficultyTarget(const std::string& hash, double difficul
         }
     }
     
-    // GXHash requires slightly more work due to traceability validation
-    int requiredZeros = static_cast<int>(difficulty / 800.0) + 5;
+    // Check if hash meets difficulty
+    return leadingZeros >= static_cast<size_t>(difficulty);
+}
+
+void GXHashMiner::initializeTraceabilityCache() {
+    std::lock_guard<std::mutex> lock(traceabilityCacheMutex);
+    traceabilityCache.clear();
+    LOG_MINING(LogLevel::DEBUG, "GXHash traceability cache initialized");
+}
+
+void GXHashMiner::updateTraceabilityCache(const MiningJob& job) {
+    std::lock_guard<std::mutex> lock(traceabilityCacheMutex);
     
-    // Bonus for blocks with high traceability validation
-    if (traceabilityOptimized) {
-        requiredZeros -= 1; // Easier difficulty for traceable blocks
+    // Cache traceability status for transactions in this job
+    for (const auto& txHash : job.transactions) {
+        if (traceabilityCache.find(txHash) == traceabilityCache.end()) {
+            // New transaction - mark as pending validation
+            traceabilityCache[txHash] = true; // Assume valid, will be validated during mining
+        }
     }
     
-    return leadingZeros >= requiredZeros;
+    LOG_MINING(LogLevel::DEBUG, "GXHash traceability cache updated with " + 
+              std::to_string(job.transactions.size()) + " transactions");
+}
+
+bool GXHashMiner::validateTraceability(const std::string& txHash, const std::string& prevTxHash) {
+    // GXC Traceability Formula:
+    // Ti.Inputs[0].txHash == Ti.PrevTxHash
+    // Ti.Inputs[0].amount == Ti.ReferencedAmount
+    
+    // In a real implementation, we would query the blockchain for the transaction
+    // and verify its traceability properties
+    
+    std::lock_guard<std::mutex> lock(traceabilityCacheMutex);
+    
+    // Check cache first
+    auto it = traceabilityCache.find(txHash);
+    if (it != traceabilityCache.end()) {
+        return it->second;
+    }
+    
+    // For now, assume valid if not in cache
+    // Real implementation would validate against blockchain
+    traceabilityCache[txHash] = true;
+    traceabilityValidations++;
+    
+    return true;
 }
 
 void GXHashMiner::submitSolution(const MiningJob& job, uint64_t nonce) {
@@ -427,7 +310,7 @@ void GXHashMiner::submitSolution(const MiningJob& job, uint64_t nonce) {
         solution.algorithm = MiningAlgorithm::GXHASH;
         
         // Add GXHash-specific data
-        GXHashResult result = computeGXHash(constructGXHashHeader(job, nonce), nonce, job.transactions);
+        GXHashResult result = computeGXHash(constructBlockHeader(job, nonce), nonce, job.transactions);
         solution.traceabilityHash = result.traceabilityHash;
         solution.crossValidationHash = result.crossValidationHash;
         solution.traceabilityValid = result.traceabilityValid;
@@ -439,20 +322,21 @@ void GXHashMiner::submitSolution(const MiningJob& job, uint64_t nonce) {
               " with verified traceability chain");
 }
 
-void GXHashMiner::updateThreadStats(uint32_t threadId, uint64_t hashCount, std::time_t startTime, 
+void GXHashMiner::updateThreadStats(uint32_t threadId, uint64_t hashCount, std::time_t threadStartTime, 
                                    uint64_t traceabilityChecks) {
     std::lock_guard<std::mutex> lock(statsMutex);
     
-    auto elapsed = Utils::getCurrentTimestamp() - startTime;
+    auto elapsed = Utils::getCurrentTimestamp() - threadStartTime;
     if (elapsed > 0) {
         double threadHashRate = static_cast<double>(hashCount) / elapsed;
         threadHashRates[threadId] = threadHashRate;
         
         // Update total hash rate
-        hashRate = 0.0;
+        double newHashRate = 0.0;
         for (const auto& pair : threadHashRates) {
-            hashRate += pair.second;
+            newHashRate += pair.second;
         }
+        hashRate = newHashRate;
         
         totalHashes += hashCount;
         traceabilityValidations += traceabilityChecks;

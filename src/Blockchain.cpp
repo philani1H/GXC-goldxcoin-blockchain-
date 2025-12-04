@@ -10,7 +10,12 @@
 #include <unordered_set>
 #include <random>
 
-Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0) {
+Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0),
+    currentHashrate(0.0), lastBlockTime(0.0), recentPoWBlocks(0), recentPoSBlocks(0) {
+    
+    // Initialize Security Engine
+    securityEngine = std::make_unique<GXCSecurity::SecurityEngine>();
+    
     // Set difficulty based on network type
     bool isTestnet = Config::isTestnet();
     if (isTestnet) {
@@ -20,6 +25,8 @@ Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0) {
         difficulty = 1000.0;  // Harder for mainnet
         LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created (MAINNET mode, difficulty: 1000.0)");
     }
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Security Engine initialized - AI Hashrate Sentinel active");
 }
 
 Blockchain::~Blockchain() {
@@ -566,6 +573,158 @@ void Blockchain::updateUtxoSet(const Block& block) {
     uint32_t inputsRemoved = 0;
     
     for (const auto& tx : block.getTransactions()) {
+        TransactionType txType = tx.getType();
+        
+        // STAKE TRANSACTION PROCESSING
+        if (txType == TransactionType::STAKE) {
+            // Step 1: Calculate total input amount BEFORE removing from UTXO set
+            double totalInput = 0.0;
+            for (const auto& input : tx.getInputs()) {
+                totalInput += input.amount;
+            }
+            
+            // Step 2: Remove spent inputs from UTXO set
+            for (const auto& input : tx.getInputs()) {
+                std::string utxoKey = input.txHash + "_" + std::to_string(input.outputIndex);
+                if (utxoSet.find(utxoKey) != utxoSet.end()) {
+                    utxoSet.erase(utxoKey);
+                    inputsRemoved++;
+                    
+                    try {
+                        Database::getInstance().deleteUTXO(input.txHash, input.outputIndex);
+                    } catch (const std::exception& e) {
+                        LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to delete UTXO from database: " + std::string(e.what()));
+                    }
+                }
+            }
+            
+            // Step 3: Calculate total output (change only for STAKE)
+            double totalOutput = 0.0;
+            for (const auto& output : tx.getOutputs()) {
+                totalOutput += output.amount;
+            }
+            
+            // Step 4: Calculate staked amount = inputs - outputs - fee
+            double stakedAmount = totalInput - totalOutput - tx.getFee();
+            
+            // Step 5: Update validator's stake
+            if (stakedAmount > 0) {
+                std::string stakerAddress = tx.getSenderAddress();
+                if (stakerAddress.empty() && !tx.getOutputs().empty()) {
+                    stakerAddress = tx.getOutputs()[0].address;
+                }
+                
+                bool found = false;
+                for (auto& v : validators) {
+                    if (v.getAddress() == stakerAddress) {
+                        v.addStake(stakedAmount);
+                        validatorMap[stakerAddress] = v;
+                        
+                        try {
+                            Database::getInstance().updateValidator(v);
+                        } catch (const std::exception& e) {
+                            LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to update validator in DB: " + std::string(e.what()));
+                        }
+                        
+                        found = true;
+                        LOG_BLOCKCHAIN(LogLevel::INFO, "✅ STAKE confirmed: " + std::to_string(stakedAmount) +
+                                      " GXC locked for " + stakerAddress.substr(0, 20) + "...");
+                        break;
+                    }
+                }
+                
+                if (!found) {
+                    LOG_BLOCKCHAIN(LogLevel::WARNING, "STAKE TX for unknown validator: " + stakerAddress + 
+                                  ". Amount: " + std::to_string(stakedAmount) + " GXC may be lost!");
+                }
+            }
+            
+            // Step 6: Add change outputs as UTXOs
+            uint32_t outputIndex = 0;
+            for (const auto& output : tx.getOutputs()) {
+                std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
+                utxoSet[utxoKey] = output;
+                outputsAdded++;
+                
+                try {
+                    Database::getInstance().storeUTXO(tx.getHash(), outputIndex, output, block.getIndex());
+                } catch (const std::exception& e) {
+                    LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to store UTXO: " + std::string(e.what()));
+                }
+                
+                LOG_BLOCKCHAIN(LogLevel::DEBUG, "STAKE change UTXO [" + utxoKey + "]: " + 
+                              std::to_string(output.amount) + " GXC");
+                outputIndex++;
+            }
+            
+            continue; // Skip normal processing
+        }
+        
+        // UNSTAKE TRANSACTION PROCESSING
+        if (txType == TransactionType::UNSTAKE) {
+            double unstakeAmount = tx.getTotalOutputAmount();
+            
+            std::string stakerAddress = tx.getReceiverAddress();
+            if (stakerAddress.empty() && !tx.getOutputs().empty()) {
+                stakerAddress = tx.getOutputs()[0].address;
+            }
+            
+            // Reduce validator's stake
+            bool found = false;
+            for (auto& v : validators) {
+                if (v.getAddress() == stakerAddress) {
+                    // Use proper removeStake method
+                    double currentStake = v.getStakeAmount();
+                    if (currentStake >= unstakeAmount) {
+                        v.removeStake(unstakeAmount);
+                    } else {
+                        LOG_BLOCKCHAIN(LogLevel::WARNING, "UNSTAKE: Requested " + std::to_string(unstakeAmount) +
+                                      " but only " + std::to_string(currentStake) + " staked");
+                        v.removeStake(currentStake);
+                    }
+                    
+                    validatorMap[stakerAddress] = v;
+                    
+                    try {
+                        Database::getInstance().updateValidator(v);
+                    } catch (const std::exception& e) {
+                        LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to update validator in DB: " + std::string(e.what()));
+                    }
+                    
+                    found = true;
+                    LOG_BLOCKCHAIN(LogLevel::INFO, "✅ UNSTAKE confirmed: " + std::to_string(unstakeAmount) +
+                                  " GXC returned to " + stakerAddress.substr(0, 20) + "...");
+                    break;
+                }
+            }
+            
+            if (!found) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "UNSTAKE TX for unknown validator: " + stakerAddress);
+            }
+            
+            // Add outputs as new UTXOs (coins returned to spendable balance)
+            uint32_t outputIndex = 0;
+            for (const auto& output : tx.getOutputs()) {
+                std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
+                utxoSet[utxoKey] = output;
+                outputsAdded++;
+                
+                try {
+                    Database::getInstance().storeUTXO(tx.getHash(), outputIndex, output, block.getIndex());
+                } catch (const std::exception& e) {
+                    LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to store UTXO: " + std::string(e.what()));
+                }
+                
+                LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Unstaked UTXO [" + utxoKey + "]: " + 
+                              std::to_string(output.amount) + " GXC to " + output.address.substr(0, 20) + "...");
+                outputIndex++;
+            }
+            
+            continue; // Skip normal processing
+        }
+        
+        // NORMAL TRANSACTION PROCESSING (including coinbase)
+        
         // Remove inputs (spent outputs) - mark UTXOs as spent
         if (!tx.isCoinbaseTransaction()) {
             for (const auto& input : tx.getInputs()) {
@@ -574,7 +733,6 @@ void Blockchain::updateUtxoSet(const Block& block) {
                     utxoSet.erase(utxoKey);
                     inputsRemoved++;
                     
-                    // Remove UTXO from database
                     try {
                         Database::getInstance().deleteUTXO(input.txHash, input.outputIndex);
                     } catch (const std::exception& e) {
@@ -583,148 +741,17 @@ void Blockchain::updateUtxoSet(const Block& block) {
                 }
             }
         }
-        
-        // STAKING LOGIC START
-        if (tx.getType() == TransactionType::STAKE) {
-            // Inputs were removed above.
-            // DO NOT create new UTXOs for the main amount.
-            // Outputs might contain change?
-            // User model: "balance[address] -= stakeAmount; staked[address] += stakeAmount"
-
-            // Calculate total input
-            double totalInput = 0.0;
-            // Inputs are already removed from UTXO set, but we need their values.
-            // Since we can't look them up in UTXO set anymore (removed above),
-            // we rely on the transaction input values which should match the traceability check.
-            // Ideally, we sum up inputs BEFORE removing them, but here we can iterate.
-            for (const auto& input : tx.getInputs()) {
-                totalInput += input.amount;
-            }
-
-            // Calculate total output (change)
-            double totalOutput = 0.0;
-            for (const auto& output : tx.getOutputs()) {
-                totalOutput += output.amount;
-            }
-
-            // Determine staked amount
-            // Amount = Inputs - Outputs (Change) - Fee
-            double stakedAmount = totalInput - totalOutput - tx.getFee();
-
-            if (stakedAmount > 0) {
-                std::string stakerAddress = tx.getSenderAddress();
-
-                // Update Validator Stake in Memory
-                bool found = false;
-                for (auto& v : validators) {
-                    if (v.getAddress() == stakerAddress) {
-                        v.addStake(stakedAmount);
-                        // Update in Map
-                        validatorMap[stakerAddress] = v;
-
-                        // Update in Database
-                        Database::getInstance().updateValidator(v);
-                        found = true;
-                        LOG_BLOCKCHAIN(LogLevel::INFO, "STAKE processed: " + std::to_string(stakedAmount) +
-                                      " added to " + stakerAddress);
-                        break;
-                    }
-                }
-
-                if (!found) {
-                    // Implicit registration? Or error?
-                    // User said "Registering as a validator... creates the validator entry".
-                    // Assuming registerValidator was called before, so validator entry exists.
-                    LOG_BLOCKCHAIN(LogLevel::WARNING, "STAKE transaction for unknown validator: " + stakerAddress);
-                }
-            }
-
-            // Add ONLY the change outputs as UTXOs
-            uint32_t outputIndex = 0;
-            for (const auto& output : tx.getOutputs()) {
-                std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
-                utxoSet[utxoKey] = output;
-                outputIndex++;
-                outputsAdded++;
-
-                try {
-                    Database::getInstance().storeUTXO(tx.getHash(), outputIndex - 1, output, block.getIndex());
-                } catch (...) {}
-            }
-
-            continue; // Skip normal output processing
-        }
-        else if (tx.getType() == TransactionType::UNSTAKE) {
-            // UNSTAKE Logic
-            // Inputs: Reference to previous? Empty?
-            // Outputs: New Spendable Amount.
-            // Verification: Sender has enough stake.
-
-            double unstakeAmount = 0.0;
-            for(const auto& output : tx.getOutputs()) {
-                unstakeAmount += output.amount;
-            }
-
-            // We assume validation passed in validateTransaction
-            std::string stakerAddress = tx.getReceiverAddress(); // Or sender? Unstake goes to self.
-            if(stakerAddress.empty() && !tx.getOutputs().empty()) stakerAddress = tx.getOutputs()[0].address;
-
-            // Reduce Stake
-            bool found = false;
-            for (auto& v : validators) {
-                if (v.getAddress() == stakerAddress) {
-                    // Logic to check amount is done in validation, here we apply
-                    // But we should be safe.
-                    // v.removeStake(unstakeAmount); // Assuming method exists or manual
-                    // Validator class has slash but not clean "removeStake", let's use a workaround or add it later?
-                    // For now, simple subtraction if possible, or slash with "Unstake" reason.
-                    // Actually, let's implement a proper removeStake in Validator if missing,
-                    // or just modify the object here.
-
-                    // Direct modification for now if no method
-                    // v.stakeAmount -= unstakeAmount; // private?
-                    // using slash for now as it reduces stake, log reason "Unstake"
-                    v.slash(unstakeAmount, "Unstake");
-
-                    validatorMap[stakerAddress] = v;
-                    Database::getInstance().updateValidator(v);
-                    found = true;
-                    LOG_BLOCKCHAIN(LogLevel::INFO, "UNSTAKE processed: " + std::to_string(unstakeAmount) +
-                                  " returned to " + stakerAddress);
-                    break;
-                }
-            }
-
-            // Add Outputs as new UTXOs (Minting back to UTXO set)
-            uint32_t outputIndex = 0;
-            for (const auto& output : tx.getOutputs()) {
-                std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
-                utxoSet[utxoKey] = output;
-                outputIndex++;
-                outputsAdded++;
-
-                try {
-                    Database::getInstance().storeUTXO(tx.getHash(), outputIndex - 1, output, block.getIndex());
-                } catch (...) {}
-
-                LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Unstaked UTXO [" + utxoKey + "]: " + std::to_string(output.amount));
-            }
-
-            continue;
-        }
-        // STAKING LOGIC END
 
         // Add outputs (new UTXOs) - these become spendable
         uint32_t outputIndex = 0;
         for (const auto& output : tx.getOutputs()) {
             std::string utxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
             utxoSet[utxoKey] = output;
-            outputIndex++;
             outputsAdded++;
             
             // Persist UTXO to database
             try {
-                Database::getInstance().storeUTXO(tx.getHash(), outputIndex - 1, output, block.getIndex());
+                Database::getInstance().storeUTXO(tx.getHash(), outputIndex, output, block.getIndex());
             } catch (const std::exception& e) {
                 LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to persist UTXO to database: " + std::string(e.what()));
             }
@@ -737,6 +764,8 @@ void Blockchain::updateUtxoSet(const Block& block) {
                 LOG_BLOCKCHAIN(LogLevel::DEBUG, "Added UTXO [" + utxoKey + "]: " + std::to_string(output.amount) + 
                               " GXC to " + output.address.substr(0, 16) + "...");
             }
+            
+            outputIndex++;
         }
     }
     
@@ -999,6 +1028,7 @@ BlockType Blockchain::getNextBlockType() const {
 bool Blockchain::validateTransaction(const Transaction& tx) {
     // Basic transaction validation
     if (tx.getHash().empty()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction hash is empty");
         return false;
     }
     
@@ -1007,17 +1037,111 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         return true;
     }
     
-    // Validate traceability for non-coinbase transactions (and non-unstake potentially?)
-    // Unstake might not have traditional inputs, so we check type
-    if (tx.getType() != TransactionType::UNSTAKE && !tx.isTraceabilityValid()) {
+    TransactionType txType = tx.getType();
+    
+    // STAKE TRANSACTION VALIDATION
+    if (txType == TransactionType::STAKE) {
+        // STAKE transactions must have inputs (UTXOs to consume)
+        if (tx.getInputs().empty()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE transaction has no inputs: " + tx.getHash());
+            return false;
+        }
+        
+        // Calculate total input
+        double inputTotal = tx.getTotalInputAmount();
+        double outputTotal = tx.getTotalOutputAmount();
+        double fee = tx.getFee();
+        
+        // Staked amount = inputs - outputs - fee
+        double stakedAmount = inputTotal - outputTotal - fee;
+        
+        if (stakedAmount < 100.0) { // Minimum stake from Validator::MIN_STAKE
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE amount too low: " + std::to_string(stakedAmount) + 
+                          " (minimum: 100 GXC)");
+            return false;
+        }
+        
+        // Verify minimum fee
+        double minFee = Config::getDouble("min_tx_fee", 0.001);
+        if (fee < minFee) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE transaction fee too low: " + std::to_string(fee));
+            return false;
+        }
+        
+        // Verify inputs reference valid UTXOs (they exist)
+        for (const auto& input : tx.getInputs()) {
+            std::string utxoKey = input.txHash + "_" + std::to_string(input.outputIndex);
+            if (utxoSet.find(utxoKey) == utxoSet.end()) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE input references non-existent UTXO: " + utxoKey);
+                return false;
+            }
+        }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "STAKE transaction validated: " + tx.getHash() + 
+                      ", StakedAmount: " + std::to_string(stakedAmount) + " GXC");
+        return true;
+    }
+    
+    // UNSTAKE TRANSACTION VALIDATION
+    if (txType == TransactionType::UNSTAKE) {
+        // Verify user has enough staked balance
+        std::string stakerAddress = tx.getReceiverAddress();
+        if (stakerAddress.empty() && !tx.getOutputs().empty()) {
+            stakerAddress = tx.getOutputs()[0].address;
+        }
+
+        double unstakeAmount = tx.getTotalOutputAmount();
+
+        std::lock_guard<std::mutex> lock(chainMutex);
+        auto it = validatorMap.find(stakerAddress);
+        if (it == validatorMap.end()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "UNSTAKE failed: Validator not found for " + stakerAddress);
+            return false;
+        }
+
+        if (it->second.getStakeAmount() < unstakeAmount) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "UNSTAKE failed: Insufficient stake. Has " +
+                          std::to_string(it->second.getStakeAmount()) + " GXC, trying to unstake " + 
+                          std::to_string(unstakeAmount) + " GXC");
+            return false;
+        }
+
+        LOG_BLOCKCHAIN(LogLevel::INFO, "UNSTAKE transaction validated: " + tx.getHash() + 
+                      ", Amount: " + std::to_string(unstakeAmount) + " GXC");
+        return true;
+    }
+    
+    // NORMAL TRANSACTION VALIDATION
+    // Validate traceability for non-coinbase transactions
+    if (!tx.isTraceabilityValid()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction traceability validation failed: " + tx.getHash());
         return false;
     }
     
     // Validate transaction structure
-    // UNSTAKE might have no inputs if it's purely a claim
-    if (tx.getType() != TransactionType::UNSTAKE && (tx.getInputs().empty() || tx.getOutputs().empty())) {
+    if (tx.getInputs().empty() || tx.getOutputs().empty()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction has no inputs or outputs: " + tx.getHash());
         return false;
+    }
+    
+    // CRITICAL: Verify all inputs reference valid, unspent UTXOs
+    // This prevents double-spending and ensures coins actually exist
+    for (const auto& input : tx.getInputs()) {
+        std::string utxoKey = input.txHash + "_" + std::to_string(input.outputIndex);
+        auto it = utxoSet.find(utxoKey);
+        if (it == utxoSet.end()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input references non-existent UTXO: " + utxoKey + 
+                          " (double-spend attempt or invalid input)");
+            return false;
+        }
+        
+        // Verify the input amount matches the UTXO amount
+        if (std::abs(it->second.amount - input.amount) > 0.00000001) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input amount mismatch: input claims " + 
+                          std::to_string(input.amount) + " GXC but UTXO has " + 
+                          std::to_string(it->second.amount) + " GXC");
+            return false;
+        }
     }
     
     // Validate amounts
@@ -1025,48 +1149,35 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
     double outputTotal = tx.getTotalOutputAmount();
     double fee = tx.getFee();
     
-    // Validate minimum fee (only for non-coinbase transactions)
-    if (!tx.isCoinbaseTransaction()) {
-        double baseFee = Config::getDouble("base_transaction_fee", 0.001);
-        double minFee = Config::getDouble("min_tx_fee", baseFee);
-        
-        if (fee < minFee) {
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction fee too low: " + std::to_string(fee) + 
-                          " (minimum: " + std::to_string(minFee) + ")");
-            return false;
-        }
-    }
+    // Validate minimum fee
+    double baseFee = Config::getDouble("base_transaction_fee", 0.001);
+    double minFee = Config::getDouble("min_tx_fee", baseFee);
     
-    // UNSTAKE SPECIAL VALIDATION
-    if (tx.getType() == TransactionType::UNSTAKE) {
-        // Verify user has enough staked balance
-        std::string stakerAddress = tx.getReceiverAddress();
-        if(stakerAddress.empty() && !tx.getOutputs().empty()) stakerAddress = tx.getOutputs()[0].address;
-
-        double unstakeAmount = outputTotal;
-
-        std::lock_guard<std::mutex> lock(chainMutex);
-        auto it = validatorMap.find(stakerAddress);
-        if (it == validatorMap.end()) {
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "Unstake failed: Validator not found " + stakerAddress);
-            return false;
-        }
-
-        if (it->second.getStakeAmount() < unstakeAmount) {
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "Unstake failed: Insufficient stake. Has " +
-                          std::to_string(it->second.getStakeAmount()) + ", trying to unstake " + std::to_string(unstakeAmount));
-            return false;
-        }
-
-        // Input total check doesn't apply to UNSTAKE the same way if it has no inputs
-        // If it DOES have inputs (e.g. for fee payment), we check balance
-        return true;
-    }
-
-    if (inputTotal < outputTotal + fee) {
-        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input/output amount mismatch");
+    if (fee < minFee) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction fee too low: " + std::to_string(fee) + 
+                      " (minimum: " + std::to_string(minFee) + ")");
         return false;
     }
+
+    // Input must cover output + fee (no coin creation allowed)
+    if (inputTotal < outputTotal + fee) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input/output mismatch: inputs=" + 
+                      std::to_string(inputTotal) + ", outputs=" + std::to_string(outputTotal) + 
+                      ", fee=" + std::to_string(fee) + ". Cannot spend more than you have!");
+        return false;
+    }
+    
+    // Verify no coin burning (optional - allows for fee overpayment)
+    double excessAmount = inputTotal - outputTotal - fee;
+    if (excessAmount > 0.00000001) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Transaction has excess input: " + std::to_string(excessAmount) + 
+                      " GXC will be added to fee (potential coin burning)");
+        // Note: We allow this but log a warning - the excess goes to the miner as extra fee
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::DEBUG, "Transaction validated: " + tx.getHash() + 
+                  ", inputs=" + std::to_string(inputTotal) + ", outputs=" + std::to_string(outputTotal) +
+                  ", fee=" + std::to_string(fee));
     
     return true;
 }
@@ -1776,4 +1887,75 @@ std::vector<Validator> Blockchain::getActiveValidators() const {
     }
     
     return active;
+}
+
+// =========================================================
+//           SECURITY ENGINE INTEGRATION
+// =========================================================
+
+double Blockchain::getSecurityAdjustedDifficulty() const {
+    if (!securityEngine) return difficulty;
+    
+    // Get base difficulty from security engine
+    double adjustedDiff = securityEngine->calculateNextDifficulty(
+        difficulty, 
+        currentHashrate, 
+        lastBlockTime
+    );
+    
+    return adjustedDiff;
+}
+
+double Blockchain::getSecurityAdjustedReward(double blockTime) const {
+    if (!securityEngine) return blockReward;
+    
+    // Apply emission guard
+    return securityEngine->calculateBlockReward(blockTime);
+}
+
+double Blockchain::getRecommendedFee() const {
+    if (!securityEngine) return 0.0001; // Default min fee
+    
+    return securityEngine->getRecommendedFee();
+}
+
+bool Blockchain::detectPotentialAttack() const {
+    if (!securityEngine) return false;
+    
+    return securityEngine->detectAttack(currentHashrate, lastBlockTime);
+}
+
+std::string Blockchain::getAttackStatus() const {
+    if (!securityEngine) return "SECURITY_ENGINE_NOT_INITIALIZED";
+    
+    if (securityEngine->detectAttack(currentHashrate, lastBlockTime)) {
+        return securityEngine->getAttackType(currentHashrate, lastBlockTime);
+    }
+    
+    return "NETWORK_SECURE";
+}
+
+void Blockchain::updateHashrate(double hashrate) {
+    currentHashrate = hashrate;
+    
+    if (securityEngine) {
+        // Update security engine with new hashrate
+        securityEngine->predictHashrate(hashrate);
+        
+        // Update staking metrics
+        double stakedAmount = 0.0;
+        for (const auto& validator : validators) {
+            if (validator.getIsActive()) {
+                stakedAmount += validator.getStakeAmount();
+            }
+        }
+        securityEngine->updateStakingMetrics(stakedAmount, totalSupply);
+        
+        // Check for attacks
+        if (securityEngine->detectHashrateSurge(hashrate)) {
+            LOG_BLOCKCHAIN(LogLevel::WARNING, 
+                "SECURITY ALERT: Hashrate surge detected! Current: " + 
+                std::to_string(hashrate) + " H/s");
+        }
+    }
 }

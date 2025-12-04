@@ -1,0 +1,63 @@
+MIT License
+
+Copyright (c) 2024 GXC Blockchain
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+                           MINING DISCLAIMER
+================================================================================
+
+IMPORTANT: By using this software, you acknowledge and agree that:
+
+1. FINANCIAL RISK: Mining cryptocurrency involves significant financial risk 
+   including but not limited to:
+   - Hardware costs and depreciation
+   - Electricity and cooling expenses
+   - Network difficulty fluctuations
+   - Cryptocurrency market volatility
+
+2. NO GUARANTEE: There is NO guarantee of:
+   - Profitability or return on investment
+   - Successful block discovery
+   - Pool payouts or stability
+   - Token/coin value maintenance
+
+3. RESOURCE USAGE: This software will:
+   - Utilize significant CPU/GPU resources
+   - Generate heat that may affect hardware
+   - Consume substantial electricity
+   - Potentially affect system performance
+
+4. YOUR RESPONSIBILITY: You are solely responsible for:
+   - Compliance with all applicable laws and regulations
+   - Proper hardware configuration and cooling
+   - Payment of electricity and operational costs
+   - Tax obligations on any mining income
+   - Backup and security of wallet/private keys
+
+5. NO LIABILITY: The developers and contributors accept no liability for:
+   - Financial losses incurred through mining
+   - Hardware damage from extended use
+   - Lost coins or failed transactions
+   - Pool operator actions or failures
+
+USE AT YOUR OWN RISK.
+
+================================================================================

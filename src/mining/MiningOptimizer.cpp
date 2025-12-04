@@ -1,8 +1,9 @@
 // MiningOptimizer.cpp
 // Stub implementation for mining optimizer.
 
-#include "GXCMiner.h"
-#include "blockchain.h"
+#include "../../include/mining/MiningOptimizer.h"
+#include "../../include/blockchain.h"
+#include "../../include/Logger.h"
 #include <iostream>
 #include <vector>
 

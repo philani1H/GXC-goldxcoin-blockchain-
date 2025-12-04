@@ -421,6 +421,7 @@ private:
     JsonValue addStake(const JsonValue& params);
     JsonValue getValidators(const JsonValue& params);
     JsonValue getValidatorInfo(const JsonValue& params);
+    JsonValue getStakingInfo(const JsonValue& params);
     
 public:
     RPCAPI(Blockchain* blockchain, uint16_t port);

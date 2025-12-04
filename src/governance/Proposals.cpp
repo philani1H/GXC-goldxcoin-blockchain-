@@ -5,6 +5,12 @@
 #include "blockchain.h"
 #include <iostream>
 
+// Define static constants
+const double Proposal::DEFAULT_QUORUM_THRESHOLD = 0.15;  // 15%
+const double Proposal::DEFAULT_PASS_THRESHOLD = 0.60;    // 60%
+const uint32_t Proposal::DEFAULT_VOTING_PERIOD = 7;       // 7 days
+const double Proposal::MINIMUM_PROPOSAL_STAKE = 1000.0;  // 1000 GXC
+
 Proposal::Proposal() : proposer(""), title(""), description(""), createdAt(std::time(nullptr)), votingEndsAt(createdAt + 7 * 86400), status(ProposalStatus::ACTIVE), forVotes(0), againstVotes(0), abstainVotes(0), totalVotes(0), quorumThreshold(DEFAULT_QUORUM_THRESHOLD), passThreshold(DEFAULT_PASS_THRESHOLD), executed(false), executedAt(0) {
 }
 

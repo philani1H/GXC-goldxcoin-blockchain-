@@ -46,6 +46,18 @@ void Validator::addStake(double amount) {
     stakeAmount += amount;
 }
 
+void Validator::removeStake(double amount) {
+    if (amount > stakeAmount) {
+        amount = stakeAmount; // Can't remove more than we have
+    }
+    stakeAmount -= amount;
+    
+    // If stake drops below minimum, deactivate validator
+    if (stakeAmount < MIN_STAKE) {
+        isActive = false;
+    }
+}
+
 void Validator::extendStakingPeriod(uint32_t additionalDays) {
     stakingDays += additionalDays;
 }

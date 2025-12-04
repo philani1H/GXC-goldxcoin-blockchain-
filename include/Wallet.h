@@ -24,9 +24,18 @@ public:
     bool saveToFile(const std::string& filepath) const;
     bool loadFromFile(const std::string& filepath);
 
-    // Create a transaction
+    // Create a transaction (with optional fee, defaults to 0.001)
     Transaction createTransaction(const std::string& recipientAddress, double amount,
-                                 const std::unordered_map<std::string, TransactionOutput>& utxoSet);
+                                 const std::unordered_map<std::string, TransactionOutput>& utxoSet,
+                                 double fee = 0.001);
+
+    // Create a staking transaction (locks coins in stake pool)
+    Transaction createStakeTransaction(double stakeAmount, 
+                                       const std::unordered_map<std::string, TransactionOutput>& utxoSet,
+                                       double fee = 0.001);
+
+    // Create an unstaking transaction (releases coins from stake pool)
+    Transaction createUnstakeTransaction(double unstakeAmount, double fee = 0.0);
 
     // Sign a transaction
     void signTransaction(Transaction& tx);
@@ -45,6 +54,21 @@ public:
     // Getters
     std::string getAddress() const { return address; }
     std::string getPublicKey() const { return publicKey; }
-
     std::string getLastTxHash() const { return lastTxHash; }
+    
+    // Static address validation methods
+    static bool isValidAddress(const std::string& address) {
+        // GXC addresses start with "GXC" (mainnet) or "tGXC" (testnet)
+        if (address.length() < 30) return false;
+        return address.substr(0, 3) == "GXC" || address.substr(0, 4) == "tGXC";
+    }
+    
+    static bool isTestnetAddress(const std::string& address) {
+        return address.length() >= 4 && address.substr(0, 4) == "tGXC";
+    }
+    
+    static bool isMainnetAddress(const std::string& address) {
+        return address.length() >= 3 && address.substr(0, 3) == "GXC" && 
+               (address.length() < 4 || address[3] != 'C' || address.substr(0,4) != "tGXC");
+    }
 };

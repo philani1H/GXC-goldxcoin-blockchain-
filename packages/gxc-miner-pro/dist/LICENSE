@@ -1,0 +1,61 @@
+MIT License
+
+Copyright (c) 2024-2025 GXC Foundation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+                          MINING SOFTWARE DISCLAIMER
+================================================================================
+
+1. CRYPTOCURRENCY MINING RISKS
+   Mining cryptocurrency involves significant risks including but not limited to:
+   - Electricity costs may exceed mining rewards
+   - Hardware wear and potential damage
+   - Market volatility affecting profitability
+   - Regulatory changes in your jurisdiction
+   - Pool fees and network fees
+
+2. NO GUARANTEE OF PROFITS
+   This software does not guarantee any profits from mining activities.
+   Mining profitability depends on many factors outside the control of
+   this software, including network difficulty, cryptocurrency prices,
+   electricity costs, and hardware efficiency.
+
+3. POOL MINING TERMS
+   When using pool mining, you agree to the terms of service of the
+   mining pool operator. Pool operators typically charge fees (1-3%)
+   and have their own payout thresholds and policies.
+
+4. SOLO MINING RISKS
+   Solo mining requires significant computational resources to find blocks.
+   You may mine for extended periods without finding any blocks or rewards.
+
+5. HARDWARE RESPONSIBILITY
+   The user is solely responsible for monitoring hardware temperatures,
+   power consumption, and ensuring adequate cooling. Mining can increase
+   hardware wear and electricity consumption significantly.
+
+6. LEGAL COMPLIANCE
+   Users are responsible for ensuring cryptocurrency mining is legal
+   in their jurisdiction and for reporting any mining income according
+   to local tax laws.
+
+By using this software, you acknowledge that you have read, understood,
+and agree to these terms and conditions.

@@ -1,8 +1,9 @@
 // HardwareDetector.cpp
 // Stub implementation for mining hardware detection.
 
-#include "GXCMiner.h"
-#include "blockchain.h"
+#include "../../include/mining/HardwareDetector.h"
+#include "../../include/blockchain.h"
+#include "../../include/Logger.h"
 #include <iostream>
 #include <vector>
 

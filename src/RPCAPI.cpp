@@ -340,6 +340,8 @@ void RPCAPI::registerMethods() {
     rpcMethods["gxc_getValidators"] = [this](const JsonValue& params) { return getValidators(params); };
     rpcMethods["getvalidatorinfo"] = [this](const JsonValue& params) { return getValidatorInfo(params); };
     rpcMethods["gxc_getValidatorInfo"] = [this](const JsonValue& params) { return getValidatorInfo(params); };
+    rpcMethods["getstakinginfo"] = [this](const JsonValue& params) { return getStakingInfo(params); };
+    rpcMethods["gxc_getStakingInfo"] = [this](const JsonValue& params) { return getStakingInfo(params); };
     rpcMethods["addstake"] = [this](const JsonValue& params) { return addStake(params); };
     rpcMethods["gxc_addStake"] = [this](const JsonValue& params) { return addStake(params); };
     
@@ -1892,186 +1894,75 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
             " and " + std::to_string(Validator::MAX_STAKING_DAYS));
     }
     
-    // Check balance
-    double balance = blockchain->getBalance(address);
-    if (balance < stakeAmount) {
+    // Check if wallet is available and matches the staking address
+    if (!wallet) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
+    }
+    
+    // Verify the wallet controls this address
+    if (wallet->getAddress() != address) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-            "Insufficient balance. Required: " + std::to_string(stakeAmount) + 
-            " GXC, Available: " + std::to_string(balance) + " GXC");
+            "Wallet does not control address: " + address + 
+            ". Use your wallet address: " + wallet->getAddress());
+    }
+    
+    // Check balance (must have enough for stake + fee)
+    double fee = 0.001;
+    double totalRequired = stakeAmount + fee;
+    double balance = blockchain->getBalance(address);
+    
+    if (balance < totalRequired) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Insufficient balance. Required: " + std::to_string(totalRequired) + 
+            " GXC (stake: " + std::to_string(stakeAmount) + " + fee: " + std::to_string(fee) +
+            "), Available: " + std::to_string(balance) + " GXC");
     }
 
-    // Process Staking Transaction
-    // Try to use the node wallet to fund the stake if it holds funds, regardless of whether
-    // the validator address matches the wallet address exactly (users might manage multiple addresses)
-    // or if the user is staking TO themselves (which is the standard case).
-    bool stakingTxCreated = false;
-
-    if (wallet) {
-        try {
-            // Check if wallet has enough funds to cover stake
-            double walletBalance = blockchain->getBalance(wallet->getAddress());
-
-            // If the wallet has enough funds and we are either staking for our own address
-            // OR simply using this wallet to fund the staking operation
-            if (walletBalance >= stakeAmount) {
-                const auto& utxoSet = blockchain->getUtxoSet();
-
-                // Create transaction: Send stakeAmount from Wallet -> Validator Address
-                // Note: For self-staking, wallet->getAddress() == address.
-                // For delegating/funding another address, wallet funds it.
-                // The 'STAKE' type transaction consumes inputs and burns/locks them in the validator pool.
-                // The 'address' (recipient) in createTransaction is where the output usually goes,
-                // but for STAKE type, the outputs are change only, or the output is purely informational
-                // for the 'stakerAddress' in updateUtxoSet.
-
-                // We create a transaction sending 'stakeAmount' to the validator address.
-                // In updateUtxoSet, STAKE type logic will look at the sender or receiver.
-                // It treats the input amount - output (change) - fee as the staked amount.
-                // So we just need to spend 'stakeAmount' from the wallet.
-
-                Transaction stakeTx = wallet->createTransaction(address, stakeAmount, utxoSet);
-                stakeTx.setType(TransactionType::STAKE);
-                stakeTx.setMemo("Staking for validator: " + address);
-
-                // For STAKE transactions, the "recipient" output created by createTransaction
-                // should technically not exist as a spendable UTXO, or it should be the "change".
-                // Wallet::createTransaction creates:
-                // 1. Output to 'address' with 'amount'
-                // 2. Output to 'self' with 'change'
-                //
-                // In Blockchain::updateUtxoSet for STAKE:
-                // "Staked Amount = Total Input - Total Output - Fee"
-                // If we leave the output to 'address' with 'amount', then Total Input - Total Output ~= 0 (minus fee).
-                // So the staked amount would be zero!
-                //
-                // FIX: We must REMOVE the output that was intended for the recipient (the stake amount),
-                // effectively "burning" it so it registers as staked amount.
-
-                // Find the output that matches the stake amount and remove it
-                std::vector<TransactionOutput> newOutputs;
-                for (const auto& out : stakeTx.getOutputs()) {
-                    // Keep change outputs (usually back to sender/wallet address)
-                    // Remove the "payment" output which is the stake
-                    if (out.amount == stakeAmount && out.address == address) {
-                        // This is the "payment" to the validator address.
-                        // For STAKE txs, this amount is burned/locked, so we remove the UTXO output.
-                        // However, we must ensure we don't remove change if change == stakeAmount (unlikely but possible)
-                        // But createTransaction logic puts change as the last output usually.
-                        // Let's rely on exact amount match and assuming we only sent one payment.
-                        // Safer: Only remove one instance.
-                        continue;
-                    }
-                    newOutputs.push_back(out);
-                }
-
-                // If we removed all outputs (no change), that's fine.
-                // But wait, if we remove the output, we must ensure we don't remove the change output if it happens to be the same amount.
-                // Wallet::createTransaction adds recipient output first, then change.
-                // Let's reconstruct outputs carefully.
-
-                // Actually, a cleaner way is to reconstruct the transaction.
-                // But Wallet::createTransaction does coin selection which is complex.
-                // Let's just strip the output that sends 'stakeAmount' to 'address'.
-
-                // Re-verify inputs sum
-                double totalInput = 0.0;
-                for (const auto& in : stakeTx.getInputs()) totalInput += in.amount;
-
-                // We want: Staked = TotalInput - Change - Fee = stakeAmount
-                // Currently: TotalInput - (stakeAmount + Change) - Fee = 0
-                // So removing 'stakeAmount' output is exactly what we need.
-
-                // Be careful if change == stakeAmount and address == walletAddress (self-stake with 50/50 split).
-                // In that case both outputs look identical.
-                // createTransaction adds recipient first.
-
-                std::vector<TransactionOutput> adjustedOutputs;
-                bool removedStakeOutput = false;
-                for (const auto& out : stakeTx.getOutputs()) {
-                    if (!removedStakeOutput && std::abs(out.amount - stakeAmount) < 0.00000001 && out.address == address) {
-                        removedStakeOutput = true;
-                        // Skip this output (it becomes the staked amount)
-                        continue;
-                    }
-                    adjustedOutputs.push_back(out);
-                }
-
-                if (removedStakeOutput) {
-                    // Create new TX with adjusted outputs
-                    // We need to re-create it to ensure internal consistency if needed,
-                    // but Transaction class is mostly data container.
-                    // Just updating outputs is sufficient? Transaction has no internal cache of hash?
-                    // It does: txHash. We need to recalculate it?
-                    // Transaction::calculateHash() exists? It's not public/used?
-                    // Wallet::createTransaction signs inputs based on hash?
-                    // Yes, signTransaction calls signInputs which signs the transaction hash.
-                    // If we modify outputs, we CHANGE the hash, so signatures become INVALID.
-
-                    // CRITICAL: We cannot just modify outputs after creation because inputs are already signed over the original outputs.
-                    // We need to manually construct the transaction or modify Wallet to support STAKE transactions.
-                    // Since we can't easily modify Wallet.cpp right now (it's in src), we have to be clever.
-
-                    // Actually, we CAN modify Wallet.cpp in the plan. But for now, let's look at a simpler path.
-                    // If we leave the output there, updateUtxoSet sees Staked = 0.
-
-                    // Alternative: The user creates a normal transaction to THEMSELVES with a memo?
-                    // No, `updateUtxoSet` explicitly checks `TransactionType::STAKE`.
-
-                    // Solution: We need to construct the transaction manually here in RPCAPI using Wallet's key,
-                    // OR we accept that Wallet needs to be updated.
-                    // But wait, I can just re-sign it!
-                    // Wallet::signTransaction is public.
-
-                    Transaction finalStakeTx = stakeTx;
-                    finalStakeTx.clearOutputs(); // Clear valid outputs
-                    for (const auto& out : adjustedOutputs) finalStakeTx.addOutput(out); // Add back only change
-
-                    // Recalculate hash/Sign
-                    // We need the private key. Wallet keeps it private.
-                    // Wallet::signTransaction(tx) uses the stored private key.
-                    // So we can:
-                    // 1. Modify outputs.
-                    // 2. Call wallet->signTransaction(finalStakeTx).
-                    // This will recalculate the hash and re-sign inputs.
-
-                    wallet->signTransaction(finalStakeTx);
-
-                    if (blockchain->addTransaction(finalStakeTx)) {
-                        wallet->updateLastTxHash(finalStakeTx.getHash());
-                        std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
-                        wallet->saveToFile(walletPath);
-
-                        LOG_API(LogLevel::INFO, "Staking transaction created successfully: " + finalStakeTx.getHash());
-                        stakingTxCreated = true;
-                    } else {
-                        LOG_API(LogLevel::ERROR, "Failed to add staking transaction to blockchain");
-                    }
-                } else {
-                    LOG_API(LogLevel::ERROR, "Could not identify stake output to convert to burn");
-                }
-            } else {
-                LOG_API(LogLevel::WARNING, "Wallet balance insufficient for staking: " + std::to_string(walletBalance) + " < " + std::to_string(stakeAmount));
-            }
-        } catch (const std::exception& e) {
-            LOG_API(LogLevel::ERROR, "Error creating staking transaction: " + std::string(e.what()));
-            // Don't throw, just log. We still register the validator in DB (legacy behavior from logs)
-            // or should we fail? User said "no transaction was created... please fix".
-            // We should probably fail if we can't stake, but registerValidator acts as "intent".
+    // Create the staking transaction using the new wallet method
+    std::string stakeTxHash;
+    try {
+        const auto& utxoSet = blockchain->getUtxoSet();
+        
+        // Use the new createStakeTransaction method which properly creates a STAKE tx
+        // that locks the staked amount (doesn't create output for it)
+        Transaction stakeTx = wallet->createStakeTransaction(stakeAmount, utxoSet, fee);
+        
+        LOG_API(LogLevel::INFO, "Created stake transaction: " + stakeTx.getHash() + 
+                ", Inputs: " + std::to_string(stakeTx.getInputs().size()) + 
+                ", Outputs: " + std::to_string(stakeTx.getOutputs().size()) +
+                ", Type: STAKE");
+        
+        // Add to transaction pool
+        if (blockchain->addTransaction(stakeTx)) {
+            stakeTxHash = stakeTx.getHash();
+            
+            // Save wallet state
+            std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+            wallet->saveToFile(walletPath);
+            
+            LOG_API(LogLevel::INFO, "✅ Staking transaction added to mempool: " + stakeTxHash);
+        } else {
+            throw RPCException(RPCException::RPC_INTERNAL_ERROR, 
+                "Failed to add staking transaction to mempool");
         }
-    }
-
-    if (!stakingTxCreated) {
-         LOG_API(LogLevel::WARNING, "Validator registered but NO Staking Transaction created (External wallet or insufficient funds).");
+    } catch (const RPCException& e) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error creating staking transaction: " + std::string(e.what()));
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, 
+            "Failed to create staking transaction: " + std::string(e.what()));
     }
     
-    // Create validator
+    // Create validator record (will be finalized when block is mined)
     Validator validator(address, stakeAmount, stakingDays);
+    validator.setPublicKey(wallet->getPublicKey());
     
-    // Register validator
+    // Register validator in blockchain
     blockchain->registerValidator(validator);
     
-    LOG_API(LogLevel::INFO, "Validator registered: " + address + ", Stake: " + 
-            std::to_string(stakeAmount) + " GXC, Days: " + std::to_string(stakingDays));
+    LOG_API(LogLevel::INFO, "✅ Validator registered: " + address + ", Stake: " + 
+            std::to_string(stakeAmount) + " GXC, Days: " + std::to_string(stakingDays) +
+            ", TX: " + stakeTxHash);
     
     JsonValue result;
     result["success"] = true;
@@ -2079,7 +1970,8 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     result["stake_amount"] = stakeAmount;
     result["staking_days"] = stakingDays;
     result["weighted_stake"] = validator.getWeightedStake();
-    result["message"] = "Validator registered successfully";
+    result["stake_tx"] = stakeTxHash;
+    result["message"] = "Validator registered successfully. Stake transaction: " + stakeTxHash;
     
     return result;
 }
@@ -2095,72 +1987,89 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
     }
     
     std::string address = params[0].get<std::string>();
-    double amount = params.size() > 1 ? params[1].get<double>() : 0.0; // Optional amount? Or full?
+    double amount = params.size() > 1 ? params[1].get<double>() : 0.0;
 
     // Check if we control the wallet
-    if (!wallet || wallet->getAddress() != address) {
-        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Wallet does not control this address");
+    if (!wallet) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
+    }
+    
+    if (wallet->getAddress() != address) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Wallet does not control this address: " + address);
     }
 
-    // If amount is 0, try to get full stake
+    // Get validator info to check stake amount
+    JsonValue validatorParams = JsonValue(JsonValue::array());
+    validatorParams.push_back(address);
+    JsonValue validatorInfo;
+    
+    try {
+        validatorInfo = getValidatorInfo(validatorParams);
+    } catch (...) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "No staking record found for address: " + address);
+    }
+    
+    double stakedAmount = validatorInfo["stake_amount"].get<double>();
+    
+    // If amount is 0 or not specified, unstake full amount
     if (amount <= 0) {
-        try {
-            JsonValue validatorInfo = getValidatorInfo(params);
-            amount = validatorInfo["stake_amount"].get<double>();
-        } catch (...) {
-            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Could not determine stake amount. Please specify amount.");
+        amount = stakedAmount;
+    }
+    
+    // Validate unstake amount
+    if (amount > stakedAmount) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Cannot unstake " + std::to_string(amount) + " GXC. Only " + 
+            std::to_string(stakedAmount) + " GXC is staked.");
+    }
+    
+    if (amount <= 0) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Unstake amount must be positive");
+    }
+    
+    // Create UNSTAKE transaction using wallet method
+    std::string unstakeTxHash;
+    try {
+        Transaction unstakeTx = wallet->createUnstakeTransaction(amount, 0.0);
+        
+        LOG_API(LogLevel::INFO, "Created unstake transaction: " + unstakeTx.getHash() + 
+                ", Amount: " + std::to_string(amount) + " GXC");
+        
+        // Add to transaction pool
+        if (blockchain->addTransaction(unstakeTx)) {
+            unstakeTxHash = unstakeTx.getHash();
+            
+            // Save wallet state
+            std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+            wallet->saveToFile(walletPath);
+            
+            LOG_API(LogLevel::INFO, "✅ Unstake transaction added to mempool: " + unstakeTxHash);
+        } else {
+            throw RPCException(RPCException::RPC_INTERNAL_ERROR, 
+                "Failed to add unstake transaction to mempool");
         }
+    } catch (const RPCException& e) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error creating unstake transaction: " + std::string(e.what()));
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, 
+            "Failed to create unstake transaction: " + std::string(e.what()));
     }
-    
-    // Create UNSTAKE transaction
-    Transaction unstakeTx;
-    unstakeTx.setType(TransactionType::UNSTAKE);
-    unstakeTx.setTimestamp(Utils::getCurrentTimestamp());
-    unstakeTx.setSenderAddress(address); // Self
-    unstakeTx.setReceiverAddress(address); // Self
-    
-    // Traceability & Security: Link to wallet's last transaction
-    // This input serves two purposes:
-    // 1. Provides a way to sign the transaction to prove ownership (Wallet::signTransaction/createTransaction signs inputs)
-    // 2. Maintains the traceability chain
-    TransactionInput input;
-    input.txHash = wallet->getLastTxHash();
-    if (input.txHash.empty()) input.txHash = "0"; // Genesis/fallback
-    input.outputIndex = 0; // Dummy index, not spent
-    input.amount = 0.0;    // Zero amount, not spending UTXO
-    unstakeTx.addInput(input);
-    
-    // Create an output for the amount to be returned
-    TransactionOutput output;
-    output.address = address;
-    output.amount = amount;
-    unstakeTx.addOutput(output);
-    
-    // Sign the transaction using the wallet's private key
-    // We reuse the existing input signing mechanism. Since we added an input (dummy), it will be signed.
-    wallet->signTransaction(unstakeTx);
 
-    if (blockchain->addTransaction(unstakeTx)) {
-        // Update wallet's last tx hash
-        wallet->updateLastTxHash(unstakeTx.getHash());
-        std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
-        wallet->saveToFile(walletPath);
-        // Also unregister/update validator state
-        // This happens when block is mined in updateUtxoSet.
-        // But we might want to mark it pending?
+    LOG_API(LogLevel::INFO, "✅ Unstake request: " + address + ", Amount: " + 
+            std::to_string(amount) + " GXC, TX: " + unstakeTxHash);
 
-        LOG_API(LogLevel::INFO, "Unstake transaction created: " + unstakeTx.getHash());
-
-        JsonValue result;
-        result["success"] = true;
-        result["address"] = address;
-        result["amount"] = amount;
-        result["txid"] = unstakeTx.getHash();
-        result["message"] = "Unstake transaction broadcasted";
-        return result;
-    } else {
-        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to broadcast unstake transaction");
-    }
+    JsonValue result;
+    result["success"] = true;
+    result["address"] = address;
+    result["amount"] = amount;
+    result["remaining_stake"] = stakedAmount - amount;
+    result["txid"] = unstakeTxHash;
+    result["message"] = "Unstake transaction broadcasted. Funds will be available after block confirmation.";
+    
+    return result;
 }
 
 JsonValue RPCAPI::addStake(const JsonValue& params) {
@@ -2273,6 +2182,101 @@ JsonValue RPCAPI::getValidatorInfo(const JsonValue& params) {
     
     throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
         "Validator not found for address: " + address);
+}
+
+JsonValue RPCAPI::getStakingInfo(const JsonValue& params) {
+    if (params.size() < 1) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address parameter");
+    }
+    
+    std::string address = params[0].get<std::string>();
+    
+    // Get spendable balance from UTXO set
+    double spendableBalance = blockchain->getBalance(address);
+    
+    // Get validator info for staked amount and rewards
+    auto validators = blockchain->getActiveValidators();
+    
+    double stakedAmount = 0.0;
+    double totalRewards = 0.0;
+    double pendingRewards = 0.0;
+    uint32_t blocksProduced = 0;
+    double apy = 0.0;
+    bool isValidator = false;
+    
+    for (const auto& validator : validators) {
+        if (validator.getAddress() == address) {
+            isValidator = true;
+            stakedAmount = validator.getStakeAmount();
+            totalRewards = validator.getTotalRewards();
+            pendingRewards = validator.getPendingRewards();
+            blocksProduced = validator.getBlocksProduced();
+            apy = validator.calculateAPY();
+            break;
+        }
+    }
+    
+    // Calculate total balance (spendable + staked)
+    // Note: Staked coins are NOT in the UTXO set, so totalBalance = spendable + staked
+    double totalBalance = spendableBalance + stakedAmount;
+    
+    // Count total rewards earned from blockchain transactions
+    // This searches all coinbase transactions where this address is the recipient
+    double earnedFromMining = 0.0;
+    double earnedFromStaking = 0.0;
+    
+    uint32_t chainHeight = blockchain->getHeight();
+    for (uint32_t h = 0; h < chainHeight; h++) {
+        Block block = blockchain->getBlock(h);
+        if (block.getHash().empty()) continue;
+        
+        for (const auto& tx : block.getTransactions()) {
+            if (tx.isCoinbaseTransaction()) {
+                for (const auto& output : tx.getOutputs()) {
+                    if (output.address == address) {
+                        // Check if this was a PoS or PoW block
+                        if (block.getBlockType() == BlockType::POS) {
+                            earnedFromStaking += output.amount;
+                        } else {
+                            earnedFromMining += output.amount;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Build response
+    JsonValue result;
+    result["address"] = address;
+    
+    // Balance breakdown
+    result["spendable_balance"] = spendableBalance;
+    result["staked_balance"] = stakedAmount;
+    result["total_balance"] = totalBalance;
+    
+    // Rewards breakdown
+    result["total_earned_mining"] = earnedFromMining;
+    result["total_earned_staking"] = earnedFromStaking;
+    result["total_earned"] = earnedFromMining + earnedFromStaking;
+    
+    // Validator-specific info
+    result["is_validator"] = isValidator;
+    if (isValidator) {
+        result["validator_total_rewards"] = totalRewards;
+        result["validator_pending_rewards"] = pendingRewards;
+        result["blocks_produced"] = blocksProduced;
+        result["apy"] = apy;
+    }
+    
+    // Traceability formula reference
+    result["traceability_formula"] = "Ti.Inputs[0].txHash == Ti.PrevTxHash && Ti.Inputs[0].amount == Ti.ReferencedAmount";
+    
+    LOG_API(LogLevel::INFO, "getStakingInfo(" + address.substr(0, 20) + "...): spendable=" + 
+            std::to_string(spendableBalance) + ", staked=" + std::to_string(stakedAmount) +
+            ", earned=" + std::to_string(earnedFromMining + earnedFromStaking) + " GXC");
+    
+    return result;
 }
 
 // PoS Block Creation Methods

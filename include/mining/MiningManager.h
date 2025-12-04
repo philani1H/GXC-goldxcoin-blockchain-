@@ -5,6 +5,7 @@
 #include "../Utils.h"
 #include "../Block.h"
 #include "../transaction.h"
+#include "EthashMiner.h"  // For shared MiningAlgorithm enum
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -16,11 +17,7 @@
 // Forward declarations
 class Blockchain;
 
-enum class MiningAlgorithm {
-    SHA256,
-    ETHASH,
-    GXHASH
-};
+// Note: MiningAlgorithm is defined in EthashMiner.h
 
 struct BlockTemplate {
     std::string previousHash;
@@ -50,7 +47,7 @@ struct MinerInfo {
     MinerInfo() = default;
 };
 
-struct MiningStats {
+struct MiningManagerStats {
     MiningAlgorithm algorithm;
     double hashRate;
     uint64_t acceptedShares;
@@ -108,6 +105,6 @@ public:
     void setMiningAlgorithm(MiningAlgorithm algorithm);
     void setDifficulty(double difficulty);
     void setPoolInfo(const std::string& poolUrl, const std::string& username);
-    MiningStats getStats() const;
+    MiningManagerStats getStats() const;
     std::vector<MinerInfo> getActiveMiners() const;
 };

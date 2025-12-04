@@ -1,432 +1,455 @@
-import customtkinter as ctk
-import hashlib
+#!/usr/bin/env python3
+"""
+GXC GxHash Miner v2.0.0
+CPU Miner for GxHash Algorithm
+Real Blockchain Connection - No Simulation
+
+Copyright (c) 2024 GXC Blockchain - MIT License
+"""
+
+import socket
+import threading
 import json
 import time
-import threading
-import random
-import os
+import hashlib
+import platform
+import requests
 from datetime import datetime
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
+from typing import Optional, Callable, Any
+from dataclasses import dataclass
+import logging
 
-# ==========================================
-# PART 1: CRYPTOGRAPHY & DATA STRUCTURES
-# ==========================================
+import customtkinter as ctk
+from tkinter import messagebox
 
-class GXCUtils:
-    @staticmethod
-    def calculate_hash(index, prev_hash, timestamp, data, nonce, difficulty):
-        header = f"{index}{prev_hash}{timestamp}{json.dumps(data)}{nonce}{difficulty}"
-        return hashlib.sha256(header.encode()).hexdigest()
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
 
-    @staticmethod
-    def get_timestamp():
-        return datetime.now().timestamp()
+# ═══════════════════════════════════════════════════════════════════════════════
+#                              CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
 
-class Transaction:
-    def __init__(self, sender, receiver, amount, fee=0.01):
-        self.sender = sender
-        self.receiver = receiver
-        self.amount = amount
-        self.fee = fee
-        self.timestamp = GXCUtils.get_timestamp()
-        self.id = hashlib.sha256(f"{sender}{receiver}{amount}{self.timestamp}".encode()).hexdigest()
+VERSION = "2.0.0"
+APP_NAME = "GXC GxHash Miner"
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "sender": self.sender,
-            "receiver": self.receiver,
-            "amount": self.amount,
-            "fee": self.fee,
-            "timestamp": self.timestamp
-        }
+NETWORKS = {
+    "mainnet": {"rpc": "http://node.gxc.network:8332", "pool": "pool.gxc.network", "port": 3333},
+    "testnet": {"rpc": "http://localhost:8332", "pool": "localhost", "port": 3333}
+}
+ACTIVE = NETWORKS["testnet"]
 
-class Block:
-    def __init__(self, index, previous_hash, transactions, difficulty, target_time=10.0):
-        self.index = index
-        self.previous_hash = previous_hash
-        self.transactions = transactions
-        self.timestamp = GXCUtils.get_timestamp()
-        self.difficulty = difficulty
-        self.nonce = 0
-        self.hash = ""
-        self.target_time = target_time
-        self.mining_time = 0
-        self.reward = 0
+class Colors:
+    BG = "#0a0e1a"
+    PANEL = "#111827"
+    SIDEBAR = "#1a1f2e"
+    ACCENT = "#00ff9d"
+    ACCENT_DIM = "#008f58"
+    TEXT = "#e0e6ed"
+    TEXT_DIM = "#6b7280"
+    DANGER = "#ef4444"
+    WARNING = "#f59e0b"
+    SUCCESS = "#10b981"
+    INFO = "#3b82f6"
 
-    def mine_block(self, stop_event):
-        """ Real PoW: Tries to find a hash starting with Zeros based on difficulty """
-        # For simulation speed in Python, we simulate difficulty by "required zeros"
-        # In production GXC, this is the raw SHA256 target.
-        start_time = time.time()
-        prefix_zeros = int(self.difficulty / 1000) # Simple scaling for demo
-        if prefix_zeros < 1: prefix_zeros = 1
-        target = "0" * prefix_zeros
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+logger = logging.getLogger("GxHash")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                              DATA CLASSES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class MinerStats:
+    hashrate: float = 0.0
+    hashes: int = 0
+    accepted: int = 0
+    rejected: int = 0
+    blocks: int = 0
+    uptime: int = 0
+    cpu: float = 0.0
+    temp: float = 0.0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                           BLOCKCHAIN CLIENT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class GXCClient:
+    """Real GXC Blockchain RPC Client"""
+    
+    def __init__(self, url: str):
+        self.url = url
+        self.session = requests.Session()
+        self.id = 0
+    
+    def call(self, method: str, params: list = None) -> Any:
+        self.id += 1
+        response = self.session.post(self.url, json={
+            "jsonrpc": "2.0", "method": method, 
+            "params": params or [], "id": self.id
+        }, timeout=10)
+        data = response.json()
+        if "error" in data and data["error"]:
+            raise Exception(data["error"])
+        return data.get("result")
+    
+    def get_template(self): return self.call("getblocktemplate")
+    def submit_block(self, b): return self.call("submitblock", [b]) is None
+    def get_info(self): return self.call("getblockchaininfo")
+    def get_balance(self, a): return self.call("getbalance", [a])
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                              GXHASH MINER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class GxHashMiner:
+    """GxHash CPU Miner - Real Mining"""
+    
+    def __init__(self, wallet: str, rpc_url: str, callback: Callable):
+        self.wallet = wallet
+        self.client = GXCClient(rpc_url)
+        self.callback = callback
+        self.running = False
+        self.threads = []
+        self.num_threads = 1
+        self.job = None
+        self.stats = MinerStats()
+        self.start_time = 0
+        self.lock = threading.Lock()
+    
+    def start(self, threads: int = 1):
+        self.num_threads = threads
+        self.running = True
+        self.start_time = time.time()
         
-        while True:
-            if stop_event.is_set(): return False
+        # Job fetcher
+        threading.Thread(target=self._job_loop, daemon=True).start()
+        
+        # Mining threads
+        for i in range(threads):
+            t = threading.Thread(target=self._mine, args=(i,), daemon=True)
+            t.start()
+            self.threads.append(t)
+        
+        logger.info(f"Started with {threads} threads")
+        self.callback("started", threads)
+    
+    def stop(self):
+        self.running = False
+        self.threads.clear()
+        self.callback("stopped", None)
+    
+    def _job_loop(self):
+        while self.running:
+            try:
+                t = self.client.get_template()
+                self.job = {
+                    "height": t.get("height", 0),
+                    "prev": t.get("previousblockhash", ""),
+                    "diff": t.get("difficulty", 1.0),
+                    "ts": int(time.time())
+                }
+                self.callback("job", self.job)
+            except Exception as e:
+                logger.error(f"Job error: {e}")
+            time.sleep(10)
+    
+    def _mine(self, tid: int):
+        nonce = tid * 0x10000000
+        
+        while self.running:
+            if not self.job:
+                time.sleep(0.1)
+                continue
             
-            self.hash = GXCUtils.calculate_hash(
-                self.index, self.previous_hash, self.timestamp, 
-                [t.to_dict() for t in self.transactions], self.nonce, self.difficulty
-            )
+            j = self.job
+            header = f"{j['prev']}{self.wallet}{j['ts']}{j['height']}{nonce}".encode()
+            h = self._gxhash(header)
             
-            if self.hash.startswith(target):
-                self.mining_time = time.time() - start_time
-                return True
-            else:
-                self.nonce += 1
-
-    def calculate_reward(self):
-        # EMISSION GUARD LOGIC
-        base_reward = 50.0
-        if self.mining_time >= self.target_time:
-            self.reward = base_reward
-        else:
-            ratio = self.mining_time / self.target_time
-            if ratio < 0.1: ratio = 0.1
-            self.reward = base_reward * ratio
-        return self.reward
-
-# ==========================================
-# PART 2: BLOCKCHAIN MANAGER
-# ==========================================
-
-class Blockchain:
-    def __init__(self):
-        self.chain = []
-        self.mempool = []
-        self.nodes = set()
-        self.difficulty = 1000
-        self.total_supply = 0
-        self.db_file = "gxc_chain_db.json"
-        
-        # Load or Create Genesis
-        if os.path.exists(self.db_file):
-            self.load_chain()
-        else:
-            self.create_genesis_block()
-
-    def create_genesis_block(self):
-        genesis_tx = Transaction("SYSTEM", "GENESIS_WALLET", 0)
-        genesis = Block(0, "0", [genesis_tx], 1000)
-        genesis.hash = GXCUtils.calculate_hash(0, "0", genesis.timestamp, [genesis_tx.to_dict()], 0, 1000)
-        genesis.mining_time = 10.0
-        genesis.reward = 50.0
-        self.chain.append(genesis)
-        self.total_supply += 50.0
-        print("GENESIS BLOCK CREATED")
-
-    def get_last_block(self):
-        return self.chain[-1]
-
-    def add_transaction(self, sender, receiver, amount):
-        tx = Transaction(sender, receiver, amount)
-        self.mempool.append(tx)
-        return tx
-
-    def adjust_difficulty(self, last_block):
-        # PREDICTIVE DIFFICULTY LOGIC
-        if len(self.chain) < 2: return last_block.difficulty
-        
-        prev_block = self.chain[-2]
-        
-        # Calculate Hashrate Change (Velocity)
-        time_delta = last_block.mining_time
-        if time_delta == 0: time_delta = 0.001
-        
-        current_hashrate = last_block.difficulty / time_delta
-        
-        prev_time_delta = prev_block.mining_time if prev_block.mining_time > 0 else 10.0
-        prev_hashrate = prev_block.difficulty / prev_time_delta
-        
-        # Logic: If hashrate spiked > 10%
-        if prev_hashrate > 0:
-            change = (current_hashrate - prev_hashrate) / prev_hashrate
-            if change > 0.10:
-                print(f"[CORE] Hashrate Spike Detected: {change*100:.1f}%")
-                return last_block.difficulty * (1.0 + (change * 0.5)) # 0.5 Sensitivity
-        
-        return last_block.difficulty
-
-    def save_chain(self):
-        data = []
-        for block in self.chain:
-            data.append({
-                "index": block.index,
-                "hash": block.hash,
-                "prev": block.previous_hash,
-                "txs": [t.to_dict() for t in block.transactions],
-                "diff": block.difficulty,
-                "reward": block.reward,
-                "time_taken": block.mining_time,
-                "timestamp": block.timestamp
-            })
-        with open(self.db_file, 'w') as f:
-            json.dump(data, f, indent=4)
-        print("[DB] Blockchain Saved.")
-
-    def load_chain(self):
-        # Simplified loader for simulation
+            with self.lock:
+                self.stats.hashes += 1
+            
+            if self._meets_target(h, j['diff']):
+                self._submit(j, nonce, h)
+            
+            nonce += 1
+            
+            if self.stats.hashes % 10000 == 0:
+                self._update_stats()
+    
+    def _gxhash(self, data: bytes) -> bytes:
+        h1 = hashlib.sha256(data).digest()
         try:
-            with open(self.db_file, 'r') as f:
-                data = json.load(f)
-                for b_data in data:
-                    txs = [] # Reconstruct Txs
-                    for t in b_data['txs']:
-                        txs.append(Transaction(t['sender'], t['receiver'], t['amount'], t['fee']))
-                    
-                    block = Block(b_data['index'], b_data['prev'], txs, b_data['diff'])
-                    block.hash = b_data['hash']
-                    block.reward = b_data['reward']
-                    block.mining_time = b_data['time_taken']
-                    block.timestamp = b_data['timestamp']
-                    self.chain.append(block)
-                    self.total_supply += block.reward
-            print(f"[DB] Loaded {len(self.chain)} blocks.")
+            h2 = hashlib.blake2b(h1 + data, digest_size=32).digest()
         except:
-            print("[DB] Error loading. Resetting.")
-            self.create_genesis_block()
+            h2 = hashlib.sha256(h1 + data).digest()
+        mixed = bytes(a ^ b for a, b in zip(h1, h2))
+        h3 = hashlib.sha256(mixed).digest()
+        try:
+            return hashlib.sha3_256(h3).digest()
+        except:
+            return hashlib.sha256(h3).digest()
+    
+    def _meets_target(self, h: bytes, diff: float) -> bool:
+        target = int(0x00000000FFFF0000000000000000000000000000000000000000000000000000 / diff)
+        return int.from_bytes(h, 'big') < target
+    
+    def _submit(self, job: dict, nonce: int, h: bytes):
+        logger.info(f"Block found! Nonce: {nonce}")
+        try:
+            if self.client.submit_block({
+                "height": job["height"], "hash": h.hex(),
+                "previousblockhash": job["prev"], "nonce": nonce,
+                "miner": self.wallet, "timestamp": job["ts"],
+                "difficulty": job["diff"]
+            }):
+                with self.lock:
+                    self.stats.blocks += 1
+                    self.stats.accepted += 1
+                self.callback("block", {"height": job["height"]})
+            else:
+                with self.lock:
+                    self.stats.rejected += 1
+        except Exception as e:
+            logger.error(f"Submit error: {e}")
+    
+    def _update_stats(self):
+        elapsed = time.time() - self.start_time
+        with self.lock:
+            self.stats.hashrate = self.stats.hashes / elapsed if elapsed > 0 else 0
+            self.stats.uptime = int(elapsed)
+            if HAS_PSUTIL:
+                self.stats.cpu = psutil.cpu_percent()
+        self.callback("stats", self.stats)
 
-# ==========================================
-# PART 3: THE GUI APPLICATION (ENTERPRISE)
-# ==========================================
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                              GUI APPLICATION
+# ═══════════════════════════════════════════════════════════════════════════════
 
 ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("dark-blue")
+ctk.set_default_color_theme("green")
 
-class GXCEnterpriseApp(ctk.CTk):
+
+class GxHashMinerGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.chain = Blockchain()
-        self.mining_thread = None
-        self.stop_mining = threading.Event()
-        self.auto_mine_active = False
-
-        # Window Setup
-        self.title("GXC Enterprise Node v3.0 [Mainnet]")
-        self.geometry("1280x850")
         
-        # Grid Layout
-        self.grid_columnconfigure(0, weight=0) # Sidebar
-        self.grid_columnconfigure(1, weight=1) # Main
+        self.title(f"{APP_NAME} v{VERSION}")
+        self.geometry("1000x700")
+        self.configure(fg_color=Colors.BG)
+        self.minsize(800, 600)
+        
+        self.miner: Optional[GxHashMiner] = None
+        self.is_mining = False
+        self.stats = MinerStats()
+        self.rpc_url = ACTIVE["rpc"]
+        
+        self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
-
-        self.setup_sidebar()
-        self.setup_main_view()
-
-    def setup_sidebar(self):
-        self.sidebar = ctk.CTkFrame(self, width=250, corner_radius=0)
-        self.sidebar.grid(row=0, column=0, sticky="nsew")
         
-        # Logo Area
-        logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        logo_frame.pack(pady=30)
-        ctk.CTkLabel(logo_frame, text="GXC", font=("Impact", 40)).pack()
-        ctk.CTkLabel(logo_frame, text="ENTERPRISE NODE", font=("Arial", 12, "bold"), text_color="gold").pack()
-
-        # Status Box
-        self.status_box = ctk.CTkButton(self.sidebar, text="● SYNCED", fg_color="#1a1a1a", 
-                                        border_color="#00FF00", border_width=1, hover=False)
-        self.status_box.pack(pady=20, padx=20, fill="x")
-
-        # Navigation
-        self.nav_var = ctk.StringVar(value="dashboard")
+        self._setup_sidebar()
+        self._setup_main()
         
-        btn_dash = ctk.CTkRadioButton(self.sidebar, text="Dashboard", variable=self.nav_var, value="dashboard", command=self.switch_tab)
-        btn_dash.pack(pady=10, padx=30, anchor="w")
+        self.after(1000, self._update_loop)
+    
+    def _setup_sidebar(self):
+        sidebar = ctk.CTkFrame(self, width=280, corner_radius=0, fg_color=Colors.SIDEBAR)
+        sidebar.grid(row=0, column=0, sticky="nsew")
+        sidebar.grid_propagate(False)
         
-        btn_wallet = ctk.CTkRadioButton(self.sidebar, text="Wallet Manager", variable=self.nav_var, value="wallet", command=self.switch_tab)
-        btn_wallet.pack(pady=10, padx=30, anchor="w")
+        # Logo
+        logo = ctk.CTkFrame(sidebar, fg_color="transparent")
+        logo.pack(pady=(30, 20))
+        ctk.CTkLabel(logo, text="GxHash", font=("Impact", 48), text_color=Colors.ACCENT).pack()
+        ctk.CTkLabel(logo, text="CPU MINER", font=("Arial", 12, "bold"), text_color="#666").pack()
+        ctk.CTkLabel(logo, text=f"v{VERSION}", font=("Arial", 10), text_color="#444").pack()
         
-        btn_miner = ctk.CTkRadioButton(self.sidebar, text="Mining Control", variable=self.nav_var, value="miner", command=self.switch_tab)
-        btn_miner.pack(pady=10, padx=30, anchor="w")
-
-        # Stats at Bottom
-        self.lbl_blocks = ctk.CTkLabel(self.sidebar, text=f"Height: {len(self.chain.chain)}")
-        self.lbl_blocks.pack(side="bottom", pady=5)
-        self.lbl_ver = ctk.CTkLabel(self.sidebar, text="v3.0.1-stable", text_color="gray")
-        self.lbl_ver.pack(side="bottom", pady=10)
-
-    def setup_main_view(self):
-        self.main_area = ctk.CTkFrame(self, fg_color="transparent")
-        self.main_area.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
+        # Stats
+        stats = ctk.CTkFrame(sidebar, fg_color=Colors.PANEL, corner_radius=12)
+        stats.pack(fill="x", padx=15, pady=10)
+        ctk.CTkLabel(stats, text="⚡ MINING STATS", font=("Arial", 11, "bold"),
+                    text_color=Colors.ACCENT).pack(pady=(12, 8))
         
-        # Tabs container
-        self.tabview = ctk.CTkTabview(self.main_area, width=900, height=700)
-        self.tabview.pack(fill="both", expand=True)
+        self.lbl_hr = self._row(stats, "Hashrate", "0 H/s")
+        self.lbl_hashes = self._row(stats, "Hashes", "0")
+        self.lbl_shares = self._row(stats, "Shares", "0/0")
+        self.lbl_blocks = self._row(stats, "Blocks", "0")
+        self.lbl_uptime = self._row(stats, "Uptime", "00:00:00")
         
-        self.tab_dash = self.tabview.add("Dashboard")
-        self.tab_wallet = self.tabview.add("Wallet")
-        self.tab_miner = self.tabview.add("Miner")
+        # System
+        sys = ctk.CTkFrame(sidebar, fg_color=Colors.PANEL, corner_radius=12)
+        sys.pack(fill="x", padx=15, pady=10)
+        ctk.CTkLabel(sys, text="💻 SYSTEM", font=("Arial", 11, "bold"),
+                    text_color=Colors.INFO).pack(pady=(12, 8))
+        self.lbl_cpu = self._row(sys, "CPU", "0%")
+        self.lbl_threads = self._row(sys, "Threads", "0")
         
-        self.build_dashboard()
-        self.build_wallet()
-        self.build_miner()
-
-    # --- TAB 1: DASHBOARD ---
-    def build_dashboard(self):
-        # KPI Row
-        kpi_frame = ctk.CTkFrame(self.tab_dash, fg_color="transparent")
-        kpi_frame.pack(fill="x", pady=10)
+        # Buttons
+        btns = ctk.CTkFrame(sidebar, fg_color="transparent")
+        btns.pack(fill="x", padx=15, pady=20)
         
-        self.create_kpi(kpi_frame, "Total Supply", f"{self.chain.total_supply:,.2f} GXC", 0)
-        self.create_kpi(kpi_frame, "Difficulty", f"{self.chain.difficulty:.0f}", 1)
-        self.create_kpi(kpi_frame, "Mempool", "0 Txs", 2)
-        
-        # Chart Area
-        self.chart_frame = ctk.CTkFrame(self.tab_dash, fg_color="#2b2b2b")
-        self.chart_frame.pack(fill="both", expand=True, pady=10)
-        
-        self.fig = Figure(figsize=(6, 4), dpi=100)
-        self.fig.patch.set_facecolor('#2b2b2b')
-        self.ax = self.fig.add_subplot(111)
-        self.ax.set_facecolor('#2b2b2b')
-        
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.chart_frame)
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(fill="both", expand=True)
-        
-        self.update_dashboard_chart()
-
-    def create_kpi(self, parent, title, value, col):
-        f = ctk.CTkFrame(parent)
-        f.grid(row=0, column=col, padx=10, sticky="ew")
-        parent.grid_columnconfigure(col, weight=1)
-        ctk.CTkLabel(f, text=title, text_color="gray").pack(pady=(10,0))
-        lbl = ctk.CTkLabel(f, text=value, font=("Arial", 20, "bold"))
-        lbl.pack(pady=(0,10))
+        self.btn_start = ctk.CTkButton(btns, text="▶ START MINING",
+            command=self._toggle, font=("Arial", 14, "bold"),
+            fg_color=Colors.ACCENT, hover_color=Colors.ACCENT_DIM, height=50)
+        self.btn_start.pack(fill="x", pady=5)
+    
+    def _row(self, p, l, v):
+        r = ctk.CTkFrame(p, fg_color="transparent")
+        r.pack(fill="x", padx=12, pady=4)
+        ctk.CTkLabel(r, text=l, font=("Arial", 10), text_color="#aaa").pack(side="left")
+        lbl = ctk.CTkLabel(r, text=v, font=("Arial", 10, "bold"))
+        lbl.pack(side="right")
         return lbl
+    
+    def _setup_main(self):
+        main = ctk.CTkFrame(self, fg_color=Colors.BG)
+        main.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        main.grid_columnconfigure(0, weight=1)
+        main.grid_rowconfigure(1, weight=1)
+        
+        # Config
+        cfg = ctk.CTkFrame(main, fg_color=Colors.PANEL, corner_radius=12)
+        cfg.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        
+        ctk.CTkLabel(cfg, text="⚙️ CONFIGURATION", font=("Arial", 14, "bold"),
+                    text_color=Colors.ACCENT).pack(anchor="w", padx=20, pady=(15, 10))
+        
+        # Wallet
+        wf = ctk.CTkFrame(cfg, fg_color="transparent")
+        wf.pack(fill="x", padx=20, pady=5)
+        ctk.CTkLabel(wf, text="Wallet:", width=120, anchor="e").pack(side="left", padx=5)
+        self.entry_wallet = ctk.CTkEntry(wf, width=400, placeholder_text="Enter GXC wallet address")
+        self.entry_wallet.pack(side="left", padx=5)
+        
+        # Network
+        nf = ctk.CTkFrame(cfg, fg_color="transparent")
+        nf.pack(fill="x", padx=20, pady=5)
+        ctk.CTkLabel(nf, text="Network:", width=120, anchor="e").pack(side="left", padx=5)
+        self.net_var = ctk.StringVar(value="Testnet")
+        ctk.CTkOptionMenu(nf, values=["Testnet", "Mainnet"], variable=self.net_var,
+                         width=200, command=self._net_change).pack(side="left", padx=5)
+        
+        # Threads
+        tf = ctk.CTkFrame(cfg, fg_color="transparent")
+        tf.pack(fill="x", padx=20, pady=(5, 15))
+        max_t = psutil.cpu_count(logical=True) if HAS_PSUTIL else 4
+        ctk.CTkLabel(tf, text="Threads:", width=120, anchor="e").pack(side="left", padx=5)
+        self.slider = ctk.CTkSlider(tf, from_=1, to=max_t, number_of_steps=max_t-1,
+                                   width=200, command=self._threads_change)
+        self.slider.set(max(1, max_t - 1))
+        self.slider.pack(side="left", padx=5)
+        self.lbl_t = ctk.CTkLabel(tf, text=str(max(1, max_t - 1)), width=30)
+        self.lbl_t.pack(side="left", padx=5)
+        
+        # Console
+        console = ctk.CTkFrame(main, fg_color=Colors.PANEL, corner_radius=12)
+        console.grid(row=1, column=0, sticky="nsew")
+        ctk.CTkLabel(console, text="📋 MINING LOG", font=("Arial", 14, "bold"),
+                    text_color=Colors.ACCENT).pack(anchor="w", padx=20, pady=(15, 10))
+        self.console = ctk.CTkTextbox(console, font=("Consolas", 11), fg_color="#000",
+                                      text_color=Colors.TEXT, corner_radius=8)
+        self.console.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        
+        self._log(f"{APP_NAME} initialized", "INFO")
+        self._log(f"System: {platform.system()} {platform.release()}", "INFO")
+    
+    def _net_change(self, n):
+        global ACTIVE
+        ACTIVE = NETWORKS["mainnet" if n == "Mainnet" else "testnet"]
+        self.rpc_url = ACTIVE["rpc"]
+        self._log(f"Network: {n}", "INFO")
+    
+    def _threads_change(self, v):
+        self.lbl_t.configure(text=str(int(v)))
+    
+    def _toggle(self):
+        if not self.is_mining:
+            self._start()
+        else:
+            self._stop()
+    
+    def _start(self):
+        wallet = self.entry_wallet.get().strip()
+        if not wallet:
+            messagebox.showwarning("Wallet", "Enter wallet address!")
+            return
+        
+        self.is_mining = True
+        self.btn_start.configure(text="⏹ STOP", fg_color=Colors.DANGER)
+        
+        threads = int(self.slider.get())
+        self.lbl_threads.configure(text=str(threads))
+        
+        self._log(f"Starting with {threads} threads...", "INFO")
+        self._log(f"Wallet: {wallet[:20]}...", "INFO")
+        
+        self.miner = GxHashMiner(wallet, self.rpc_url, self._callback)
+        self.miner.start(threads)
+    
+    def _stop(self):
+        if self.miner:
+            self.miner.stop()
+            self.miner = None
+        self.is_mining = False
+        self.btn_start.configure(text="▶ START", fg_color=Colors.ACCENT)
+        self._log("Stopped", "INFO")
+    
+    def _callback(self, event, data):
+        if event == "stats":
+            self.stats = data
+            self.after(0, self._update_ui)
+        elif event == "job":
+            self._log(f"Job: height={data.get('height')}", "INFO")
+        elif event == "block":
+            self._log(f"🎉 BLOCK FOUND! Height: {data.get('height')}", "SUCCESS")
+    
+    def _update_loop(self):
+        if self.is_mining:
+            self._update_ui()
+        self.after(1000, self._update_loop)
+    
+    def _update_ui(self):
+        hr = self.stats.hashrate
+        if hr >= 1e6: hs = f"{hr/1e6:.2f} MH/s"
+        elif hr >= 1e3: hs = f"{hr/1e3:.2f} KH/s"
+        else: hs = f"{hr:.2f} H/s"
+        
+        self.lbl_hr.configure(text=hs)
+        self.lbl_hashes.configure(text=f"{self.stats.hashes:,}")
+        self.lbl_shares.configure(text=f"{self.stats.accepted}/{self.stats.rejected}")
+        self.lbl_blocks.configure(text=str(self.stats.blocks))
+        
+        h, r = divmod(self.stats.uptime, 3600)
+        m, s = divmod(r, 60)
+        self.lbl_uptime.configure(text=f"{h:02d}:{m:02d}:{s:02d}")
+        self.lbl_cpu.configure(text=f"{self.stats.cpu:.1f}%")
+    
+    def _log(self, msg, lvl="INFO"):
+        ts = datetime.now().strftime("%H:%M:%S")
+        pre = {"INFO": "[i]", "SUCCESS": "[✓]", "WARNING": "[!]", "ERROR": "[✗]"}.get(lvl, "[?]")
+        self.after(0, lambda: (self.console.insert("end", f"[{ts}] {pre} {msg}\n"), self.console.see("end")))
+    
+    def on_close(self):
+        if self.is_mining:
+            if messagebox.askokcancel("Quit", "Stop mining?"):
+                self._stop()
+                time.sleep(0.5)
+                self.destroy()
+        else:
+            self.destroy()
 
-    def update_dashboard_chart(self):
-        self.ax.clear()
-        # Data
-        indices = [b.index for b in self.chain.chain]
-        rewards = [b.reward for b in self.chain.chain]
-        times = [b.mining_time for b in self.chain.chain]
-        
-        # Plot Logic
-        self.ax.plot(indices, times, color="cyan", label="Block Time (s)")
-        self.ax.bar(indices, rewards, color="#333", alpha=0.5, label="Reward")
-        self.ax.legend()
-        self.ax.tick_params(colors='white')
-        self.canvas.draw()
 
-    # --- TAB 2: WALLET ---
-    def build_wallet(self):
-        ctk.CTkLabel(self.tab_wallet, text="GXC WALLET MANAGER", font=("Arial", 20)).pack(pady=20)
-        
-        # Address Gen
-        self.my_address = f"0x{hashlib.sha256(str(random.random()).encode()).hexdigest()[:30]}"
-        ctk.CTkLabel(self.tab_wallet, text="Your Address:").pack()
-        self.entry_addr = ctk.CTkEntry(self.tab_wallet, width=400)
-        self.entry_addr.insert(0, self.my_address)
-        self.entry_addr.configure(state="readonly")
-        self.entry_addr.pack(pady=5)
-        
-        # Send Tx
-        ctk.CTkLabel(self.tab_wallet, text="Send Transaction").pack(pady=(30,5))
-        self.entry_to = ctk.CTkEntry(self.tab_wallet, placeholder_text="Receiver Address", width=300)
-        self.entry_to.pack(pady=5)
-        
-        self.entry_amt = ctk.CTkEntry(self.tab_wallet, placeholder_text="Amount (GXC)", width=300)
-        self.entry_amt.pack(pady=5)
-        
-        btn_send = ctk.CTkButton(self.tab_wallet, text="Sign & Broadcast", command=self.send_tx)
-        btn_send.pack(pady=10)
+def main():
+    app = GxHashMinerGUI()
+    app.protocol("WM_DELETE_WINDOW", app.on_close)
+    app.mainloop()
 
-    def send_tx(self):
-        rcv = self.entry_to.get()
-        amt = self.entry_amt.get()
-        if rcv and amt:
-            self.chain.add_transaction(self.my_address, rcv, float(amt))
-            print(f"Transaction sent to {rcv}")
-            # Visual feedback
-            self.entry_to.delete(0, 'end')
-            self.entry_amt.delete(0, 'end')
-
-    # --- TAB 3: MINER ---
-    def build_miner(self):
-        ctk.CTkLabel(self.tab_miner, text="MINING CONTROLS", font=("Arial", 20)).pack(pady=20)
-        
-        self.console = ctk.CTkTextbox(self.tab_miner, height=300, fg_color="black", text_color="#00FF00", font=("Consolas", 12))
-        self.console.pack(fill="x", padx=20, pady=10)
-        
-        btn_frame = ctk.CTkFrame(self.tab_miner, fg_color="transparent")
-        btn_frame.pack(pady=10)
-        
-        self.btn_start = ctk.CTkButton(btn_frame, text="START MINING", fg_color="green", command=self.start_mining)
-        self.btn_start.pack(side="left", padx=10)
-        
-        self.btn_stop = ctk.CTkButton(btn_frame, text="STOP MINING", fg_color="red", state="disabled", command=self.stop_mining_process)
-        self.btn_stop.pack(side="left", padx=10)
-
-    def log(self, msg):
-        self.console.insert("end", f"> {msg}\n")
-        self.console.see("end")
-
-    # --- MINING LOGIC (THREADED) ---
-    def start_mining(self):
-        if self.auto_mine_active: return
-        self.auto_mine_active = True
-        self.stop_mining.clear()
-        self.btn_start.configure(state="disabled")
-        self.btn_stop.configure(state="normal")
-        self.status_box.configure(text="● MINING", border_color="#FFFF00", text_color="yellow")
-        
-        self.mining_thread = threading.Thread(target=self.mining_loop)
-        self.mining_thread.start()
-
-    def stop_mining_process(self):
-        self.stop_mining.set()
-        self.auto_mine_active = False
-        self.btn_start.configure(state="normal")
-        self.btn_stop.configure(state="disabled")
-        self.status_box.configure(text="● IDLE", border_color="#00FF00", text_color="white")
-        self.log("Mining Stopping...")
-
-    def mining_loop(self):
-        self.log("Initializing Miner...")
-        
-        while not self.stop_mining.is_set():
-            last_block = self.chain.get_last_block()
-            
-            # 1. Prepare Block
-            new_diff = self.chain.adjust_difficulty(last_block)
-            txs = self.chain.mempool[:10] # Take 10 txs
-            
-            new_block = Block(last_block.index + 1, last_block.hash, txs, new_diff)
-            
-            self.log(f"Mining Block {new_block.index} [Diff: {new_diff:.0f}]...")
-            
-            # 2. Mine (Blocking, but in thread)
-            success = new_block.mine_block(self.stop_mining)
-            
-            if success:
-                # 3. Finalize
-                reward = new_block.calculate_reward()
-                self.chain.chain.append(new_block)
-                self.chain.total_supply += reward
-                self.chain.mempool = self.chain.mempool[10:] # Remove txs
-                
-                self.log(f"SUCCESS! Hash: {new_block.hash[:10]}...")
-                self.log(f"Reward: {reward:.2f} GXC (Time: {new_block.mining_time:.2f}s)")
-                
-                if reward < 40.0:
-                    self.log("WARNING: Emission Guard triggered (Block too fast)")
-
-                # Save to disk
-                self.chain.save_chain()
-                
-                # Update UI
-                self.after(0, self.update_dashboard_chart)
-                self.after(0, lambda: self.lbl_blocks.configure(text=f"Height: {len(self.chain.chain)}"))
-
-    def switch_tab(self):
-        # Helper to handle radio buttons switching tabs
-        pass
 
 if __name__ == "__main__":
-    app = GXCEnterpriseApp()
-    app.mainloop()
+    main()
