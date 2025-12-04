@@ -100,7 +100,7 @@ public:
     bool loadValidatorsFromDatabase();
     void rebuildUtxoSet();
     void shutdown();
-    void createGenesisBlock();
+    void createGenesisBlock(const std::string& genesisAddress = "");
     bool addBlock(const Block& block);
     bool validateBlock(const Block& block);
     bool validateBlockInternal(const Block& block, uint32_t expectedIndex);

@@ -106,21 +106,31 @@ bool Blockchain::loadValidatorsFromDatabase() {
     }
 }
 
-void Blockchain::createGenesisBlock() {
+void Blockchain::createGenesisBlock(const std::string& providedAddress) {
     LOG_BLOCKCHAIN(LogLevel::INFO, "Creating genesis block");
     
-    // Determine genesis wallet address based on network mode
+    // Determine genesis wallet address
     bool isTestnet = Config::isTestnet();
     std::string genesisAddress;
     
-    if (isTestnet) {
-        // Testnet genesis address - matches the miner address
-        genesisAddress = "tGXC9fab7317231b966af85ac453e168c0932";
-        LOG_BLOCKCHAIN(LogLevel::INFO, "Using TESTNET genesis address: " + genesisAddress);
+    // Priority: 1) Provided address, 2) Config setting, 3) Generate random
+    if (!providedAddress.empty()) {
+        genesisAddress = providedAddress;
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Using provided genesis address: " + genesisAddress);
     } else {
-        // Mainnet genesis address - to be set before mainnet launch
-        genesisAddress = "GXC9fab7317231b966af85ac453e168c0932";
-        LOG_BLOCKCHAIN(LogLevel::INFO, "Using MAINNET genesis address: " + genesisAddress);
+        // Check config for genesis address
+        std::string configAddress = Config::get("genesis_address", "");
+        if (!configAddress.empty() && Wallet::isValidAddress(configAddress)) {
+            genesisAddress = configAddress;
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Using genesis address from config: " + genesisAddress);
+        } else {
+            // Generate a random address for the first finder
+            // This ensures the genesis reward goes to whoever first creates the blockchain
+            std::string prefix = isTestnet ? "tGXC" : "GXC";
+            genesisAddress = prefix + Utils::randomString(30);
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Generated random genesis address for first finder: " + genesisAddress);
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block reward will go to: " + genesisAddress);
+        }
     }
     
     Block genesis;

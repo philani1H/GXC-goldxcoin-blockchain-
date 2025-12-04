@@ -40,6 +40,14 @@ RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
             LOG_API(LogLevel::ERROR, "Failed to save node wallet to " + walletPath);
         }
     }
+    
+    // Set genesis address from node wallet if blockchain is empty
+    // This ensures genesis block reward goes to the first node operator
+    if (blockchain && blockchain->getHeight() == 0) {
+        std::string genesisAddress = wallet->getAddress();
+        Config::set("genesis_address", genesisAddress);
+        LOG_API(LogLevel::INFO, "Set genesis address to node wallet: " + genesisAddress);
+    }
 
     registerMethods();
 }
@@ -64,6 +72,14 @@ RPCAPI::RPCAPI(Blockchain* blockchain, Network* network, uint16_t port)
         } else {
             LOG_API(LogLevel::ERROR, "Failed to save node wallet to " + walletPath);
         }
+    }
+    
+    // Set genesis address from node wallet if blockchain is empty
+    // This ensures genesis block reward goes to the first node operator
+    if (blockchain && blockchain->getHeight() == 0) {
+        std::string genesisAddress = wallet->getAddress();
+        Config::set("genesis_address", genesisAddress);
+        LOG_API(LogLevel::INFO, "Set genesis address to node wallet: " + genesisAddress);
     }
 
     // Register RPC methods
