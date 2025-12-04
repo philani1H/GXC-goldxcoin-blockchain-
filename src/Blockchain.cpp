@@ -423,9 +423,18 @@ double Blockchain::calculateBlockReward(uint32_t height) const {
         }
     }
     
-    // 5. Supply cap enforcement
-    double finalReward = baseReward * difficultyMultiplier * timeBonus;
+    // 5. Scarcity Control (Power-Weighted)
+    // R = R_max / (1 + gamma * (H_total / H_ref))
+    // We approximate H_total with current difficulty
+    double scarcityFactor = 1.0 + SCARCITY_GAMMA * (difficulty / REF_DIFFICULTY);
+    double finalReward = (baseReward * difficultyMultiplier * timeBonus) / scarcityFactor;
     
+    if (scarcityFactor > 1.01) {
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Scarcity Control: Difficulty " + std::to_string(difficulty) +
+                      " exceeds reference " + std::to_string(REF_DIFFICULTY) +
+                      ". Reward reduced by factor " + std::to_string(scarcityFactor));
+    }
+
     // Check if we're approaching max supply
     if (totalSupply + finalReward > MAX_SUPPLY) {
         finalReward = MAX_SUPPLY - totalSupply;
@@ -820,6 +829,39 @@ bool Blockchain::validateBlockInternal(const Block& block, uint32_t expectedInde
     return true;
 }
 
+double Blockchain::getMinerPower(const std::string& minerAddress) const {
+    if (chain.empty() || minerAddress.empty()) {
+        return 0.0;
+    }
+
+    uint32_t currentHeight = chain.size();
+    uint32_t startHeight = (currentHeight > PWD_WINDOW) ? currentHeight - PWD_WINDOW : 0;
+
+    uint32_t blocksMined = 0;
+    uint32_t totalBlocks = 0;
+
+    for (uint32_t i = startHeight; i < currentHeight; i++) {
+        if (chain[i]->getMinerAddress() == minerAddress) {
+            blocksMined++;
+        }
+        totalBlocks++;
+    }
+
+    if (totalBlocks == 0) return 0.0;
+    return static_cast<double>(blocksMined) / totalBlocks;
+}
+
+double Blockchain::calculateMinerDifficulty(const std::string& minerAddress) const {
+    double baseDifficulty = difficulty;
+    double minerPower = getMinerPower(minerAddress);
+
+    // Formula: Di = Dbase * (1 + alpha * (Pi)^beta)
+    // where Pi is the miner's share of recent blocks (0.0 to 1.0)
+    double penaltyMultiplier = 1.0 + PWD_ALPHA * std::pow(minerPower, PWD_BETA);
+
+    return baseDifficulty * penaltyMultiplier;
+}
+
 bool Blockchain::validateProofOfWork(const Block& block) const {
     std::string hash = block.getHash();
     
@@ -828,10 +870,17 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
         return false;
     }
     
-    // Use blockchain's difficulty for validation (not block's difficulty)
-    // This prevents miners from submitting blocks with incorrect difficulty
-    double validationDifficulty = difficulty;
+    // Use miner-specific difficulty for validation
+    // This implements the Power-Weighted Difficulty
+    double validationDifficulty = calculateMinerDifficulty(block.getMinerAddress());
     
+    // Log the adjustment for visibility ("what happens when miners flood")
+    if (validationDifficulty > difficulty) {
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Power-Weighted Difficulty: Miner " + block.getMinerAddress().substr(0, 16) +
+                      "... dominance=" + std::to_string(getMinerPower(block.getMinerAddress()) * 100.0) +
+                      "%. Difficulty adjusted: " + std::to_string(difficulty) + " -> " + std::to_string(validationDifficulty));
+    }
+
     // For testnet, use easier validation (difficulty 0.1 means 0 leading zeros required)
     // For mainnet, use stricter validation
     bool isValid = meetsTarget(hash, validationDifficulty);
@@ -1007,9 +1056,9 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         return true;
     }
     
-    // Validate traceability for non-coinbase transactions (and non-unstake potentially?)
-    // Unstake might not have traditional inputs, so we check type
-    if (tx.getType() != TransactionType::UNSTAKE && !tx.isTraceabilityValid()) {
+    // Validate traceability for non-coinbase transactions
+    // STRICT TRACEABILITY: All transactions (except Coinbase) must follow the formula
+    if (!tx.isTraceabilityValid()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction traceability validation failed: " + tx.getHash());
         return false;
     }

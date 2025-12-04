@@ -379,6 +379,7 @@ private:
     std::string createErrorResponse(int code, const std::string& message, const JsonValue& id);
     
     // RPC method implementations
+    double parseAmount(const JsonValue& val);
     JsonValue getBlockchainInfo(const JsonValue& params);
     JsonValue getBestBlockHash(const JsonValue& params);
     JsonValue getBlockCount(const JsonValue& params);
