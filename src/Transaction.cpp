@@ -151,7 +151,8 @@ bool Transaction::isTraceabilityValid() const {
 
 bool Transaction::verifyTransaction() const {
     // 1. Basic structure validation
-    if (outputs.empty()) {
+    // Allow empty outputs for STAKE transactions (full amount burned)
+    if (outputs.empty() && type != TransactionType::STAKE) {
         return false;
     }
     
@@ -206,6 +207,12 @@ bool Transaction::validateAmountConsistency() const {
     double inputTotal = getTotalInputAmount();
     double outputTotal = getTotalOutputAmount();
     
+    // For STAKE transactions, inputs must be >= outputs + fee
+    // The difference is the staked amount which is "burned" from the UTXO set
+    if (type == TransactionType::STAKE) {
+        return inputTotal >= outputTotal + fee;
+    }
+
     // Input total should equal output total plus fee
     return std::abs(inputTotal - (outputTotal + fee)) < 0.00000001;
 }
