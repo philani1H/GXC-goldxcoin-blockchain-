@@ -28,14 +28,6 @@ public:
     Transaction createTransaction(const std::string& recipientAddress, double amount,
                                  const std::unordered_map<std::string, TransactionOutput>& utxoSet);
 
-    // Create a stake transaction
-    Transaction createStakeTransaction(double stakeAmount,
-                                      const std::unordered_map<std::string, TransactionOutput>& utxoSet);
-
-    // Create an unstake transaction
-    Transaction createUnstakeTransaction(double unstakeAmount,
-                                        const std::unordered_map<std::string, TransactionOutput>& utxoSet);
-
     // Sign a transaction
     void signTransaction(Transaction& tx);
 
