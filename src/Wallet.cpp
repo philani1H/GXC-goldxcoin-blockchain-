@@ -1,6 +1,7 @@
 #include "../include/Wallet.h"
 #include "../include/HashUtils.h"
 #include "../include/Crypto.h"
+#include "../include/Config.h"
 
 #include <random>
 #include <sstream>
@@ -18,9 +19,8 @@ void Wallet::generateKeyPair() {
     privateKey = keyPair.privateKey;
     publicKey = keyPair.publicKey;
     
-    // Generate address from public key (testnet detection would be done elsewhere)
-    // For now, generate mainnet address
-    address = Crypto::generateAddress(publicKey, false);
+    // Generate address from public key based on network configuration
+    address = Crypto::generateAddress(publicKey, Config::isTestnet());
     
     // Initialize last transaction hash
     lastTxHash = "";
