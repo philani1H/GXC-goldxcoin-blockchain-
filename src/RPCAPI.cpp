@@ -1243,6 +1243,14 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
     }
     
+    // Get wallet address and check balance
+    std::string walletAddress = wallet->getAddress();
+    double walletBalance = blockchain->getBalance(walletAddress);
+    
+    LOG_API(LogLevel::INFO, "sendToAddress: wallet=" + walletAddress.substr(0, 20) + 
+            "..., balance=" + std::to_string(walletBalance) + " GXC, sending " + 
+            std::to_string(amount) + " GXC to " + address.substr(0, 20) + "...");
+    
     // Get UTXOs
     const auto& utxoSet = blockchain->getUtxoSet();
     
@@ -1263,8 +1271,19 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
             throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to add transaction to pool");
         }
     } catch (const std::exception& e) {
-        LOG_API(LogLevel::ERROR, "Failed to create transaction: " + std::string(e.what()));
-        throw RPCException(RPCException::RPC_WALLET_ERROR, "Transaction creation failed: " + std::string(e.what()));
+        std::string errorMsg = std::string(e.what());
+        LOG_API(LogLevel::ERROR, "Failed to create transaction: " + errorMsg);
+        
+        // Check if this is an insufficient funds error and provide helpful context
+        if (errorMsg.find("Insufficient funds") != std::string::npos) {
+            // Check balance of the address that was queried (if different from wallet)
+            // This helps identify if the issue is an address mismatch
+            std::string balanceCheckMsg = " [Wallet address: " + walletAddress.substr(0, 20) + 
+                                         "..., Wallet balance: " + std::to_string(walletBalance) + " GXC]";
+            errorMsg += balanceCheckMsg;
+        }
+        
+        throw RPCException(RPCException::RPC_WALLET_ERROR, "Transaction creation failed: " + errorMsg);
     }
 }
 
