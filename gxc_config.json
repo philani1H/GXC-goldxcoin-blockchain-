@@ -1,0 +1,9 @@
+{
+    "wallet_address": "",
+    "node_url": "https://gxc-chain112-blockchain-node-production.up.railway.app",
+    "network_name": "Testnet (Railway)",
+    "mining_threads": 1,
+    "theme": "Dark",
+    "auto_start": true,
+    "refresh_rate": 5
+}
