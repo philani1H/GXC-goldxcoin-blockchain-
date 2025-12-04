@@ -13,7 +13,6 @@
 #include "GoldToken.h"
 #include "StockContract.h"
 #include <mutex>
-#include <deque>
 
 class Blockchain {
 private:
@@ -26,14 +25,6 @@ private:
     double posThreshold;
     uint64_t blockReward;
     double feeBurnRate;
-
-    // Power-Weighted Difficulty & Scarcity Control
-    struct MinerPowerEntry {
-        uint64_t blockHeight;
-        double difficulty;
-    };
-    std::unordered_map<std::string, std::deque<MinerPowerEntry>> minerPowerHistory;
-    static const size_t POWER_WINDOW_SIZE = 100; // Look at last 100 blocks
 
     // Validator management
     std::vector<Validator> validators;
@@ -129,12 +120,6 @@ public:
     bool validateProofOfStake(const Block& block) const;
     Validator selectValidatorForBlock() const;
     BlockType getNextBlockType() const;
-
-    // Power-Weighted Difficulty
-    double calculatePowerWeightedDifficulty(const std::string& minerAddress, double baseDifficulty) const;
-    double getMinerPower(const std::string& minerAddress) const;
-    double getTotalNetworkPower() const;
-    void updateMinerPower(const std::string& minerAddress, uint64_t height, double difficulty);
 
     // Adaptive monetary policy
     // double calculateBlockReward(uint32_t blockNumber) const;

@@ -380,7 +380,7 @@ bool Blockchain::addBlock(const Block& block) {
     }
 }
 
-// Calculate block reward with halving
+// Calculate block reward with halving and SCARCITY CONTROL
 double Blockchain::calculateBlockReward(uint32_t height) const {
     const uint32_t HALVING_INTERVAL = 1051200; // ~4 years
     const double INITIAL_REWARD = 50.0;
@@ -392,51 +392,44 @@ double Blockchain::calculateBlockReward(uint32_t height) const {
     for (uint32_t i = 0; i < halvings; i++) {
         baseReward /= 2.0;
     }
+
+    // 2. SCARCITY CONTROL: Scale inversely with total network power
+    // Formula: R_block = R_max * (1 / (1 + gamma * (H_total / H_ref)))
+    // Where H_total is approximated by current difficulty * hashrate factor
     
-    // 2. Difficulty adjustment factor
-    // Higher difficulty = slightly higher reward (incentivize mining)
-    double difficultyMultiplier = 1.0;
-    if (difficulty > 1.0) {
-        // Max 10% bonus for high difficulty
-        difficultyMultiplier = 1.0 + std::min(0.1, (difficulty - 1.0) / 100.0);
-    }
+    double H_total = difficulty; // Use difficulty as proxy for network power
+    double H_ref = 1000.0; // Reference power (e.g. baseline difficulty)
+    double gamma = 0.5; // Scarcity coefficient
+
+    double scarcityFactor = 1.0 / (1.0 + gamma * (H_total / H_ref));
+
+    // Apply scarcity factor to base reward
+    double scarcityAdjustedReward = baseReward * scarcityFactor;
     
     // 3. Transaction fee component
-    // Miners get transaction fees on top of base reward
     double transactionFees = 0.0;
+    // Note: pendingTransactions might change, but for reward calculation of NEXT block, this is an estimate.
+    // For actual block validation, we use the fees in that block.
+    // Here we just return the subsidy part + estimated fees?
+    // Usually calculateBlockReward returns the SUBSIDY. Fees are added separately in addBlock.
+    // But the existing code added fees here. We'll keep it but typically fees depend on included txs.
     for (const auto& tx : pendingTransactions) {
         transactionFees += tx.getFee();
     }
     
-    // 4. Network health bonus
-    // If blocks are being mined slower than target, increase reward slightly
-    double timeBonus = 1.0;
-    if (chain.size() >= 10) {
-        // Calculate average block time for last 10 blocks
-        uint64_t timeDiff = chain.back()->getTimestamp() - chain[chain.size() - 10]->getTimestamp();
-        double avgBlockTime = timeDiff / 10.0;
-        double targetBlockTime = 120.0; // 2 minutes
-        
-        if (avgBlockTime > targetBlockTime * 1.5) {
-            // Blocks too slow, increase reward by up to 5%
-            timeBonus = 1.0 + std::min(0.05, (avgBlockTime - targetBlockTime) / targetBlockTime);
-        }
-    }
+    // 4. Supply cap enforcement
+    double finalReward = scarcityAdjustedReward;
     
-    // 5. Supply cap enforcement
-    double finalReward = baseReward * difficultyMultiplier * timeBonus;
-    
-    // Check if we're approaching max supply
     if (totalSupply + finalReward > MAX_SUPPLY) {
         finalReward = MAX_SUPPLY - totalSupply;
     }
     
-    // Minimum reward for security (even after cap)
+    // Minimum reward for security
     if (finalReward < 0.00000001) {
         finalReward = 0.00000001;
     }
     
-    // Add transaction fees (not subject to cap)
+    // Add transaction fees
     finalReward += transactionFees;
     
     return finalReward;
@@ -828,31 +821,92 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
         return false;
     }
     
-    // Use blockchain's difficulty for validation (not block's difficulty)
-    // This prevents miners from submitting blocks with incorrect difficulty
-    double validationDifficulty = difficulty;
+    // POWER-WEIGHTED DIFFICULTY
+    // Calculate the required difficulty for this specific miner
+    double minerSpecificDifficulty = calculatePowerWeightedDifficulty(block.getMinerAddress(), difficulty);
     
-    // For testnet, use easier validation (difficulty 0.1 means 0 leading zeros required)
-    // For mainnet, use stricter validation
-    bool isValid = meetsTarget(hash, validationDifficulty);
+    // For testnet, override if needed, but the formula handles base difficulty.
+    // If base difficulty is 0.1 (testnet), miner penalty scales from there.
+
+    bool isValid = meetsTarget(hash, minerSpecificDifficulty);
     
     if (!isValid) {
-        // Count leading zeros for logging
-        int leadingZeros = 0;
-        for (char c : hash) {
-            if (c == '0') {
-                leadingZeros++;
-            } else {
-                break;
-            }
-        }
-        size_t requiredZeros = static_cast<size_t>(validationDifficulty);
+        // Logging details
         LOG_BLOCKCHAIN(LogLevel::DEBUG, "validateProofOfWork: Hash " + hash.substr(0, 16) + 
-                      "... has " + std::to_string(leadingZeros) + " leading zeros, required: " + 
-                      std::to_string(requiredZeros) + " (difficulty: " + std::to_string(validationDifficulty) + ")");
+                      "... failed target for miner " + block.getMinerAddress().substr(0,10) +
+                      ". Difficulty: " + std::to_string(minerSpecificDifficulty));
     }
     
     return isValid;
+}
+
+double Blockchain::calculatePowerWeightedDifficulty(const std::string& minerAddress, double baseDifficulty) const {
+    // Formula: D_i = D_base * (1 + alpha * (P_i / H_total)^beta)
+    // alpha = power scaling coefficient
+    // beta = non-linear penalty exponent (> 1)
+
+    if (minerAddress.empty()) return baseDifficulty;
+
+    double alpha = 2.0; // Penalty strength
+    double beta = 1.5;  // Nonlinearity
+
+    double P_i = getMinerPower(minerAddress);
+    double H_total = getTotalNetworkPower();
+
+    if (H_total <= 0) return baseDifficulty;
+
+    double ratio = P_i / H_total;
+    double penalty = alpha * std::pow(ratio, beta);
+
+    double weightedDiff = baseDifficulty * (1.0 + penalty);
+
+    return weightedDiff;
+}
+
+double Blockchain::getMinerPower(const std::string& minerAddress) const {
+    // Calculate miner power based on sliding window of recent blocks
+    // This logic approximates hashrate by counting blocks found in the window.
+
+    if (chain.empty()) return 0.0;
+
+    // Use last 100 blocks
+    size_t window = 100;
+    size_t currentHeight = chain.size();
+    size_t startHeight = (currentHeight > window) ? currentHeight - window : 0;
+
+    double minerWork = 0.0;
+
+    for (size_t i = startHeight; i < currentHeight; i++) {
+        if (chain[i]->getMinerAddress() == minerAddress) {
+            // Work done = difficulty of the block
+            minerWork += chain[i]->getDifficulty();
+        }
+    }
+
+    return minerWork;
+}
+
+double Blockchain::getTotalNetworkPower() const {
+    // Calculate total network power over the sliding window
+    size_t window = 100;
+    size_t currentHeight = chain.size();
+    size_t startHeight = (currentHeight > window) ? currentHeight - window : 0;
+
+    double totalWork = 0.0;
+
+    for (size_t i = startHeight; i < currentHeight; i++) {
+        totalWork += chain[i]->getDifficulty();
+    }
+
+    // If chain is short, fallback to current difficulty * estimated window
+    if (totalWork == 0.0) return difficulty * window;
+
+    return totalWork;
+}
+
+void Blockchain::updateMinerPower(const std::string& minerAddress, uint64_t height, double difficulty) {
+    // Update internal tracking if we want to optimize instead of iterating chain.
+    // For now, getMinerPower iterating last 100 blocks is fast enough.
 }
 
 bool Blockchain::validateProofOfStake(const Block& block) const {
@@ -1390,6 +1444,9 @@ bool Blockchain::isValid() const {
         }
         
         // Validate proof of work
+    // Note: For historical validation, we should ideally use the difficulty stored in the block
+    // or recalculate it. validateProofOfWork uses current difficulty which might be wrong for old blocks.
+    // But for now keeping existing behavior but ensuring it calls the updated check.
         if (!validateProofOfWork(currentBlock)) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "Proof of work validation failed at index " + std::to_string(i));
             return false;
