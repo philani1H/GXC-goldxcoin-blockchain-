@@ -3,14 +3,32 @@
 #include "../include/Logger.h"
 #include "../include/Utils.h"
 #include "../include/Config.h"
-#include <sqlite3.h>
+#include <leveldb/db.h>
+#include <leveldb/write_batch.h>
+#include <leveldb/cache.h>
+#include <leveldb/filter_policy.h>
 #include <sstream>
 #include <fstream>
 #include <filesystem>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 // Static instance
 std::unique_ptr<Database> Database::instance = nullptr;
 std::mutex Database::instanceMutex;
+
+// Key prefixes
+const std::string Database::PREFIX_BLOCK = "blk:";
+const std::string Database::PREFIX_BLOCK_HEIGHT = "blkh:";
+const std::string Database::PREFIX_TX = "tx:";
+const std::string Database::PREFIX_TX_BLOCK = "txb:";
+const std::string Database::PREFIX_UTXO = "utxo:";
+const std::string Database::PREFIX_VALIDATOR = "val:";
+const std::string Database::PREFIX_PEER = "peer:";
+const std::string Database::PREFIX_CONFIG = "cfg:";
+const std::string Database::PREFIX_TRACE = "trace:";
+const std::string Database::PREFIX_ADDRESS = "addr:";
 
 Database::Database() : db(nullptr) {
     LOG_DATABASE(LogLevel::INFO, "Database instance created");
@@ -57,67 +75,52 @@ bool Database::open(const std::string& dbPath) {
         // Validate database path based on network mode
         bool isTestnet = Config::isTestnet();
         
-        // Use filesystem to check only filename, not full path
-        // This avoids issues where the directory path contains "testnet" but we're on mainnet
         std::filesystem::path pathObj(dbPath);
         std::string filename = pathObj.filename().string();
 
         // CRITICAL: Ensure testnet and mainnet databases are completely separate
         if (isTestnet) {
-            // Testnet mode - database filename MUST contain "testnet"
             if (filename.find("testnet") == std::string::npos) {
-                LOG_DATABASE(LogLevel::ERROR, "TESTNET mode but database filename doesn't contain 'testnet': " + dbPath);
+                LOG_DATABASE(LogLevel::ERROR, "TESTNET mode but database path doesn't contain 'testnet': " + dbPath);
                 LOG_DATABASE(LogLevel::ERROR, "REFUSING to open database - risk of mainnet data corruption!");
-                LOG_DATABASE(LogLevel::ERROR, "Database filename must contain 'testnet' for testnet mode");
                 return false;
             }
             LOG_DATABASE(LogLevel::INFO, "✓ Testnet database path validated");
         } else {
-            // Mainnet mode - database filename MUST NOT contain "testnet"
             if (filename.find("testnet") != std::string::npos) {
-                LOG_DATABASE(LogLevel::ERROR, "MAINNET mode but database filename contains 'testnet': " + dbPath);
+                LOG_DATABASE(LogLevel::ERROR, "MAINNET mode but database path contains 'testnet': " + dbPath);
                 LOG_DATABASE(LogLevel::ERROR, "REFUSING to open testnet database in mainnet mode!");
-                LOG_DATABASE(LogLevel::ERROR, "This would corrupt testnet data!");
                 return false;
-            }
-            
-            // Additional safety: Check if mainnet database already exists
-            // If it exists and we're still testing, warn loudly
-            std::ifstream dbFile(dbPath);
-            if (dbFile.good()) {
-                LOG_DATABASE(LogLevel::WARNING, "========================================");
-                LOG_DATABASE(LogLevel::WARNING, "WARNING: MAINNET DATABASE ALREADY EXISTS!");
-                LOG_DATABASE(LogLevel::WARNING, "Path: " + dbPath);
-                LOG_DATABASE(LogLevel::WARNING, "If you're still testing, use --testnet flag!");
-                LOG_DATABASE(LogLevel::WARNING, "========================================");
             }
             LOG_DATABASE(LogLevel::INFO, "✓ Mainnet database path validated");
         }
         
-        LOG_DATABASE(LogLevel::INFO, "Opening database: " + dbPath);
+        LOG_DATABASE(LogLevel::INFO, "Opening LevelDB database: " + dbPath);
         LOG_DATABASE(LogLevel::INFO, "Network mode: " + std::string(isTestnet ? "TESTNET" : "MAINNET"));
         
-        int rc = sqlite3_open(dbPath.c_str(), &db);
+        // Configure LevelDB options
+        options.create_if_missing = true;
+        options.paranoid_checks = true;
+        options.max_open_files = 100;
+        options.write_buffer_size = 4 * 1024 * 1024;  // 4MB write buffer
+        options.block_cache = leveldb::NewLRUCache(8 * 1024 * 1024);  // 8MB cache
+        options.filter_policy = leveldb::NewBloomFilterPolicy(10);  // Bloom filter
+        options.compression = leveldb::kSnappyCompression;
         
-        if (rc != SQLITE_OK) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to open database: " + std::string(sqlite3_errmsg(db)));
-            sqlite3_close(db);
-            db = nullptr;
+        // Create directory if it doesn't exist
+        std::filesystem::create_directories(pathObj.parent_path());
+        
+        // Open database
+        leveldb::DB* rawDb;
+        leveldb::Status status = leveldb::DB::Open(options, dbPath, &rawDb);
+        
+        if (!status.ok()) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to open LevelDB: " + status.ToString());
             return false;
         }
         
-        // Enable WAL mode for better concurrency
-        executeSQL("PRAGMA journal_mode=WAL;");
-        
-        // Enable foreign keys
-        executeSQL("PRAGMA foreign_keys=ON;");
-        
-        // Create tables
-        if (!createTables()) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to create database tables");
-            close();
-            return false;
-        }
+        db.reset(rawDb);
+        dataDirectory = dbPath;
         
         // Verify network mode in database metadata
         if (!checkDatabaseNetwork(isTestnet)) {
@@ -126,7 +129,7 @@ bool Database::open(const std::string& dbPath) {
             return false;
         }
 
-        LOG_DATABASE(LogLevel::INFO, "Database opened successfully");
+        LOG_DATABASE(LogLevel::INFO, "LevelDB database opened successfully");
         return true;
         
     } catch (const std::exception& e) {
@@ -138,408 +141,280 @@ bool Database::open(const std::string& dbPath) {
 
 void Database::close() {
     if (db) {
-        sqlite3_close(db);
-        db = nullptr;
+        db.reset();
         LOG_DATABASE(LogLevel::INFO, "Database closed");
     }
-}
-
-bool Database::createTables() {
-    try {
-        // Blocks table
-        std::string createBlocks = R"(
-            CREATE TABLE IF NOT EXISTS blocks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                height INTEGER UNIQUE NOT NULL,
-                hash TEXT UNIQUE NOT NULL,
-                previous_hash TEXT NOT NULL,
-                merkle_root TEXT NOT NULL,
-                timestamp INTEGER NOT NULL,
-                difficulty REAL NOT NULL,
-                nonce INTEGER NOT NULL,
-                miner_address TEXT,
-                block_type INTEGER NOT NULL,
-                transaction_count INTEGER NOT NULL,
-                size_bytes INTEGER NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        )";
-        
-        if (!executeSQL(createBlocks)) {
-            return false;
-        }
-        
-        // Transactions table
-        std::string createTransactions = R"(
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hash TEXT UNIQUE NOT NULL,
-                block_hash TEXT,
-                block_height INTEGER,
-                sender_address TEXT,
-                recipient_address TEXT,
-                amount REAL NOT NULL,
-                fee REAL NOT NULL,
-                timestamp INTEGER NOT NULL,
-                nonce INTEGER,
-                signature TEXT,
-                is_coinbase BOOLEAN NOT NULL DEFAULT 0,
-                prev_tx_hash TEXT,
-                referenced_amount REAL,
-                traceability_valid BOOLEAN NOT NULL DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (block_hash) REFERENCES blocks(hash)
-            )
-        )";
-        
-        if (!executeSQL(createTransactions)) {
-            return false;
-        }
-        
-        // Transaction inputs table
-        std::string createInputs = R"(
-            CREATE TABLE IF NOT EXISTS transaction_inputs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                transaction_hash TEXT NOT NULL,
-                input_index INTEGER NOT NULL,
-                prev_tx_hash TEXT NOT NULL,
-                prev_output_index INTEGER NOT NULL,
-                amount REAL NOT NULL,
-                signature TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (transaction_hash) REFERENCES transactions(hash),
-                UNIQUE(transaction_hash, input_index)
-            )
-        )";
-        
-        if (!executeSQL(createInputs)) {
-            return false;
-        }
-        
-        // Transaction outputs table
-        std::string createOutputs = R"(
-            CREATE TABLE IF NOT EXISTS transaction_outputs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                transaction_hash TEXT NOT NULL,
-                output_index INTEGER NOT NULL,
-                address TEXT NOT NULL,
-                amount REAL NOT NULL,
-                spent BOOLEAN NOT NULL DEFAULT 0,
-                spent_by_tx TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (transaction_hash) REFERENCES transactions(hash),
-                UNIQUE(transaction_hash, output_index)
-            )
-        )";
-        
-        if (!executeSQL(createOutputs)) {
-            return false;
-        }
-        
-        // UTXO table for faster lookups
-        std::string createUtxo = R"(
-            CREATE TABLE IF NOT EXISTS utxo (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tx_hash TEXT NOT NULL,
-                output_index INTEGER NOT NULL,
-                address TEXT NOT NULL,
-                amount REAL NOT NULL,
-                script TEXT,
-                block_height INTEGER NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(tx_hash, output_index)
-            )
-        )";
-        
-        if (!executeSQL(createUtxo)) {
-            return false;
-        }
-        
-        // Addresses table for wallet management
-        std::string createAddresses = R"(
-            CREATE TABLE IF NOT EXISTS addresses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                address TEXT UNIQUE NOT NULL,
-                public_key TEXT,
-                balance REAL NOT NULL DEFAULT 0,
-                transaction_count INTEGER NOT NULL DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        )";
-        
-        if (!executeSQL(createAddresses)) {
-            return false;
-        }
-        
-        // Peers table for network management
-        std::string createPeers = R"(
-            CREATE TABLE IF NOT EXISTS peers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                host TEXT NOT NULL,
-                port INTEGER NOT NULL,
-                version TEXT,
-                user_agent TEXT,
-                last_seen INTEGER,
-                connection_count INTEGER DEFAULT 0,
-                is_seed BOOLEAN DEFAULT 0,
-                is_banned BOOLEAN DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(host, port)
-            )
-        )";
-        
-        if (!executeSQL(createPeers)) {
-            return false;
-        }
-        
-        // Traceability index table
-        std::string createTraceability = R"(
-            CREATE TABLE IF NOT EXISTS traceability_index (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tx_hash TEXT UNIQUE NOT NULL,
-                prev_tx_hash TEXT NOT NULL,
-                referenced_amount REAL NOT NULL,
-                timestamp INTEGER NOT NULL,
-                block_height INTEGER NOT NULL,
-                validation_status BOOLEAN NOT NULL DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tx_hash) REFERENCES transactions(hash)
-            )
-        )";
-        
-        if (!executeSQL(createTraceability)) {
-            return false;
-        }
-        
-        // Validators table for staking
-        std::string createValidators = R"(
-            CREATE TABLE IF NOT EXISTS validators (
-                address TEXT PRIMARY KEY,
-                stake_amount REAL NOT NULL,
-                staking_days INTEGER NOT NULL,
-                stake_start_time INTEGER NOT NULL,
-                is_active BOOLEAN NOT NULL DEFAULT 1,
-                public_key TEXT NOT NULL,
-                blocks_produced INTEGER NOT NULL DEFAULT 0,
-                missed_blocks INTEGER NOT NULL DEFAULT 0,
-                uptime REAL NOT NULL DEFAULT 1.0,
-                total_rewards REAL NOT NULL DEFAULT 0.0,
-                pending_rewards REAL NOT NULL DEFAULT 0.0,
-                is_slashed BOOLEAN NOT NULL DEFAULT 0,
-                slashed_amount REAL NOT NULL DEFAULT 0.0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        )";
-        
-        if (!executeSQL(createValidators)) {
-            return false;
-        }
-        
-        // Chain Info table for metadata
-        std::string createChainInfo = R"(
-            CREATE TABLE IF NOT EXISTS chain_info (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )
-        )";
-
-        if (!executeSQL(createChainInfo)) {
-            return false;
-        }
-
-        // Create indexes for better performance
-        createIndexes();
-        
-        LOG_DATABASE(LogLevel::INFO, "Database tables created successfully");
-        return true;
-        
-    } catch (const std::exception& e) {
-        LOG_DATABASE(LogLevel::ERROR, "Error creating tables: " + std::string(e.what()));
-        return false;
-    }
+    
+    // Clean up options
+    delete options.block_cache;
+    delete options.filter_policy;
+    options.block_cache = nullptr;
+    options.filter_policy = nullptr;
 }
 
 bool Database::checkDatabaseNetwork(bool isTestnet) {
     if (!db) return false;
 
     std::string expectedMode = isTestnet ? "testnet" : "mainnet";
-    std::string sql = "SELECT value FROM chain_info WHERE key = 'network_mode'";
-
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-
-    if (rc != SQLITE_OK) {
-        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare network check statement: " + std::string(sqlite3_errmsg(db)));
-        return false;
-    }
-
-    bool valid = true;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
+    std::string storedMode;
+    
+    if (getConfigValue("network_mode", storedMode)) {
         // Mode exists, verify it
-        std::string storedMode = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
         if (storedMode != expectedMode) {
             LOG_DATABASE(LogLevel::ERROR, "CRITICAL ERROR: Database network mismatch!");
             LOG_DATABASE(LogLevel::ERROR, "Expected: " + expectedMode + ", Found: " + storedMode);
-            LOG_DATABASE(LogLevel::ERROR, "You are trying to open a " + storedMode + " database in " + expectedMode + " mode.");
-            valid = false;
-        } else {
-            LOG_DATABASE(LogLevel::INFO, "Database network mode verified: " + storedMode);
+            return false;
         }
+        LOG_DATABASE(LogLevel::INFO, "Database network mode verified: " + storedMode);
     } else {
-        // Mode doesn't exist (new DB or upgrade), insert it
-        sqlite3_finalize(stmt);
-
-        sql = "INSERT INTO chain_info (key, value) VALUES ('network_mode', ?)";
-        rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-
-        if (rc == SQLITE_OK) {
-            sqlite3_bind_text(stmt, 1, expectedMode.c_str(), -1, SQLITE_STATIC);
-            if (sqlite3_step(stmt) != SQLITE_DONE) {
-                LOG_DATABASE(LogLevel::ERROR, "Failed to save network mode: " + std::string(sqlite3_errmsg(db)));
-                valid = false;
-            } else {
-                LOG_DATABASE(LogLevel::INFO, "Initialized database network mode: " + expectedMode);
-            }
-        } else {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare network save statement: " + std::string(sqlite3_errmsg(db)));
-            valid = false;
+        // Mode doesn't exist (new DB), set it
+        if (!setConfigValue("network_mode", expectedMode)) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to save network mode");
+            return false;
         }
+        LOG_DATABASE(LogLevel::INFO, "Initialized database network mode: " + expectedMode);
     }
 
-    sqlite3_finalize(stmt);
-    return valid;
-}
-
-bool Database::createIndexes() {
-    std::vector<std::string> indexes = {
-        "CREATE INDEX IF NOT EXISTS idx_blocks_height ON blocks(height)",
-        "CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks(hash)",
-        "CREATE INDEX IF NOT EXISTS idx_blocks_timestamp ON blocks(timestamp)",
-        
-        "CREATE INDEX IF NOT EXISTS idx_transactions_hash ON transactions(hash)",
-        "CREATE INDEX IF NOT EXISTS idx_transactions_block_hash ON transactions(block_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_transactions_sender ON transactions(sender_address)",
-        "CREATE INDEX IF NOT EXISTS idx_transactions_recipient ON transactions(recipient_address)",
-        
-        "CREATE INDEX IF NOT EXISTS idx_validators_active ON validators(is_active)",
-        "CREATE INDEX IF NOT EXISTS idx_validators_stake ON validators(stake_amount)",
-        "CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions(timestamp)",
-        
-        "CREATE INDEX IF NOT EXISTS idx_inputs_tx_hash ON transaction_inputs(transaction_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_inputs_prev_tx ON transaction_inputs(prev_tx_hash, prev_output_index)",
-        
-        "CREATE INDEX IF NOT EXISTS idx_outputs_tx_hash ON transaction_outputs(transaction_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_outputs_address ON transaction_outputs(address)",
-        "CREATE INDEX IF NOT EXISTS idx_outputs_spent ON transaction_outputs(spent)",
-        
-        "CREATE INDEX IF NOT EXISTS idx_utxo_address ON utxo(address)",
-        "CREATE INDEX IF NOT EXISTS idx_utxo_tx_output ON utxo(tx_hash, output_index)",
-        
-        "CREATE INDEX IF NOT EXISTS idx_addresses_address ON addresses(address)",
-        
-        "CREATE INDEX IF NOT EXISTS idx_peers_host_port ON peers(host, port)",
-        "CREATE INDEX IF NOT EXISTS idx_peers_last_seen ON peers(last_seen)",
-        
-        "CREATE INDEX IF NOT EXISTS idx_traceability_tx_hash ON traceability_index(tx_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_traceability_prev_tx ON traceability_index(prev_tx_hash)"
-    };
-    
-    for (const auto& index : indexes) {
-        if (!executeSQL(index)) {
-            LOG_DATABASE(LogLevel::WARNING, "Failed to create index: " + index);
-        }
-    }
-    
     return true;
 }
 
-bool Database::executeSQL(const std::string& sql) {
-    if (!db) {
-        LOG_DATABASE(LogLevel::ERROR, "Database not open");
+std::string Database::makeKey(const std::string& prefix, const std::string& id) const {
+    return prefix + id;
+}
+
+std::string Database::makeKey(const std::string& prefix, uint32_t id) const {
+    // Use zero-padded format for proper sorting
+    std::ostringstream oss;
+    oss << prefix << std::setw(10) << std::setfill('0') << id;
+    return oss.str();
+}
+
+bool Database::put(const std::string& key, const std::string& value) {
+    if (!db) return false;
+    
+    leveldb::Status status = db->Put(writeOptions, key, value);
+    if (!status.ok()) {
+        LOG_DATABASE(LogLevel::ERROR, "LevelDB put failed: " + status.ToString());
         return false;
     }
-    
-    char* errorMsg = nullptr;
-    int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errorMsg);
-    
-    if (rc != SQLITE_OK) {
-        std::string error = errorMsg ? errorMsg : "Unknown error";
-        LOG_DATABASE(LogLevel::ERROR, "SQL execution failed: " + error);
-        sqlite3_free(errorMsg);
-        return false;
-    }
-    
     return true;
 }
 
+bool Database::get(const std::string& key, std::string& value) const {
+    if (!db) return false;
+    
+    leveldb::Status status = db->Get(readOptions, key, &value);
+    return status.ok();
+}
+
+bool Database::del(const std::string& key) {
+    if (!db) return false;
+    
+    leveldb::Status status = db->Delete(writeOptions, key);
+    return status.ok();
+}
+
+// Serialization helpers using JSON
+std::string Database::serializeBlock(const Block& block) const {
+    json j;
+    j["index"] = block.getIndex();
+    j["hash"] = block.getHash();
+    j["previous_hash"] = block.getPreviousHash();
+    j["merkle_root"] = block.getMerkleRoot();
+    j["timestamp"] = block.getTimestamp();
+    j["difficulty"] = block.getDifficulty();
+    j["nonce"] = block.getNonce();
+    j["miner_address"] = block.getMinerAddress();
+    j["block_type"] = static_cast<int>(block.getBlockType());
+    j["tx_count"] = block.getTransactions().size();
+    
+    // Serialize transaction hashes
+    json txHashes = json::array();
+    for (const auto& tx : block.getTransactions()) {
+        txHashes.push_back(tx.getHash());
+    }
+    j["tx_hashes"] = txHashes;
+    
+    return j.dump();
+}
+
+Block Database::deserializeBlock(const std::string& data) const {
+    try {
+        json j = json::parse(data);
+        
+        uint32_t index = j["index"].get<uint32_t>();
+        std::string prevHash = j["previous_hash"].get<std::string>();
+        BlockType blockType = static_cast<BlockType>(j["block_type"].get<int>());
+        
+        Block block(index, prevHash, blockType);
+        block.setHash(j["hash"].get<std::string>());
+        block.setMerkleRoot(j["merkle_root"].get<std::string>());
+        block.setTimestamp(j["timestamp"].get<uint64_t>());
+        block.setDifficulty(j["difficulty"].get<double>());
+        block.setNonce(j["nonce"].get<uint64_t>());
+        block.setMinerAddress(j["miner_address"].get<std::string>());
+        
+        return block;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to deserialize block: " + std::string(e.what()));
+        return Block();
+    }
+}
+
+std::string Database::serializeTransaction(const Transaction& tx) const {
+    json j;
+    j["hash"] = tx.getHash();
+    j["sender"] = tx.getSenderAddress();
+    j["receiver"] = tx.getReceiverAddress();
+    j["fee"] = tx.getFee();
+    j["timestamp"] = tx.getTimestamp();
+    j["nonce"] = tx.getNonce();
+    j["is_coinbase"] = tx.isCoinbaseTransaction();
+    j["prev_tx_hash"] = tx.getPrevTxHash();
+    j["referenced_amount"] = tx.getReferencedAmount();
+    j["traceability_valid"] = tx.isTraceabilityValid();
+    
+    // Serialize inputs
+    json inputs = json::array();
+    for (const auto& input : tx.getInputs()) {
+        json inp;
+        inp["tx_hash"] = input.txHash;
+        inp["output_index"] = input.outputIndex;
+        inp["amount"] = input.amount;
+        inp["signature"] = input.signature;
+        inputs.push_back(inp);
+    }
+    j["inputs"] = inputs;
+    
+    // Serialize outputs
+    json outputs = json::array();
+    for (const auto& output : tx.getOutputs()) {
+        json out;
+        out["address"] = output.address;
+        out["amount"] = output.amount;
+        out["script"] = output.script;
+        outputs.push_back(out);
+    }
+    j["outputs"] = outputs;
+    
+    return j.dump();
+}
+
+Transaction Database::deserializeTransaction(const std::string& data) const {
+    try {
+        json j = json::parse(data);
+        
+        Transaction tx;
+        tx.setHash(j["hash"].get<std::string>());
+        tx.setSenderAddress(j["sender"].get<std::string>());
+        tx.setReceiverAddress(j["receiver"].get<std::string>());
+        tx.setFee(j["fee"].get<double>());
+        tx.setTimestamp(j["timestamp"].get<uint64_t>());
+        tx.setNonce(j["nonce"].get<uint64_t>());
+        tx.setCoinbaseTransaction(j["is_coinbase"].get<bool>());
+        tx.setPrevTxHash(j["prev_tx_hash"].get<std::string>());
+        tx.setReferencedAmount(j["referenced_amount"].get<double>());
+        
+        // Deserialize inputs
+        for (const auto& inp : j["inputs"]) {
+            TransactionInput input;
+            input.txHash = inp["tx_hash"].get<std::string>();
+            input.outputIndex = inp["output_index"].get<uint32_t>();
+            input.amount = inp["amount"].get<double>();
+            input.signature = inp["signature"].get<std::string>();
+            tx.addInput(input);
+        }
+        
+        // Deserialize outputs
+        for (const auto& out : j["outputs"]) {
+            TransactionOutput output;
+            output.address = out["address"].get<std::string>();
+            output.amount = out["amount"].get<double>();
+            output.script = out["script"].get<std::string>();
+            tx.addOutput(output);
+        }
+        
+        return tx;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to deserialize transaction: " + std::string(e.what()));
+        return Transaction();
+    }
+}
+
+std::string Database::serializeValidator(const Validator& validator) const {
+    json j;
+    j["address"] = validator.getAddress();
+    j["stake_amount"] = validator.getStakeAmount();
+    j["staking_days"] = validator.getStakingDays();
+    j["stake_start_time"] = validator.getStakeStartTime();
+    j["is_active"] = validator.getIsActive();
+    j["public_key"] = validator.getPublicKey();
+    j["blocks_produced"] = validator.getBlocksProduced();
+    j["missed_blocks"] = validator.getMissedBlocks();
+    j["uptime"] = validator.getUptime();
+    j["total_rewards"] = validator.getTotalRewards();
+    j["pending_rewards"] = validator.getPendingRewards();
+    j["is_slashed"] = validator.getIsSlashed();
+    j["slashed_amount"] = validator.getSlashedAmount();
+    return j.dump();
+}
+
+Validator Database::deserializeValidator(const std::string& data) const {
+    try {
+        json j = json::parse(data);
+        
+        std::string addr = j["address"].get<std::string>();
+        double stakeAmount = j["stake_amount"].get<double>();
+        uint32_t stakingDays = j["staking_days"].get<uint32_t>();
+        
+        Validator validator(addr, stakeAmount, stakingDays);
+        validator.setPublicKey(j["public_key"].get<std::string>());
+        validator.setIsActive(j["is_active"].get<bool>());
+        
+        // Restore metrics
+        for (uint32_t i = 0; i < j["blocks_produced"].get<uint32_t>(); i++) {
+            validator.recordBlockProduced();
+        }
+        for (uint32_t i = 0; i < j["missed_blocks"].get<uint32_t>(); i++) {
+            validator.recordMissedBlock();
+        }
+        
+        return validator;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to deserialize validator: " + std::string(e.what()));
+        return Validator("", 0, 0);
+    }
+}
+
+// Block operations
 bool Database::saveBlock(const Block& block) {
-    if (!db) {
-        return false;
-    }
+    if (!db) return false;
     
     try {
-        // Begin transaction
-        if (!executeSQL("BEGIN TRANSACTION;")) {
-            return false;
-        }
+        leveldb::WriteBatch batch;
         
-        // Insert block
-        std::string sql = R"(
-            INSERT INTO blocks (height, hash, previous_hash, merkle_root, timestamp, 
-                              difficulty, nonce, miner_address, block_type, 
-                              transaction_count, size_bytes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        )";
+        // Store block by hash
+        std::string blockData = serializeBlock(block);
+        batch.Put(makeKey(PREFIX_BLOCK, block.getHash()), blockData);
         
-        sqlite3_stmt* stmt;
-        int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+        // Store hash by height (for height-based lookups)
+        batch.Put(makeKey(PREFIX_BLOCK_HEIGHT, block.getIndex()), block.getHash());
         
-        if (rc != SQLITE_OK) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare block insert statement");
-            executeSQL("ROLLBACK;");
-            return false;
-        }
+        // Update latest block height
+        batch.Put(makeKey(PREFIX_CONFIG, "latest_block_height"), std::to_string(block.getIndex()));
+        batch.Put(makeKey(PREFIX_CONFIG, "latest_block_hash"), block.getHash());
         
-        sqlite3_bind_int(stmt, 1, static_cast<int>(block.getIndex()));
-        sqlite3_bind_text(stmt, 2, block.getHash().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 3, block.getPreviousHash().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 4, block.getMerkleRoot().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int64(stmt, 5, block.getTimestamp());
-        sqlite3_bind_double(stmt, 6, block.getDifficulty());
-        sqlite3_bind_int64(stmt, 7, block.getNonce());
-        sqlite3_bind_text(stmt, 8, block.getMinerAddress().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 9, static_cast<int>(block.getBlockType()));
-        sqlite3_bind_int(stmt, 10, static_cast<int>(block.getTransactions().size()));
-        // Calculate block size from transactions
-        size_t blockSize = block.getTransactions().size() * 256; // Approximate size
-        sqlite3_bind_int(stmt, 11, static_cast<int>(blockSize));
-        
-        rc = sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
-        
-        if (rc != SQLITE_DONE) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to insert block");
-            executeSQL("ROLLBACK;");
-            return false;
-        }
-        
-        // Save transactions (this also updates UTXO set)
+        // Store transactions
         for (const auto& tx : block.getTransactions()) {
             if (!saveTransaction(tx, block.getHash(), block.getIndex())) {
                 LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction in block: " + tx.getHash());
-                executeSQL("ROLLBACK;");
                 return false;
             }
         }
         
-        LOG_DATABASE(LogLevel::DEBUG, "Saved " + std::to_string(block.getTransactions().size()) + 
-                    " transactions and updated UTXO set for block at height " + 
-                    std::to_string(block.getIndex()));
-        
-        // Commit transaction
-        if (!executeSQL("COMMIT;")) {
-            executeSQL("ROLLBACK;");
+        leveldb::Status status = db->Write(writeOptions, &batch);
+        if (!status.ok()) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to save block: " + status.ToString());
             return false;
         }
         
@@ -548,87 +423,139 @@ bool Database::saveBlock(const Block& block) {
         
     } catch (const std::exception& e) {
         LOG_DATABASE(LogLevel::ERROR, "Exception saving block: " + std::string(e.what()));
-        executeSQL("ROLLBACK;");
         return false;
     }
 }
 
-bool Database::saveTransaction(const Transaction& tx, const std::string& blockHash, size_t blockHeight) {
-    if (!db) {
+bool Database::storeBlock(const Block& block) {
+    return saveBlock(block);
+}
+
+bool Database::getBlock(uint32_t index, Block& block) const {
+    std::string hash;
+    if (!get(makeKey(PREFIX_BLOCK_HEIGHT, index), hash)) {
+        return false;
+    }
+    return getBlock(hash, block);
+}
+
+bool Database::getBlock(const std::string& hash, Block& block) const {
+    std::string data;
+    if (!get(makeKey(PREFIX_BLOCK, hash), data)) {
         return false;
     }
     
-    try {
-        // Insert transaction
-        std::string sql = R"(
-            INSERT INTO transactions (hash, block_hash, block_height, sender_address, 
-                                    recipient_address, amount, fee, timestamp, nonce, 
-                                    signature, is_coinbase, prev_tx_hash, referenced_amount, 
-                                    traceability_valid)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        )";
-        
-        sqlite3_stmt* stmt;
-        int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-        
-        if (rc != SQLITE_OK) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare transaction insert statement: " + std::string(sqlite3_errmsg(db)));
-            return false;
-        }
-        
-        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 2, blockHash.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 3, static_cast<int>(blockHeight));
-        sqlite3_bind_text(stmt, 4, tx.getSenderAddress().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 5, tx.getReceiverAddress().c_str(), -1, SQLITE_TRANSIENT);
-        // Calculate total amount from outputs
-        double totalAmount = 0.0;
-        for (const auto& output : tx.getOutputs()) {
-            totalAmount += output.amount;
-        }
-        sqlite3_bind_double(stmt, 6, totalAmount);
-        sqlite3_bind_double(stmt, 7, tx.getFee());
-        sqlite3_bind_int64(stmt, 8, tx.getTimestamp());
-        sqlite3_bind_int64(stmt, 9, tx.getNonce());
-        // Get signature from first input if available
-        std::string signature = "";
-        if (!tx.getInputs().empty()) {
-            signature = tx.getInputs()[0].signature;
-        }
-        sqlite3_bind_text(stmt, 10, signature.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 11, tx.isCoinbaseTransaction() ? 1 : 0);
-        sqlite3_bind_text(stmt, 12, tx.getPrevTxHash().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_double(stmt, 13, tx.getReferencedAmount());
-        sqlite3_bind_int(stmt, 14, tx.isTraceabilityValid() ? 1 : 0);
-        
-        rc = sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
-        
-        if (rc != SQLITE_DONE) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to insert transaction: " + std::string(sqlite3_errmsg(db)));
-            return false;
-        }
-        
-        // Save inputs and outputs
-        if (!saveTransactionInputs(tx)) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction inputs");
-            return false;
-        }
+    block = deserializeBlock(data);
+    
+    // Load transactions
+    auto transactions = getTransactionsByBlockHash(hash);
+    for (const auto& tx : transactions) {
+        block.addTransaction(tx);
+    }
+    
+    return true;
+}
 
-        if (!saveTransactionOutputs(tx)) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction outputs");
+Block Database::getBlock(const std::string& hash) const {
+    Block block;
+    getBlock(hash, block);
+    return block;
+}
+
+bool Database::deleteBlock(uint32_t index) {
+    std::string hash;
+    if (!get(makeKey(PREFIX_BLOCK_HEIGHT, index), hash)) {
+        return false;
+    }
+    
+    leveldb::WriteBatch batch;
+    batch.Delete(makeKey(PREFIX_BLOCK, hash));
+    batch.Delete(makeKey(PREFIX_BLOCK_HEIGHT, index));
+    
+    return db->Write(writeOptions, &batch).ok();
+}
+
+uint32_t Database::getLatestBlockIndex() const {
+    std::string value;
+    if (getConfigValue("latest_block_height", value)) {
+        return std::stoul(value);
+    }
+    return 0;
+}
+
+std::string Database::getLatestBlockHash() const {
+    std::string value;
+    getConfigValue("latest_block_hash", value);
+    return value;
+}
+
+std::vector<Block> Database::getAllBlocks() const {
+    std::vector<Block> blocks;
+    
+    if (!db) return blocks;
+    
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+    
+    for (it->Seek(PREFIX_BLOCK_HEIGHT); it->Valid(); it->Next()) {
+        std::string key = it->key().ToString();
+        if (key.find(PREFIX_BLOCK_HEIGHT) != 0) break;
+        
+        std::string hash = it->value().ToString();
+        Block block;
+        if (getBlock(hash, block)) {
+            blocks.push_back(block);
+        }
+    }
+    
+    LOG_DATABASE(LogLevel::INFO, "Loaded " + std::to_string(blocks.size()) + " blocks from database");
+    return blocks;
+}
+
+std::vector<Block> Database::getBlocksByRange(uint32_t startHeight, uint32_t endHeight) const {
+    std::vector<Block> blocks;
+    
+    for (uint32_t i = startHeight; i <= endHeight; i++) {
+        Block block;
+        if (getBlock(i, block)) {
+            blocks.push_back(block);
+        }
+    }
+    
+    return blocks;
+}
+
+// Transaction operations
+bool Database::saveTransaction(const Transaction& tx, const std::string& blockHash, size_t blockIndex) {
+    if (!db) return false;
+    
+    try {
+        leveldb::WriteBatch batch;
+        
+        // Store transaction by hash
+        std::string txData = serializeTransaction(tx);
+        batch.Put(makeKey(PREFIX_TX, tx.getHash()), txData);
+        
+        // Store tx hash -> block hash mapping
+        json mapping;
+        mapping["block_hash"] = blockHash;
+        mapping["block_height"] = blockIndex;
+        batch.Put(makeKey(PREFIX_TX_BLOCK, tx.getHash()), mapping.dump());
+        
+        leveldb::Status status = db->Write(writeOptions, &batch);
+        if (!status.ok()) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction: " + status.ToString());
             return false;
         }
         
-        // Update UTXO set (pass block height for proper tracking)
-        if (!updateUtxoSet(tx, blockHeight)) {
+        // Update UTXO set
+        if (!updateUtxoSet(tx, blockIndex)) {
             LOG_DATABASE(LogLevel::ERROR, "Failed to update UTXO set");
             return false;
         }
         
-        // Update traceability index
+        // Save traceability record
         if (!tx.isCoinbaseTransaction()) {
-            if (!saveTraceabilityRecord(tx, blockHeight)) {
+            if (!saveTraceabilityRecord(tx, blockIndex)) {
                 return false;
             }
         }
@@ -641,595 +568,206 @@ bool Database::saveTransaction(const Transaction& tx, const std::string& blockHa
     }
 }
 
+bool Database::storeTransaction(const Transaction& tx) {
+    return saveTransaction(tx, "", 0);
+}
+
 bool Database::saveTransactionInputs(const Transaction& tx) {
-    const auto& inputs = tx.getInputs();
-    
-    for (size_t i = 0; i < inputs.size(); i++) {
-        const auto& input = inputs[i];
-        
-        std::string sql = R"(
-            INSERT INTO transaction_inputs (transaction_hash, input_index, prev_tx_hash, 
-                                          prev_output_index, amount, signature)
-            VALUES (?, ?, ?, ?, ?, ?)
-        )";
-        
-        sqlite3_stmt* stmt;
-        int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-        
-        if (rc != SQLITE_OK) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare input insert: " + std::string(sqlite3_errmsg(db)));
-            return false;
-        }
-        
-        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 2, static_cast<int>(i));
-        sqlite3_bind_text(stmt, 3, input.txHash.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 4, static_cast<int>(input.outputIndex));
-        sqlite3_bind_double(stmt, 5, input.amount);
-        sqlite3_bind_text(stmt, 6, input.signature.c_str(), -1, SQLITE_TRANSIENT);
-        
-        rc = sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
-        
-        if (rc != SQLITE_DONE) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to insert input: " + std::string(sqlite3_errmsg(db)));
-            return false;
-        }
-    }
-    
+    // Inputs are stored as part of the transaction
     return true;
 }
 
 bool Database::saveTransactionOutputs(const Transaction& tx) {
-    const auto& outputs = tx.getOutputs();
-    
-    for (size_t i = 0; i < outputs.size(); i++) {
-        const auto& output = outputs[i];
-        
-        std::string sql = R"(
-            INSERT INTO transaction_outputs (transaction_hash, output_index, address, amount)
-            VALUES (?, ?, ?, ?)
-        )";
-        
-        sqlite3_stmt* stmt;
-        int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-        
-        if (rc != SQLITE_OK) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare output insert: " + std::string(sqlite3_errmsg(db)));
-            return false;
-        }
-        
-        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 2, static_cast<int>(i));
-        sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_double(stmt, 4, output.amount);
-        
-        rc = sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
-        
-        if (rc != SQLITE_DONE) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to insert output: " + std::string(sqlite3_errmsg(db)));
-            return false;
-        }
-    }
-    
+    // Outputs are stored as part of the transaction
     return true;
 }
 
 bool Database::updateUtxoSet(const Transaction& tx, size_t blockHeight) {
-    // Remove spent UTXOs (inputs consume previous outputs)
+    if (!db) return false;
+    
+    leveldb::WriteBatch batch;
+    
+    // Remove spent UTXOs
     for (const auto& input : tx.getInputs()) {
-        std::string sql = "DELETE FROM utxo WHERE tx_hash = ? AND output_index = ?";
-        
-        sqlite3_stmt* stmt;
-        int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-        
-        if (rc == SQLITE_OK) {
-            sqlite3_bind_text(stmt, 1, input.txHash.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_int(stmt, 2, static_cast<int>(input.outputIndex));
-            
-            sqlite3_step(stmt);
-            sqlite3_finalize(stmt);
-        }
+        std::string utxoKey = makeKey(PREFIX_UTXO, input.txHash + ":" + std::to_string(input.outputIndex));
+        batch.Delete(utxoKey);
     }
     
-    // Add new UTXOs (outputs become new unspent outputs)
+    // Add new UTXOs
     const auto& outputs = tx.getOutputs();
     for (size_t i = 0; i < outputs.size(); i++) {
         const auto& output = outputs[i];
         
-        std::string sql = R"(
-            INSERT OR REPLACE INTO utxo (tx_hash, output_index, address, amount, block_height)
-            VALUES (?, ?, ?, ?, ?)
-        )";
+        json utxo;
+        utxo["tx_hash"] = tx.getHash();
+        utxo["output_index"] = i;
+        utxo["address"] = output.address;
+        utxo["amount"] = output.amount;
+        utxo["script"] = output.script;
+        utxo["block_height"] = blockHeight;
         
-        sqlite3_stmt* stmt;
-        int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+        std::string utxoKey = makeKey(PREFIX_UTXO, tx.getHash() + ":" + std::to_string(i));
+        batch.Put(utxoKey, utxo.dump());
         
-        if (rc != SQLITE_OK) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to prepare UTXO insert statement");
-            return false;
-        }
-        
-        sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 2, static_cast<int>(i));
-        sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_double(stmt, 4, output.amount);
-        sqlite3_bind_int(stmt, 5, static_cast<int>(blockHeight)); // Use actual block height
-        
-        rc = sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
-        
-        if (rc != SQLITE_DONE) {
-            LOG_DATABASE(LogLevel::ERROR, "Failed to insert UTXO: " + std::string(sqlite3_errmsg(db)));
-            return false;
-        }
+        // Also index by address for balance lookups
+        std::string addrKey = makeKey(PREFIX_ADDRESS, output.address + ":" + tx.getHash() + ":" + std::to_string(i));
+        batch.Put(addrKey, utxo.dump());
     }
     
-    LOG_DATABASE(LogLevel::DEBUG, "Updated UTXO set: removed " + std::to_string(tx.getInputs().size()) + 
-                " inputs, added " + std::to_string(outputs.size()) + " outputs at block height " + 
-                std::to_string(blockHeight));
-    
-    return true;
+    return db->Write(writeOptions, &batch).ok();
 }
 
 bool Database::saveTraceabilityRecord(const Transaction& tx, size_t blockHeight) {
-    std::string sql = R"(
-        INSERT INTO traceability_index (tx_hash, prev_tx_hash, referenced_amount, 
-                                       timestamp, block_height, validation_status)
-        VALUES (?, ?, ?, ?, ?, ?)
-    )";
+    json trace;
+    trace["tx_hash"] = tx.getHash();
+    trace["prev_tx_hash"] = tx.getPrevTxHash();
+    trace["referenced_amount"] = tx.getReferencedAmount();
+    trace["timestamp"] = tx.getTimestamp();
+    trace["block_height"] = blockHeight;
+    trace["validation_status"] = tx.isTraceabilityValid();
     
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return false;
-    }
-    
-    sqlite3_bind_text(stmt, 1, tx.getHash().c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, tx.getPrevTxHash().c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_double(stmt, 3, tx.getReferencedAmount());
-    sqlite3_bind_int64(stmt, 4, tx.getTimestamp());
-    sqlite3_bind_int(stmt, 5, static_cast<int>(blockHeight));
-    sqlite3_bind_int(stmt, 6, tx.isTraceabilityValid() ? 1 : 0);
-    
-    rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    
-    return rc == SQLITE_DONE;
-}
-
-Block Database::getBlock(const std::string& hash) const {
-    if (!db) {
-        return Block();
-    }
-    
-    std::string sql = R"(
-        SELECT height, hash, previous_hash, merkle_root, timestamp, difficulty, 
-               nonce, miner_address, block_type, transaction_count, size_bytes
-        FROM blocks WHERE hash = ?
-    )";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return Block();
-    }
-    
-    sqlite3_bind_text(stmt, 1, hash.c_str(), -1, SQLITE_STATIC);
-    
-    Block block;
-    
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        uint32_t index = sqlite3_column_int(stmt, 0);
-        std::string prevHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-        BlockType blockType = static_cast<BlockType>(sqlite3_column_int(stmt, 8));
-        
-        // Construct block with proper type
-        block = Block(index, prevHash, blockType);
-        block.setTimestamp(sqlite3_column_int64(stmt, 4));
-        block.setDifficulty(sqlite3_column_double(stmt, 5));
-        block.setNonce(sqlite3_column_int64(stmt, 6));
-        block.setMinerAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)));
-        
-        // Load transactions for this block
-        auto transactions = getTransactionsByBlockHash(hash);
-        for (const auto& tx : transactions) {
-            block.addTransaction(tx);
-        }
-    }
-    
-    sqlite3_finalize(stmt);
-    return block;
+    return put(makeKey(PREFIX_TRACE, tx.getHash()), trace.dump());
 }
 
 std::vector<Transaction> Database::getTransactionsByBlockHash(const std::string& blockHash) const {
     std::vector<Transaction> transactions;
     
-    if (!db) {
-        return transactions;
-    }
+    if (!db) return transactions;
     
-    std::string sql = R"(
-        SELECT hash, sender_address, recipient_address, amount, fee, timestamp, 
-               nonce, signature, is_coinbase, prev_tx_hash, referenced_amount
-        FROM transactions WHERE block_hash = ?
-        ORDER BY id
-    )";
+    // Iterate through all tx_block mappings
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
     
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return transactions;
-    }
-    
-    sqlite3_bind_text(stmt, 1, blockHash.c_str(), -1, SQLITE_STATIC);
-    
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        Transaction tx;
-        tx.setHash(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
-        tx.setSenderAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
-        tx.setReceiverAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)));
-        // Amount is calculated from outputs, not stored directly
-        tx.setFee(sqlite3_column_double(stmt, 4));
-        tx.setTimestamp(sqlite3_column_int64(stmt, 5));
-        tx.setNonce(sqlite3_column_int64(stmt, 6));
-        // Signature is stored in TransactionInput, not Transaction
-        tx.setCoinbaseTransaction(sqlite3_column_int(stmt, 8) == 1);
-        tx.setPrevTxHash(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9)));
-        tx.setReferencedAmount(sqlite3_column_double(stmt, 10));
+    for (it->Seek(PREFIX_TX_BLOCK); it->Valid(); it->Next()) {
+        std::string key = it->key().ToString();
+        if (key.find(PREFIX_TX_BLOCK) != 0) break;
         
-        // Load inputs and outputs
-        auto inputs = getTransactionInputs(tx.getHash());
-        auto outputs = getTransactionOutputs(tx.getHash());
-        
-        for (const auto& input : inputs) {
-            tx.addInput(input);
+        try {
+            json mapping = json::parse(it->value().ToString());
+            if (mapping["block_hash"].get<std::string>() == blockHash) {
+                std::string txHash = key.substr(PREFIX_TX_BLOCK.length());
+                std::string txData;
+                if (get(makeKey(PREFIX_TX, txHash), txData)) {
+                    transactions.push_back(deserializeTransaction(txData));
+                }
+            }
+        } catch (...) {
+            continue;
         }
-        
-        for (const auto& output : outputs) {
-            tx.addOutput(output);
-        }
-        
-        transactions.push_back(tx);
     }
     
-    sqlite3_finalize(stmt);
     return transactions;
 }
 
 std::vector<TransactionInput> Database::getTransactionInputs(const std::string& txHash) const {
-    std::vector<TransactionInput> inputs;
-    
-    if (!db) {
-        return inputs;
+    std::string txData;
+    if (get(makeKey(PREFIX_TX, txHash), txData)) {
+        Transaction tx = deserializeTransaction(txData);
+        return tx.getInputs();
     }
-    
-    std::string sql = R"(
-        SELECT prev_tx_hash, prev_output_index, amount, signature
-        FROM transaction_inputs 
-        WHERE transaction_hash = ?
-        ORDER BY input_index
-    )";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return inputs;
-    }
-    
-    sqlite3_bind_text(stmt, 1, txHash.c_str(), -1, SQLITE_STATIC);
-    
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        TransactionInput input;
-        input.txHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        input.outputIndex = sqlite3_column_int(stmt, 1);
-        input.amount = sqlite3_column_double(stmt, 2);
-        input.signature = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
-        
-        inputs.push_back(input);
-    }
-    
-    sqlite3_finalize(stmt);
-    return inputs;
+    return {};
 }
 
 std::vector<TransactionOutput> Database::getTransactionOutputs(const std::string& txHash) const {
-    std::vector<TransactionOutput> outputs;
-    
-    if (!db) {
-        return outputs;
+    std::string txData;
+    if (get(makeKey(PREFIX_TX, txHash), txData)) {
+        Transaction tx = deserializeTransaction(txData);
+        return tx.getOutputs();
     }
+    return {};
+}
+
+// UTXO operations
+bool Database::storeUTXO(const std::string& txHash, uint32_t outputIndex, const TransactionOutput& output, uint32_t blockHeight) {
+    json utxo;
+    utxo["tx_hash"] = txHash;
+    utxo["output_index"] = outputIndex;
+    utxo["address"] = output.address;
+    utxo["amount"] = output.amount;
+    utxo["script"] = output.script;
+    utxo["block_height"] = blockHeight;
     
-    std::string sql = R"(
-        SELECT address, amount
-        FROM transaction_outputs 
-        WHERE transaction_hash = ?
-        ORDER BY output_index
-    )";
+    std::string key = makeKey(PREFIX_UTXO, txHash + ":" + std::to_string(outputIndex));
+    return put(key, utxo.dump());
+}
+
+bool Database::getUTXO(const std::string& txHash, uint32_t outputIndex, TransactionOutput& output) const {
+    std::string key = makeKey(PREFIX_UTXO, txHash + ":" + std::to_string(outputIndex));
+    std::string data;
     
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    if (!get(key, data)) return false;
     
-    if (rc != SQLITE_OK) {
-        return outputs;
+    try {
+        json j = json::parse(data);
+        output.address = j["address"].get<std::string>();
+        output.amount = j["amount"].get<double>();
+        output.script = j["script"].get<std::string>();
+        return true;
+    } catch (...) {
+        return false;
     }
+}
+
+bool Database::deleteUTXO(const std::string& txHash, uint32_t outputIndex) {
+    std::string key = makeKey(PREFIX_UTXO, txHash + ":" + std::to_string(outputIndex));
+    return del(key);
+}
+
+std::vector<TransactionOutput> Database::getUTXOsByAddress(const std::string& address) const {
+    std::vector<TransactionOutput> utxos;
     
-    sqlite3_bind_text(stmt, 1, txHash.c_str(), -1, SQLITE_STATIC);
+    if (!db) return utxos;
     
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        TransactionOutput output;
-        output.address = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        output.amount = sqlite3_column_double(stmt, 1);
+    std::string prefix = makeKey(PREFIX_ADDRESS, address + ":");
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+    
+    for (it->Seek(prefix); it->Valid(); it->Next()) {
+        std::string key = it->key().ToString();
+        if (key.find(prefix) != 0) break;
         
-        outputs.push_back(output);
+        try {
+            json j = json::parse(it->value().ToString());
+            TransactionOutput output;
+            output.address = j["address"].get<std::string>();
+            output.amount = j["amount"].get<double>();
+            output.script = j["script"].get<std::string>();
+            utxos.push_back(output);
+        } catch (...) {
+            continue;
+        }
     }
     
-    sqlite3_finalize(stmt);
-    return outputs;
+    return utxos;
 }
 
 double Database::getAddressBalance(const std::string& address) const {
-    if (!db) {
-        return 0.0;
-    }
-    
-    std::string sql = "SELECT SUM(amount) FROM utxo WHERE address = ?";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return 0.0;
-    }
-    
-    sqlite3_bind_text(stmt, 1, address.c_str(), -1, SQLITE_STATIC);
-    
     double balance = 0.0;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        balance = sqlite3_column_double(stmt, 0);
+    auto utxos = getUTXOsByAddress(address);
+    for (const auto& utxo : utxos) {
+        balance += utxo.amount;
     }
-    
-    sqlite3_finalize(stmt);
     return balance;
 }
 
 size_t Database::getBlockCount() const {
-    if (!db) {
-        return 0;
-    }
-    
-    std::string sql = "SELECT COUNT(*) FROM blocks";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return 0;
-    }
-    
-    size_t count = 0;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        count = sqlite3_column_int64(stmt, 0);
-    }
-    
-    sqlite3_finalize(stmt);
-    return count;
-}
-
-std::vector<Block> Database::getAllBlocks() const {
-    std::vector<Block> blocks;
-    
-    if (!db) {
-        return blocks;
-    }
-    
-    std::string sql = R"(
-        SELECT height, hash, previous_hash, merkle_root, timestamp, difficulty, 
-               nonce, miner_address, block_type, transaction_count, size_bytes
-        FROM blocks
-        ORDER BY height ASC
-    )";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare getAllBlocks statement");
-        return blocks;
-    }
-    
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        uint32_t index = sqlite3_column_int(stmt, 0);
-        std::string hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        std::string prevHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-        BlockType blockType = static_cast<BlockType>(sqlite3_column_int(stmt, 8));
-        
-        // Construct block with proper type
-        Block block(index, prevHash, blockType);
-        block.setHash(hash);
-        block.setMerkleRoot(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
-        block.setTimestamp(sqlite3_column_int64(stmt, 4));
-        block.setDifficulty(sqlite3_column_double(stmt, 5));
-        block.setNonce(sqlite3_column_int64(stmt, 6));
-        block.setMinerAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)));
-        
-        // Load transactions for this block
-        auto transactions = getTransactionsByBlockHash(hash);
-        for (const auto& tx : transactions) {
-            block.addTransaction(tx);
-        }
-        
-        blocks.push_back(block);
-    }
-    
-    sqlite3_finalize(stmt);
-    LOG_DATABASE(LogLevel::INFO, "Loaded " + std::to_string(blocks.size()) + " blocks from database");
-    return blocks;
-}
-
-std::vector<Block> Database::getBlocksByRange(uint32_t startHeight, uint32_t endHeight) const {
-    std::vector<Block> blocks;
-    
-    if (!db) {
-        return blocks;
-    }
-    
-    std::string sql = R"(
-        SELECT height, hash, previous_hash, merkle_root, timestamp, difficulty, 
-               nonce, miner_address, block_type, transaction_count, size_bytes
-        FROM blocks
-        WHERE height >= ? AND height <= ?
-        ORDER BY height ASC
-    )";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return blocks;
-    }
-    
-    sqlite3_bind_int(stmt, 1, static_cast<int>(startHeight));
-    sqlite3_bind_int(stmt, 2, static_cast<int>(endHeight));
-    
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        uint32_t index = sqlite3_column_int(stmt, 0);
-        std::string hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        std::string prevHash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-        BlockType blockType = static_cast<BlockType>(sqlite3_column_int(stmt, 8));
-        
-        Block block(index, prevHash, blockType);
-        block.setHash(hash);
-        block.setMerkleRoot(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
-        block.setTimestamp(sqlite3_column_int64(stmt, 4));
-        block.setDifficulty(sqlite3_column_double(stmt, 5));
-        block.setNonce(sqlite3_column_int64(stmt, 6));
-        block.setMinerAddress(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)));
-        
-        auto transactions = getTransactionsByBlockHash(hash);
-        for (const auto& tx : transactions) {
-            block.addTransaction(tx);
-        }
-        
-        blocks.push_back(block);
-    }
-    
-    sqlite3_finalize(stmt);
-    return blocks;
+    return getLatestBlockIndex() + 1;
 }
 
 bool Database::isConnected() const {
     return db != nullptr;
 }
 
-// Validator persistence methods
+// Validator operations
 bool Database::storeValidator(const Validator& validator) {
-    std::string sql = R"(
-        INSERT OR REPLACE INTO validators (
-            address, stake_amount, staking_days, stake_start_time, is_active,
-            public_key, blocks_produced, missed_blocks, uptime,
-            total_rewards, pending_rewards, is_slashed, slashed_amount, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    )";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare validator insert: " + std::string(sqlite3_errmsg(db)));
-        return false;
-    }
-    
-    sqlite3_bind_text(stmt, 1, validator.getAddress().c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_double(stmt, 2, validator.getStakeAmount());
-    sqlite3_bind_int(stmt, 3, validator.getStakingDays());
-    sqlite3_bind_int64(stmt, 4, validator.getStakeStartTime());
-    sqlite3_bind_int(stmt, 5, validator.getIsActive() ? 1 : 0);
-    sqlite3_bind_text(stmt, 6, validator.getPublicKey().c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt, 7, validator.getBlocksProduced());
-    sqlite3_bind_int(stmt, 8, validator.getMissedBlocks());
-    sqlite3_bind_double(stmt, 9, validator.getUptime());
-    sqlite3_bind_double(stmt, 10, validator.getTotalRewards());
-    sqlite3_bind_double(stmt, 11, validator.getPendingRewards());
-    sqlite3_bind_int(stmt, 12, validator.getIsSlashed() ? 1 : 0);
-    sqlite3_bind_double(stmt, 13, validator.getSlashedAmount());
-    
-    rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    
-    if (rc != SQLITE_DONE) {
-        LOG_DATABASE(LogLevel::ERROR, "Failed to store validator: " + std::string(sqlite3_errmsg(db)));
-        return false;
-    }
-    
-    LOG_DATABASE(LogLevel::INFO, "Stored validator: " + validator.getAddress());
-    return true;
+    std::string data = serializeValidator(validator);
+    return put(makeKey(PREFIX_VALIDATOR, validator.getAddress()), data);
 }
 
 bool Database::getValidator(const std::string& address, Validator& validator) const {
-    std::string sql = R"(
-        SELECT address, stake_amount, staking_days, stake_start_time, is_active,
-               public_key, blocks_produced, missed_blocks, uptime,
-               total_rewards, pending_rewards, is_slashed, slashed_amount
-        FROM validators
-        WHERE address = ?
-    )";
+    std::string data;
+    if (!get(makeKey(PREFIX_VALIDATOR, address), data)) return false;
     
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return false;
-    }
-    
-    sqlite3_bind_text(stmt, 1, address.c_str(), -1, SQLITE_TRANSIENT);
-    
-    bool found = false;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        std::string addr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        double stakeAmount = sqlite3_column_double(stmt, 1);
-        uint32_t stakingDays = sqlite3_column_int(stmt, 2);
-        
-        validator = Validator(addr, stakeAmount, stakingDays);
-        validator.setPublicKey(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
-        validator.setIsActive(sqlite3_column_int(stmt, 4) == 1);
-        
-        // Restore performance metrics
-        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 6); i++) {
-            validator.recordBlockProduced();
-        }
-        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 7); i++) {
-            validator.recordMissedBlock();
-        }
-        validator.updateUptime(sqlite3_column_double(stmt, 8));
-        
-        // Restore rewards
-        double totalRewards = sqlite3_column_double(stmt, 9);
-        double pendingRewards = sqlite3_column_double(stmt, 10);
-        validator.addReward(pendingRewards);
-        // Set total rewards by distributing and adding back
-        if (totalRewards > 0) {
-            validator.distributePendingRewards();
-            validator.addReward(totalRewards);
-            validator.distributePendingRewards();
-            validator.addReward(pendingRewards);
-        }
-        
-        // Restore slashing status
-        if (sqlite3_column_int(stmt, 11) == 1) {
-            validator.slash(sqlite3_column_double(stmt, 12), "Restored from database");
-        }
-        
-        found = true;
-    }
-    
-    sqlite3_finalize(stmt);
-    return found;
+    validator = deserializeValidator(data);
+    return true;
 }
 
 bool Database::updateValidator(const Validator& validator) {
@@ -1237,249 +775,345 @@ bool Database::updateValidator(const Validator& validator) {
 }
 
 bool Database::deleteValidator(const std::string& address) {
-    std::string sql = "DELETE FROM validators WHERE address = ?";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return false;
-    }
-    
-    sqlite3_bind_text(stmt, 1, address.c_str(), -1, SQLITE_TRANSIENT);
-    
-    rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    
-    return rc == SQLITE_DONE;
+    return del(makeKey(PREFIX_VALIDATOR, address));
 }
 
 std::vector<Validator> Database::getAllValidators() const {
     std::vector<Validator> validators;
     
-    std::string sql = R"(
-        SELECT address, stake_amount, staking_days, stake_start_time, is_active,
-               public_key, blocks_produced, missed_blocks, uptime,
-               total_rewards, pending_rewards, is_slashed, slashed_amount
-        FROM validators
-        ORDER BY stake_amount DESC
-    )";
+    if (!db) return validators;
     
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
     
-    if (rc != SQLITE_OK) {
-        return validators;
+    for (it->Seek(PREFIX_VALIDATOR); it->Valid(); it->Next()) {
+        std::string key = it->key().ToString();
+        if (key.find(PREFIX_VALIDATOR) != 0) break;
+        
+        validators.push_back(deserializeValidator(it->value().ToString()));
     }
     
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        std::string addr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        double stakeAmount = sqlite3_column_double(stmt, 1);
-        uint32_t stakingDays = sqlite3_column_int(stmt, 2);
-        
-        Validator validator(addr, stakeAmount, stakingDays);
-        validator.setPublicKey(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
-        validator.setIsActive(sqlite3_column_int(stmt, 4) == 1);
-        
-        // Restore performance metrics
-        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 6); i++) {
-            validator.recordBlockProduced();
-        }
-        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 7); i++) {
-            validator.recordMissedBlock();
-        }
-        validator.updateUptime(sqlite3_column_double(stmt, 8));
-        
-        // Restore rewards
-        double totalRewards = sqlite3_column_double(stmt, 9);
-        double pendingRewards = sqlite3_column_double(stmt, 10);
-        validator.addReward(pendingRewards);
-        if (totalRewards > 0) {
-            validator.distributePendingRewards();
-            validator.addReward(totalRewards);
-            validator.distributePendingRewards();
-            validator.addReward(pendingRewards);
-        }
-        
-        // Restore slashing status
-        if (sqlite3_column_int(stmt, 11) == 1) {
-            validator.slash(sqlite3_column_double(stmt, 12), "Restored from database");
-        }
-        
-        validators.push_back(validator);
-    }
-    
-    sqlite3_finalize(stmt);
     return validators;
 }
 
 std::vector<Validator> Database::getActiveValidators() const {
-    std::vector<Validator> validators;
+    std::vector<Validator> active;
+    auto all = getAllValidators();
     
-    std::string sql = R"(
-        SELECT address, stake_amount, staking_days, stake_start_time, is_active,
-               public_key, blocks_produced, missed_blocks, uptime,
-               total_rewards, pending_rewards, is_slashed, slashed_amount
-        FROM validators
-        WHERE is_active = 1 AND is_slashed = 0
-        ORDER BY stake_amount DESC
-    )";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return validators;
+    for (const auto& v : all) {
+        if (v.getIsActive() && !v.getIsSlashed()) {
+            active.push_back(v);
+        }
     }
     
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        std::string addr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        double stakeAmount = sqlite3_column_double(stmt, 1);
-        uint32_t stakingDays = sqlite3_column_int(stmt, 2);
-        
-        Validator validator(addr, stakeAmount, stakingDays);
-        validator.setPublicKey(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
-        validator.setIsActive(sqlite3_column_int(stmt, 4) == 1);
-        
-        // Restore performance metrics
-        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 6); i++) {
-            validator.recordBlockProduced();
-        }
-        for (uint32_t i = 0; i < sqlite3_column_int(stmt, 7); i++) {
-            validator.recordMissedBlock();
-        }
-        validator.updateUptime(sqlite3_column_double(stmt, 8));
-        
-        // Restore rewards
-        double totalRewards = sqlite3_column_double(stmt, 9);
-        double pendingRewards = sqlite3_column_double(stmt, 10);
-        validator.addReward(pendingRewards);
-        if (totalRewards > 0) {
-            validator.distributePendingRewards();
-            validator.addReward(totalRewards);
-            validator.distributePendingRewards();
-            validator.addReward(pendingRewards);
-        }
-        
-        validators.push_back(validator);
-    }
-    
-    sqlite3_finalize(stmt);
-    return validators;
+    return active;
 }
-// UTXO management functions
-bool Database::storeUTXO(const std::string& txHash, uint32_t outputIndex, const TransactionOutput& output, uint32_t blockHeight) {
-    std::string sql = R"(
-        INSERT OR REPLACE INTO utxo (tx_hash, output_index, address, amount, script, block_height)
-        VALUES (?, ?, ?, ?, ?, ?)
-    )";
+
+// Config operations
+bool Database::setConfigValue(const std::string& key, const std::string& value) {
+    return put(makeKey(PREFIX_CONFIG, key), value);
+}
+
+bool Database::getConfigValue(const std::string& key, std::string& value) const {
+    return get(makeKey(PREFIX_CONFIG, key), value);
+}
+
+bool Database::deleteConfigValue(const std::string& key) {
+    return del(makeKey(PREFIX_CONFIG, key));
+}
+
+// Peer operations
+bool Database::storePeer(const std::string& ip, uint16_t port, uint32_t lastSeen) {
+    json peer;
+    peer["ip"] = ip;
+    peer["port"] = port;
+    peer["last_seen"] = lastSeen;
     
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+    return put(makeKey(PREFIX_PEER, ip + ":" + std::to_string(port)), peer.dump());
+}
+
+bool Database::deletePeer(const std::string& ip, uint16_t port) {
+    return del(makeKey(PREFIX_PEER, ip + ":" + std::to_string(port)));
+}
+
+std::vector<std::pair<std::string, uint16_t>> Database::getActivePeers() const {
+    std::vector<std::pair<std::string, uint16_t>> peers;
     
-    if (rc != SQLITE_OK) {
-        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare UTXO insert: " + std::string(sqlite3_errmsg(db)));
-        return false;
+    if (!db) return peers;
+    
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+    
+    for (it->Seek(PREFIX_PEER); it->Valid(); it->Next()) {
+        std::string key = it->key().ToString();
+        if (key.find(PREFIX_PEER) != 0) break;
+        
+        try {
+            json j = json::parse(it->value().ToString());
+            peers.emplace_back(j["ip"].get<std::string>(), j["port"].get<uint16_t>());
+        } catch (...) {
+            continue;
+        }
     }
     
-    sqlite3_bind_text(stmt, 1, txHash.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt, 2, outputIndex);
-    sqlite3_bind_text(stmt, 3, output.address.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_double(stmt, 4, output.amount);
-    sqlite3_bind_text(stmt, 5, output.script.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt, 6, blockHeight);
+    return peers;
+}
+
+// Statistics
+uint64_t Database::getTotalTransactions() const {
+    uint64_t count = 0;
     
-    rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
+    if (!db) return count;
     
-    if (rc != SQLITE_DONE) {
-        LOG_DATABASE(LogLevel::ERROR, "Failed to store UTXO: " + std::string(sqlite3_errmsg(db)));
-        return false;
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+    for (it->Seek(PREFIX_TX); it->Valid(); it->Next()) {
+        if (it->key().ToString().find(PREFIX_TX) != 0) break;
+        count++;
     }
     
+    return count;
+}
+
+uint64_t Database::getTotalBlocks() const {
+    return getBlockCount();
+}
+
+double Database::getTotalSupply() const {
+    std::string value;
+    if (getConfigValue("total_supply", value)) {
+        return std::stod(value);
+    }
+    return 0.0;
+}
+
+double Database::getTotalBurned() const {
+    std::string value;
+    if (getConfigValue("total_burned", value)) {
+        return std::stod(value);
+    }
+    return 0.0;
+}
+
+// Maintenance
+bool Database::vacuum() {
+    // LevelDB handles compaction automatically
+    if (db) {
+        db->CompactRange(nullptr, nullptr);
+        return true;
+    }
+    return false;
+}
+
+bool Database::backup(const std::string& backupPath) {
+    // Simple backup by copying database directory
+    try {
+        std::filesystem::copy(dataDirectory, backupPath, 
+                             std::filesystem::copy_options::recursive | 
+                             std::filesystem::copy_options::overwrite_existing);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool Database::restore(const std::string& backupPath) {
+    close();
+    try {
+        std::filesystem::remove_all(dataDirectory);
+        std::filesystem::copy(backupPath, dataDirectory,
+                             std::filesystem::copy_options::recursive);
+        return open(dataDirectory);
+    } catch (...) {
+        return false;
+    }
+}
+
+uint64_t Database::getDatabaseSize() const {
+    uint64_t size = 0;
+    try {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(dataDirectory)) {
+            if (entry.is_regular_file()) {
+                size += entry.file_size();
+            }
+        }
+    } catch (...) {}
+    return size;
+}
+
+bool Database::createIndexes() {
+    // LevelDB is inherently indexed by key
     return true;
 }
 
-bool Database::getUTXO(const std::string& txHash, uint32_t outputIndex, TransactionOutput& output) const {
-    std::string sql = R"(
-        SELECT address, amount, script
-        FROM utxo
-        WHERE tx_hash = ? AND output_index = ?
-    )";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return false;
-    }
-    
-    sqlite3_bind_text(stmt, 1, txHash.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt, 2, outputIndex);
-    
-    bool found = false;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        output.address = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        output.amount = sqlite3_column_double(stmt, 1);
-        output.script = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-        found = true;
-    }
-    
-    sqlite3_finalize(stmt);
-    return found;
+Database::DatabaseError Database::getLastErrorCode() const {
+    return db ? DB_SUCCESS : DB_ERROR_INIT;
 }
 
-bool Database::deleteUTXO(const std::string& txHash, uint32_t outputIndex) {
-    std::string sql = "DELETE FROM utxo WHERE tx_hash = ? AND output_index = ?";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        LOG_DATABASE(LogLevel::ERROR, "Failed to prepare UTXO delete: " + std::string(sqlite3_errmsg(db)));
-        return false;
-    }
-    
-    sqlite3_bind_text(stmt, 1, txHash.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt, 2, outputIndex);
-    
-    rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    
-    if (rc != SQLITE_DONE) {
-        LOG_DATABASE(LogLevel::ERROR, "Failed to delete UTXO: " + std::string(sqlite3_errmsg(db)));
-        return false;
-    }
-    
-    return true;
+bool Database::isHealthy() const {
+    return db != nullptr;
 }
 
-std::vector<TransactionOutput> Database::getUTXOsByAddress(const std::string& address) const {
-    std::vector<TransactionOutput> utxos;
-    
-    std::string sql = R"(
-        SELECT address, amount, script
-        FROM utxo
-        WHERE address = ?
-    )";
-    
-    sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
-    
-    if (rc != SQLITE_OK) {
-        return utxos;
+void Database::repairDatabase() {
+    if (!dataDirectory.empty()) {
+        leveldb::Status status = leveldb::RepairDB(dataDirectory, options);
+        if (!status.ok()) {
+            LOG_DATABASE(LogLevel::ERROR, "Database repair failed: " + status.ToString());
+        }
     }
-    
-    sqlite3_bind_text(stmt, 1, address.c_str(), -1, SQLITE_TRANSIENT);
-    
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        TransactionOutput output;
-        output.address = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        output.amount = sqlite3_column_double(stmt, 1);
-        output.script = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-        utxos.push_back(output);
+}
+
+// Stub implementations for remaining methods
+bool Database::storeWallet(const std::string& address, const std::string& publicKey, const std::string& encryptedPrivateKey) {
+    json wallet;
+    wallet["public_key"] = publicKey;
+    wallet["encrypted_private_key"] = encryptedPrivateKey;
+    return put(makeKey("wallet:", address), wallet.dump());
+}
+
+bool Database::getWallet(const std::string& address, std::string& publicKey, std::string& encryptedPrivateKey) const {
+    std::string data;
+    if (!get(makeKey("wallet:", address), data)) return false;
+    try {
+        json j = json::parse(data);
+        publicKey = j["public_key"].get<std::string>();
+        encryptedPrivateKey = j["encrypted_private_key"].get<std::string>();
+        return true;
+    } catch (...) {
+        return false;
     }
+}
+
+bool Database::deleteWallet(const std::string& address) {
+    return del(makeKey("wallet:", address));
+}
+
+std::vector<std::string> Database::getAllWalletAddresses() const {
+    std::vector<std::string> addresses;
+    if (!db) return addresses;
     
-    sqlite3_finalize(stmt);
-    return utxos;
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+    for (it->Seek("wallet:"); it->Valid(); it->Next()) {
+        std::string key = it->key().ToString();
+        if (key.find("wallet:") != 0) break;
+        addresses.push_back(key.substr(7));
+    }
+    return addresses;
+}
+
+bool Database::storeProposal(const std::string& proposalId, const std::string& title, const std::string& description,
+                           const std::string& proposer, uint32_t blockHeight) {
+    json proposal;
+    proposal["title"] = title;
+    proposal["description"] = description;
+    proposal["proposer"] = proposer;
+    proposal["block_height"] = blockHeight;
+    proposal["active"] = true;
+    return put(makeKey("proposal:", proposalId), proposal.dump());
+}
+
+bool Database::storeVote(const std::string& proposalId, const std::string& voter, int voteType) {
+    json vote;
+    vote["voter"] = voter;
+    vote["type"] = voteType;
+    return put(makeKey("vote:", proposalId + ":" + voter), vote.dump());
+}
+
+bool Database::getProposal(const std::string& proposalId, std::string& title, std::string& description,
+                         std::string& proposer, uint32_t& blockHeight) const {
+    std::string data;
+    if (!get(makeKey("proposal:", proposalId), data)) return false;
+    try {
+        json j = json::parse(data);
+        title = j["title"].get<std::string>();
+        description = j["description"].get<std::string>();
+        proposer = j["proposer"].get<std::string>();
+        blockHeight = j["block_height"].get<uint32_t>();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+std::vector<std::string> Database::getActiveProposals() const {
+    std::vector<std::string> proposals;
+    return proposals; // Simplified for now
+}
+
+bool Database::storePriceData(const std::string& asset, double price, uint32_t timestamp) {
+    json data;
+    data["price"] = price;
+    data["timestamp"] = timestamp;
+    return put(makeKey("price:", asset + ":" + std::to_string(timestamp)), data.dump());
+}
+
+bool Database::getLatestPrice(const std::string& asset, double& price, uint32_t& timestamp) const {
+    // Simplified implementation
+    return false;
+}
+
+std::vector<std::pair<double, uint32_t>> Database::getPriceHistory(const std::string& asset, uint32_t count) const {
+    return {}; // Simplified
+}
+
+bool Database::storeBridgeTransfer(const std::string& transferId, const std::string& sourceChain,
+                                 const std::string& destChain, double amount, const std::string& recipient) {
+    json transfer;
+    transfer["source_chain"] = sourceChain;
+    transfer["dest_chain"] = destChain;
+    transfer["amount"] = amount;
+    transfer["recipient"] = recipient;
+    transfer["status"] = 0;
+    return put(makeKey("bridge:", transferId), transfer.dump());
+}
+
+bool Database::updateBridgeTransferStatus(const std::string& transferId, int status) {
+    std::string data;
+    if (!get(makeKey("bridge:", transferId), data)) return false;
+    try {
+        json j = json::parse(data);
+        j["status"] = status;
+        return put(makeKey("bridge:", transferId), j.dump());
+    } catch (...) {
+        return false;
+    }
+}
+
+bool Database::getBridgeTransfer(const std::string& transferId, std::string& sourceChain, std::string& destChain,
+                                double& amount, std::string& recipient, int& status) const {
+    std::string data;
+    if (!get(makeKey("bridge:", transferId), data)) return false;
+    try {
+        json j = json::parse(data);
+        sourceChain = j["source_chain"].get<std::string>();
+        destChain = j["dest_chain"].get<std::string>();
+        amount = j["amount"].get<double>();
+        recipient = j["recipient"].get<std::string>();
+        status = j["status"].get<int>();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool Database::storePoolShare(const std::string& poolAddress, const std::string& minerAddress,
+                            double shareValue, uint32_t timestamp) {
+    json share;
+    share["pool"] = poolAddress;
+    share["miner"] = minerAddress;
+    share["value"] = shareValue;
+    share["timestamp"] = timestamp;
+    return put(makeKey("share:", poolAddress + ":" + minerAddress), share.dump());
+}
+
+double Database::getPoolShares(const std::string& poolAddress, const std::string& minerAddress) const {
+    std::string data;
+    if (!get(makeKey("share:", poolAddress + ":" + minerAddress), data)) return 0.0;
+    try {
+        json j = json::parse(data);
+        return j["value"].get<double>();
+    } catch (...) {
+        return 0.0;
+    }
+}
+
+std::vector<std::pair<std::string, double>> Database::getPoolContributors(const std::string& poolAddress) const {
+    return {}; // Simplified
 }
