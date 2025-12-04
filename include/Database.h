@@ -4,15 +4,19 @@
 #include <vector>
 #include <memory>
 #include <mutex>
-#include <sqlite3.h>
+#include <leveldb/db.h>
+#include <leveldb/write_batch.h>
 #include "transaction.h"
 #include "Block.h"
 #include "Validator.h"
 
 class Database {
 private:
-    sqlite3* db;
+    std::unique_ptr<leveldb::DB> db;
     std::string dataDirectory;
+    leveldb::Options options;
+    leveldb::ReadOptions readOptions;
+    leveldb::WriteOptions writeOptions;
     
     // Static members for singleton pattern
     static std::unique_ptr<Database> instance;
@@ -20,10 +24,34 @@ private:
     
     // Database initialization
     bool open(const std::string& dbPath);
-    bool createTables();
-    bool executeSQL(const std::string& sql);
-    std::string getLastError() const;
     bool checkDatabaseNetwork(bool isTestnet);
+    
+    // Key prefixes for different data types
+    static const std::string PREFIX_BLOCK;
+    static const std::string PREFIX_BLOCK_HEIGHT;
+    static const std::string PREFIX_TX;
+    static const std::string PREFIX_TX_BLOCK;
+    static const std::string PREFIX_UTXO;
+    static const std::string PREFIX_VALIDATOR;
+    static const std::string PREFIX_PEER;
+    static const std::string PREFIX_CONFIG;
+    static const std::string PREFIX_TRACE;
+    static const std::string PREFIX_ADDRESS;
+    
+    // Helper methods
+    std::string makeKey(const std::string& prefix, const std::string& id) const;
+    std::string makeKey(const std::string& prefix, uint32_t id) const;
+    bool put(const std::string& key, const std::string& value);
+    bool get(const std::string& key, std::string& value) const;
+    bool del(const std::string& key);
+    
+    // Serialization helpers
+    std::string serializeBlock(const Block& block) const;
+    Block deserializeBlock(const std::string& data) const;
+    std::string serializeTransaction(const Transaction& tx) const;
+    Transaction deserializeTransaction(const std::string& data) const;
+    std::string serializeValidator(const Validator& validator) const;
+    Validator deserializeValidator(const std::string& data) const;
 
 public:
     // Static methods for singleton-like access
@@ -147,7 +175,7 @@ public:
         DB_ERROR_CORRUPT = 3,
         DB_ERROR_DISK_FULL = 4,
         DB_ERROR_PERMISSION = 5,
-        DB_ERROR_SQL = 6
+        DB_ERROR_IO = 6
     };
     
     DatabaseError getLastErrorCode() const;
