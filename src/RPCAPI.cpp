@@ -1212,8 +1212,9 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address or amount parameter");
     }
     
-    std::string address = params[0].get<std::string>();
+    std::string recipientAddress = params[0].get<std::string>();
     double amount = 0.0;
+    std::string privateKeyHex = "";
 
     // Handle amount as number or string (for React Native compatibility)
     try {
@@ -1234,38 +1235,63 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount type or format");
     }
 
+    // Check for optional private key parameter (3rd parameter)
+    if (params.size() >= 3 && params[2].is_string()) {
+        privateKeyHex = params[2].get<std::string>();
+    }
+
     if (amount <= 0) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid amount: must be positive");
     }
     
-    // Check wallet
-    if (!wallet) {
-        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
+    // Create or use wallet based on private key
+    std::unique_ptr<Wallet> txWallet;
+    Wallet* walletToUse = nullptr;
+    
+    if (!privateKeyHex.empty()) {
+        // Create temporary wallet from private key
+        txWallet = std::make_unique<Wallet>();
+        if (!txWallet->createFromPrivateKey(privateKeyHex)) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid private key format");
+        }
+        walletToUse = txWallet.get();
+        LOG_API(LogLevel::INFO, "Using wallet from provided private key: " + 
+                walletToUse->getAddress().substr(0, 20) + "...");
+    } else {
+        // Use node wallet if available
+        if (!wallet) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "No wallet available. Please provide a private key as the 3rd parameter to send from your address.");
+        }
+        walletToUse = wallet.get();
     }
     
-    // Get wallet address and check balance
-    std::string walletAddress = wallet->getAddress();
-    double walletBalance = blockchain->getBalance(walletAddress);
+    // Get sender address and check balance
+    std::string senderAddress = walletToUse->getAddress();
+    double senderBalance = blockchain->getBalance(senderAddress);
     
-    LOG_API(LogLevel::INFO, "sendToAddress: wallet=" + walletAddress.substr(0, 20) + 
-            "..., balance=" + std::to_string(walletBalance) + " GXC, sending " + 
-            std::to_string(amount) + " GXC to " + address.substr(0, 20) + "...");
+    LOG_API(LogLevel::INFO, "sendToAddress: from=" + senderAddress.substr(0, 20) + 
+            "..., balance=" + std::to_string(senderBalance) + " GXC, sending " + 
+            std::to_string(amount) + " GXC to " + recipientAddress.substr(0, 20) + "...");
     
     // Get UTXOs
     const auto& utxoSet = blockchain->getUtxoSet();
     
     try {
         // Create transaction using wallet
-        Transaction tx = wallet->createTransaction(address, amount, utxoSet);
+        Transaction tx = walletToUse->createTransaction(recipientAddress, amount, utxoSet);
 
         // Add to blockchain
         if (blockchain->addTransaction(tx)) {
-            // Save wallet state (lastTxHash updated)
-            std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
-            wallet->saveToFile(walletPath);
+            // Only save node wallet state if we used it
+            if (walletToUse == wallet.get() && wallet) {
+                std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+                wallet->saveToFile(walletPath);
+            }
 
-            LOG_API(LogLevel::INFO, "Sent " + std::to_string(amount) + " GXC to " + address +
-                    ", TX: " + tx.getHash());
+            LOG_API(LogLevel::INFO, "Sent " + std::to_string(amount) + " GXC from " + 
+                    senderAddress.substr(0, 20) + "... to " + recipientAddress.substr(0, 20) + 
+                    "..., TX: " + tx.getHash());
             return tx.getHash();
         } else {
             throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to add transaction to pool");
@@ -1276,10 +1302,8 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
         
         // Check if this is an insufficient funds error and provide helpful context
         if (errorMsg.find("Insufficient funds") != std::string::npos) {
-            // Check balance of the address that was queried (if different from wallet)
-            // This helps identify if the issue is an address mismatch
-            std::string balanceCheckMsg = " [Wallet address: " + walletAddress.substr(0, 20) + 
-                                         "..., Wallet balance: " + std::to_string(walletBalance) + " GXC]";
+            std::string balanceCheckMsg = " [Sender address: " + senderAddress.substr(0, 20) + 
+                                         "..., Balance: " + std::to_string(senderBalance) + " GXC]";
             errorMsg += balanceCheckMsg;
         }
         
@@ -1923,6 +1947,12 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     std::string address = params[0].get<std::string>();
     double stakeAmount = params[1].get<double>();
     uint32_t stakingDays = params[2].get<uint32_t>();
+    std::string privateKeyHex = "";
+    
+    // Check for optional private key parameter (4th parameter)
+    if (params.size() >= 4 && params[3].is_string()) {
+        privateKeyHex = params[3].get<std::string>();
+    }
     
     // Validate minimum stake
     if (stakeAmount < Validator::MIN_STAKE) {
@@ -1937,16 +1967,41 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
             " and " + std::to_string(Validator::MAX_STAKING_DAYS));
     }
     
-    // Check if wallet is available and matches the staking address
-    if (!wallet) {
-        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
-    }
+    // Create or use wallet based on private key
+    std::unique_ptr<Wallet> stakeWallet;
+    Wallet* walletToUse = nullptr;
     
-    // Verify the wallet controls this address
-    if (wallet->getAddress() != address) {
-        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-            "Wallet does not control address: " + address + 
-            ". Use your wallet address: " + wallet->getAddress());
+    if (!privateKeyHex.empty()) {
+        // Create temporary wallet from private key
+        stakeWallet = std::make_unique<Wallet>();
+        if (!stakeWallet->createFromPrivateKey(privateKeyHex)) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid private key format");
+        }
+        walletToUse = stakeWallet.get();
+        
+        // Verify the wallet address matches the provided address
+        if (walletToUse->getAddress() != address) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Private key does not control address: " + address + 
+                ". Private key address: " + walletToUse->getAddress());
+        }
+        LOG_API(LogLevel::INFO, "Using wallet from provided private key for staking: " + 
+                walletToUse->getAddress().substr(0, 20) + "...");
+    } else {
+        // Use node wallet if available
+        if (!wallet) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "No wallet available. Please provide a private key as the 4th parameter to stake from your address.");
+        }
+        walletToUse = wallet.get();
+        
+        // Verify the wallet controls this address
+        if (walletToUse->getAddress() != address) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Wallet does not control address: " + address + 
+                ". Use your wallet address: " + walletToUse->getAddress() + 
+                " or provide a private key as the 4th parameter.");
+        }
     }
     
     // Check balance (must have enough for stake + fee)
@@ -1968,7 +2023,7 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
         
         // Use the new createStakeTransaction method which properly creates a STAKE tx
         // that locks the staked amount (doesn't create output for it)
-        Transaction stakeTx = wallet->createStakeTransaction(stakeAmount, utxoSet, fee);
+        Transaction stakeTx = walletToUse->createStakeTransaction(stakeAmount, utxoSet, fee);
         
         LOG_API(LogLevel::INFO, "Created stake transaction: " + stakeTx.getHash() + 
                 ", Inputs: " + std::to_string(stakeTx.getInputs().size()) + 
@@ -1979,9 +2034,11 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
         if (blockchain->addTransaction(stakeTx)) {
             stakeTxHash = stakeTx.getHash();
             
-            // Save wallet state
-            std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
-            wallet->saveToFile(walletPath);
+            // Only save node wallet state if we used it
+            if (walletToUse == wallet.get() && wallet) {
+                std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+                wallet->saveToFile(walletPath);
+            }
             
             LOG_API(LogLevel::INFO, "✅ Staking transaction added to mempool: " + stakeTxHash);
         } else {
@@ -1998,7 +2055,7 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     
     // Create validator record (will be finalized when block is mined)
     Validator validator(address, stakeAmount, stakingDays);
-    validator.setPublicKey(wallet->getPublicKey());
+    validator.setPublicKey(walletToUse->getPublicKey());
     
     // Register validator in blockchain
     blockchain->registerValidator(validator);
@@ -2031,15 +2088,48 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
     
     std::string address = params[0].get<std::string>();
     double amount = params.size() > 1 ? params[1].get<double>() : 0.0;
-
-    // Check if we control the wallet
-    if (!wallet) {
-        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
-    }
+    std::string privateKeyHex = "";
     
-    if (wallet->getAddress() != address) {
-        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-            "Wallet does not control this address: " + address);
+    // Check for optional private key parameter (3rd parameter)
+    if (params.size() >= 3 && params[2].is_string()) {
+        privateKeyHex = params[2].get<std::string>();
+    }
+
+    // Create or use wallet based on private key
+    std::unique_ptr<Wallet> unstakeWallet;
+    Wallet* walletToUse = nullptr;
+    
+    if (!privateKeyHex.empty()) {
+        // Create temporary wallet from private key
+        unstakeWallet = std::make_unique<Wallet>();
+        if (!unstakeWallet->createFromPrivateKey(privateKeyHex)) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid private key format");
+        }
+        walletToUse = unstakeWallet.get();
+        
+        // Verify the wallet address matches the provided address
+        if (walletToUse->getAddress() != address) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Private key does not control address: " + address + 
+                ". Private key address: " + walletToUse->getAddress());
+        }
+        LOG_API(LogLevel::INFO, "Using wallet from provided private key for unstaking: " + 
+                walletToUse->getAddress().substr(0, 20) + "...");
+    } else {
+        // Use node wallet if available
+        if (!wallet) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "No wallet available. Please provide a private key as the 3rd parameter to unstake from your address.");
+        }
+        walletToUse = wallet.get();
+        
+        // Verify the wallet controls this address
+        if (walletToUse->getAddress() != address) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Wallet does not control this address: " + address + 
+                ". Use your wallet address: " + walletToUse->getAddress() + 
+                " or provide a private key as the 3rd parameter.");
+        }
     }
 
     // Get validator info to check stake amount
@@ -2075,7 +2165,7 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
     // Create UNSTAKE transaction using wallet method
     std::string unstakeTxHash;
     try {
-        Transaction unstakeTx = wallet->createUnstakeTransaction(amount, 0.0);
+        Transaction unstakeTx = walletToUse->createUnstakeTransaction(amount, 0.0);
         
         LOG_API(LogLevel::INFO, "Created unstake transaction: " + unstakeTx.getHash() + 
                 ", Amount: " + std::to_string(amount) + " GXC");
@@ -2084,9 +2174,11 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
         if (blockchain->addTransaction(unstakeTx)) {
             unstakeTxHash = unstakeTx.getHash();
             
-            // Save wallet state
-            std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
-            wallet->saveToFile(walletPath);
+            // Only save node wallet state if we used it
+            if (walletToUse == wallet.get() && wallet) {
+                std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+                wallet->saveToFile(walletPath);
+            }
             
             LOG_API(LogLevel::INFO, "✅ Unstake transaction added to mempool: " + unstakeTxHash);
         } else {

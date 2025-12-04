@@ -12,6 +12,37 @@ Wallet::Wallet() {
     generateKeyPair();
 }
 
+bool Wallet::createFromPrivateKey(const std::string& privateKeyHex) {
+    try {
+        // Validate private key format (should be 64 hex chars = 32 bytes)
+        if (privateKeyHex.length() != 64) {
+            return false;
+        }
+        
+        // Derive public key from private key
+        publicKey = Crypto::derivePublicKey(privateKeyHex);
+        if (publicKey.empty()) {
+            return false;
+        }
+        
+        // Generate address from public key
+        address = Crypto::generateAddress(publicKey, Config::isTestnet());
+        if (address.empty()) {
+            return false;
+        }
+        
+        // Set private key
+        privateKey = privateKeyHex;
+        
+        // Initialize last transaction hash
+        lastTxHash = "";
+        
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 void Wallet::generateKeyPair() {
     // Use proper secp256k1 ECDSA key generation
     Crypto::KeyPair keyPair = Crypto::generateKeyPair();

@@ -16,6 +16,14 @@ private:
 public:
     // Constructor
     Wallet();
+    
+    // Create wallet from private key
+    bool createFromPrivateKey(const std::string& privateKeyHex);
+    
+    // Set wallet address (for use with imported keys)
+    void setAddress(const std::string& addr) { address = addr; }
+    void setPublicKey(const std::string& pubKey) { publicKey = pubKey; }
+    void setPrivateKey(const std::string& privKey) { privateKey = privKey; }
 
     // Generate a new key pair
     void generateKeyPair();
