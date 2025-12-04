@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     git \
     libssl-dev \
     libsqlite3-dev \
+    libleveldb-dev \
     pkg-config \
     curl \
     netcat \

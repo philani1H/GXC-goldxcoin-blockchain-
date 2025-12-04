@@ -568,6 +568,7 @@ void RPCAPI::handleClient(int clientSocket) {
                 JsonValue health;
                 health["status"] = "ok";
                 health["service"] = "GXC Blockchain Node";
+                health["network"] = Config::isTestnet() ? "testnet" : "mainnet";
                 health["height"] = blockchain->getHeight();
                 health["difficulty"] = blockchain->getDifficulty();
                 health["timestamp"] = Utils::getCurrentTimestamp();
@@ -639,6 +640,28 @@ void RPCAPI::handleClient(int clientSocket) {
         
     } catch (const std::exception& e) {
         LOG_API(LogLevel::ERROR, "Error handling client: " + std::string(e.what()));
+
+        // Attempt to send JSON error response instead of just closing
+        // This prevents "unexpected end of input" on client side
+        JsonValue errorObj;
+        errorObj["code"] = -32603;
+        errorObj["message"] = "Internal server error: " + std::string(e.what());
+
+        JsonValue responseJson;
+        responseJson["jsonrpc"] = "2.0";
+        responseJson["error"] = errorObj;
+        responseJson["id"] = nullptr;
+
+        std::string body = responseJson.dump();
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\n";
+        response += "Content-Type: application/json\r\n";
+        response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+        response += "Connection: close\r\n";
+        response += "\r\n";
+        response += body;
+
+        // Best effort send
+        send(clientSocket, response.c_str(), response.length(), 0);
     }
     
     close(clientSocket);
@@ -1180,7 +1203,8 @@ JsonValue RPCAPI::getNewAddress(const JsonValue& params) {
         return wallet->getAddress();
     }
 
-    return "GXC" + Utils::randomString(30);
+    std::string prefix = Config::isTestnet() ? "tGXC" : "GXC";
+    return prefix + Utils::randomString(30);
 }
 
 JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
