@@ -169,22 +169,30 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
         outputs.push_back(changeOutput);
     }
     
-    // Determine prevTxHash for traceability
-    std::string prevTxHash = lastTxHash;
-    if (prevTxHash.empty() && !inputs.empty()) {
+    // TRACEABILITY FORMULA ENFORCEMENT:
+    // Ti.Inputs[0].txHash == Ti.PrevTxHash
+    // Ti.Inputs[0].amount == Ti.ReferencedAmount
+    //
+    // The prevTxHash MUST equal inputs[0].txHash for the formula to hold
+    std::string prevTxHash;
+    double referencedAmount = 0.0;
+    
+    if (!inputs.empty()) {
+        // CRITICAL: prevTxHash must match the first input's txHash
         prevTxHash = inputs[0].txHash;
+        referencedAmount = inputs[0].amount;
+    } else {
+        // No inputs means genesis-like transaction (shouldn't happen for normal sends)
+        prevTxHash = "0";
+        referencedAmount = 0.0;
     }
     
-    // Create the transaction
+    // Create the transaction with traceability-compliant prevTxHash
     Transaction tx(inputs, outputs, prevTxHash);
     tx.setFee(fee);
     tx.setSenderAddress(address);
     tx.setReceiverAddress(recipientAddress);
-    
-    // Set referenced amount from first input for traceability
-    if (!inputs.empty()) {
-        tx.setReferencedAmount(inputs[0].amount);
-    }
+    tx.setReferencedAmount(referencedAmount);
     
     // Sign the inputs
     tx.signInputs(privateKey);
@@ -252,10 +260,19 @@ Transaction Wallet::createStakeTransaction(double stakeAmount,
         outputs.push_back(changeOutput);
     }
     
-    // Create the stake transaction
-    std::string prevTxHash = lastTxHash;
-    if (prevTxHash.empty() && !inputs.empty()) {
+    // TRACEABILITY FORMULA ENFORCEMENT:
+    // Ti.Inputs[0].txHash == Ti.PrevTxHash
+    // Ti.Inputs[0].amount == Ti.ReferencedAmount
+    std::string prevTxHash;
+    double referencedAmount = 0.0;
+    
+    if (!inputs.empty()) {
+        // CRITICAL: prevTxHash must match the first input's txHash
         prevTxHash = inputs[0].txHash;
+        referencedAmount = inputs[0].amount;
+    } else {
+        prevTxHash = "0";
+        referencedAmount = 0.0;
     }
     
     Transaction tx(inputs, outputs, prevTxHash);
@@ -264,11 +281,7 @@ Transaction Wallet::createStakeTransaction(double stakeAmount,
     tx.setSenderAddress(address);
     tx.setReceiverAddress(address); // Staking is self-referential
     tx.setMemo("Stake: " + std::to_string(stakeAmount) + " GXC");
-    
-    // Set referenced amount from first input for traceability
-    if (!inputs.empty()) {
-        tx.setReferencedAmount(inputs[0].amount);
-    }
+    tx.setReferencedAmount(referencedAmount);
     
     // Sign the inputs
     tx.signInputs(privateKey);

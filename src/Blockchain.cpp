@@ -1117,6 +1117,26 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         return false;
     }
     
+    // CRITICAL: Verify all inputs reference valid, unspent UTXOs
+    // This prevents double-spending and ensures coins actually exist
+    for (const auto& input : tx.getInputs()) {
+        std::string utxoKey = input.txHash + "_" + std::to_string(input.outputIndex);
+        auto it = utxoSet.find(utxoKey);
+        if (it == utxoSet.end()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input references non-existent UTXO: " + utxoKey + 
+                          " (double-spend attempt or invalid input)");
+            return false;
+        }
+        
+        // Verify the input amount matches the UTXO amount
+        if (std::abs(it->second.amount - input.amount) > 0.00000001) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input amount mismatch: input claims " + 
+                          std::to_string(input.amount) + " GXC but UTXO has " + 
+                          std::to_string(it->second.amount) + " GXC");
+            return false;
+        }
+    }
+    
     // Validate amounts
     double inputTotal = tx.getTotalInputAmount();
     double outputTotal = tx.getTotalOutputAmount();
@@ -1132,13 +1152,25 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         return false;
     }
 
-    // Input must cover output + fee
+    // Input must cover output + fee (no coin creation allowed)
     if (inputTotal < outputTotal + fee) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input/output mismatch: inputs=" + 
                       std::to_string(inputTotal) + ", outputs=" + std::to_string(outputTotal) + 
-                      ", fee=" + std::to_string(fee));
+                      ", fee=" + std::to_string(fee) + ". Cannot spend more than you have!");
         return false;
     }
+    
+    // Verify no coin burning (optional - allows for fee overpayment)
+    double excessAmount = inputTotal - outputTotal - fee;
+    if (excessAmount > 0.00000001) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Transaction has excess input: " + std::to_string(excessAmount) + 
+                      " GXC will be added to fee (potential coin burning)");
+        // Note: We allow this but log a warning - the excess goes to the miner as extra fee
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::DEBUG, "Transaction validated: " + tx.getHash() + 
+                  ", inputs=" + std::to_string(inputTotal) + ", outputs=" + std::to_string(outputTotal) +
+                  ", fee=" + std::to_string(fee));
     
     return true;
 }
