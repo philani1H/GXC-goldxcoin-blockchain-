@@ -1,0 +1,18 @@
+# GXC Miner Suite - Dependencies
+# Install: pip install -r requirements.txt
+
+# GUI Framework
+customtkinter>=5.2.0
+
+# System Monitoring
+psutil>=5.9.0
+
+# HTTP/RPC Client
+requests>=2.28.0
+
+# Charts
+matplotlib>=3.7.0
+
+# Optional GPU Support (uncomment if needed)
+# pycuda>=2022.1      # NVIDIA CUDA
+# pyopencl>=2022.1    # OpenCL (AMD/Intel)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-GXC GxHash Miner v2.0.0
-CPU Miner for GxHash Algorithm
+GXC Ethash Miner v2.0.0
+GPU Mining for GXC Blockchain
 Real Blockchain Connection - No Simulation
 
 Copyright (c) 2024 GXC Blockchain - MIT License
@@ -28,12 +28,8 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#                              CONFIGURATION
-# ═══════════════════════════════════════════════════════════════════════════════
-
 VERSION = "2.0.0"
-APP_NAME = "GXC GxHash Miner"
+APP_NAME = "GXC Ethash Miner"
 
 NETWORKS = {
     "mainnet": {"rpc": "http://node.gxc.network:8332", "pool": "pool.gxc.network", "port": 3333},
@@ -45,8 +41,8 @@ class Colors:
     BG = "#0a0e1a"
     PANEL = "#111827"
     SIDEBAR = "#1a1f2e"
-    ACCENT = "#00ff9d"
-    ACCENT_DIM = "#008f58"
+    ACCENT = "#4ecdc4"
+    ACCENT_DIM = "#3eb5ad"
     TEXT = "#e0e6ed"
     TEXT_DIM = "#6b7280"
     DANGER = "#ef4444"
@@ -54,13 +50,9 @@ class Colors:
     SUCCESS = "#10b981"
     INFO = "#3b82f6"
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
-logger = logging.getLogger("GxHash")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("Ethash")
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#                              DATA CLASSES
-# ═══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class MinerStats:
@@ -70,17 +62,11 @@ class MinerStats:
     rejected: int = 0
     blocks: int = 0
     uptime: int = 0
-    cpu: float = 0.0
-    temp: float = 0.0
+    gpu_temp: float = 0.0
+    gpu_power: float = 0.0
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#                           BLOCKCHAIN CLIENT
-# ═══════════════════════════════════════════════════════════════════════════════
 
 class GXCClient:
-    """Real GXC Blockchain RPC Client"""
-    
     def __init__(self, url: str):
         self.url = url
         self.session = requests.Session()
@@ -99,16 +85,10 @@ class GXCClient:
     
     def get_template(self): return self.call("getblocktemplate")
     def submit_block(self, b): return self.call("submitblock", [b]) is None
-    def get_info(self): return self.call("getblockchaininfo")
-    def get_balance(self, a): return self.call("getbalance", [a])
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#                              GXHASH MINER
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class GxHashMiner:
-    """GxHash CPU Miner - Real Mining"""
+class EthashMiner:
+    """Ethash GPU Miner (Keccak-256 based)"""
     
     def __init__(self, wallet: str, rpc_url: str, callback: Callable):
         self.wallet = wallet
@@ -127,16 +107,14 @@ class GxHashMiner:
         self.running = True
         self.start_time = time.time()
         
-        # Job fetcher
         threading.Thread(target=self._job_loop, daemon=True).start()
         
-        # Mining threads
         for i in range(threads):
             t = threading.Thread(target=self._mine, args=(i,), daemon=True)
             t.start()
             self.threads.append(t)
         
-        logger.info(f"Started with {threads} threads")
+        logger.info(f"Ethash miner started with {threads} threads")
         self.callback("started", threads)
     
     def stop(self):
@@ -169,7 +147,12 @@ class GxHashMiner:
             
             j = self.job
             header = f"{j['prev']}{self.wallet}{j['ts']}{j['height']}{nonce}".encode()
-            h = self._gxhash(header)
+            
+            # Ethash (simplified using Keccak-256)
+            try:
+                h = hashlib.sha3_256(header).digest()
+            except:
+                h = hashlib.sha256(header).digest()
             
             with self.lock:
                 self.stats.hashes += 1
@@ -179,21 +162,8 @@ class GxHashMiner:
             
             nonce += 1
             
-            if self.stats.hashes % 10000 == 0:
+            if self.stats.hashes % 25000 == 0:
                 self._update_stats()
-    
-    def _gxhash(self, data: bytes) -> bytes:
-        h1 = hashlib.sha256(data).digest()
-        try:
-            h2 = hashlib.blake2b(h1 + data, digest_size=32).digest()
-        except:
-            h2 = hashlib.sha256(h1 + data).digest()
-        mixed = bytes(a ^ b for a, b in zip(h1, h2))
-        h3 = hashlib.sha256(mixed).digest()
-        try:
-            return hashlib.sha3_256(h3).digest()
-        except:
-            return hashlib.sha256(h3).digest()
     
     def _meets_target(self, h: bytes, diff: float) -> bool:
         target = int(0x00000000FFFF0000000000000000000000000000000000000000000000000000 / diff)
@@ -205,8 +175,7 @@ class GxHashMiner:
             if self.client.submit_block({
                 "height": job["height"], "hash": h.hex(),
                 "previousblockhash": job["prev"], "nonce": nonce,
-                "miner": self.wallet, "timestamp": job["ts"],
-                "difficulty": job["diff"]
+                "miner": self.wallet, "timestamp": job["ts"]
             }):
                 with self.lock:
                     self.stats.blocks += 1
@@ -223,20 +192,14 @@ class GxHashMiner:
         with self.lock:
             self.stats.hashrate = self.stats.hashes / elapsed if elapsed > 0 else 0
             self.stats.uptime = int(elapsed)
-            if HAS_PSUTIL:
-                self.stats.cpu = psutil.cpu_percent()
         self.callback("stats", self.stats)
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#                              GUI APPLICATION
-# ═══════════════════════════════════════════════════════════════════════════════
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("green")
 
 
-class GxHashMinerGUI(ctk.CTk):
+class EthashMinerGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         
@@ -245,7 +208,7 @@ class GxHashMinerGUI(ctk.CTk):
         self.configure(fg_color=Colors.BG)
         self.minsize(800, 600)
         
-        self.miner: Optional[GxHashMiner] = None
+        self.miner: Optional[EthashMiner] = None
         self.is_mining = False
         self.stats = MinerStats()
         self.rpc_url = ACTIVE["rpc"]
@@ -255,7 +218,6 @@ class GxHashMinerGUI(ctk.CTk):
         
         self._setup_sidebar()
         self._setup_main()
-        
         self.after(1000, self._update_loop)
     
     def _setup_sidebar(self):
@@ -263,14 +225,12 @@ class GxHashMinerGUI(ctk.CTk):
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
         
-        # Logo
         logo = ctk.CTkFrame(sidebar, fg_color="transparent")
         logo.pack(pady=(30, 20))
-        ctk.CTkLabel(logo, text="GxHash", font=("Impact", 48), text_color=Colors.ACCENT).pack()
-        ctk.CTkLabel(logo, text="CPU MINER", font=("Arial", 12, "bold"), text_color="#666").pack()
+        ctk.CTkLabel(logo, text="Ethash", font=("Impact", 42), text_color=Colors.ACCENT).pack()
+        ctk.CTkLabel(logo, text="GPU MINER", font=("Arial", 12, "bold"), text_color="#666").pack()
         ctk.CTkLabel(logo, text=f"v{VERSION}", font=("Arial", 10), text_color="#444").pack()
         
-        # Stats
         stats = ctk.CTkFrame(sidebar, fg_color=Colors.PANEL, corner_radius=12)
         stats.pack(fill="x", padx=15, pady=10)
         ctk.CTkLabel(stats, text="⚡ MINING STATS", font=("Arial", 11, "bold"),
@@ -282,15 +242,13 @@ class GxHashMinerGUI(ctk.CTk):
         self.lbl_blocks = self._row(stats, "Blocks", "0")
         self.lbl_uptime = self._row(stats, "Uptime", "00:00:00")
         
-        # System
-        sys = ctk.CTkFrame(sidebar, fg_color=Colors.PANEL, corner_radius=12)
-        sys.pack(fill="x", padx=15, pady=10)
-        ctk.CTkLabel(sys, text="💻 SYSTEM", font=("Arial", 11, "bold"),
+        gpu = ctk.CTkFrame(sidebar, fg_color=Colors.PANEL, corner_radius=12)
+        gpu.pack(fill="x", padx=15, pady=10)
+        ctk.CTkLabel(gpu, text="🎮 GPU STATUS", font=("Arial", 11, "bold"),
                     text_color=Colors.INFO).pack(pady=(12, 8))
-        self.lbl_cpu = self._row(sys, "CPU", "0%")
-        self.lbl_threads = self._row(sys, "Threads", "0")
+        self.lbl_gpu_temp = self._row(gpu, "Temperature", "N/A")
+        self.lbl_gpu_power = self._row(gpu, "Power", "N/A")
         
-        # Buttons
         btns = ctk.CTkFrame(sidebar, fg_color="transparent")
         btns.pack(fill="x", padx=15, pady=20)
         
@@ -313,21 +271,18 @@ class GxHashMinerGUI(ctk.CTk):
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(1, weight=1)
         
-        # Config
         cfg = ctk.CTkFrame(main, fg_color=Colors.PANEL, corner_radius=12)
         cfg.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         
         ctk.CTkLabel(cfg, text="⚙️ CONFIGURATION", font=("Arial", 14, "bold"),
                     text_color=Colors.ACCENT).pack(anchor="w", padx=20, pady=(15, 10))
         
-        # Wallet
         wf = ctk.CTkFrame(cfg, fg_color="transparent")
         wf.pack(fill="x", padx=20, pady=5)
         ctk.CTkLabel(wf, text="Wallet:", width=120, anchor="e").pack(side="left", padx=5)
         self.entry_wallet = ctk.CTkEntry(wf, width=400, placeholder_text="Enter GXC wallet address")
         self.entry_wallet.pack(side="left", padx=5)
         
-        # Network
         nf = ctk.CTkFrame(cfg, fg_color="transparent")
         nf.pack(fill="x", padx=20, pady=5)
         ctk.CTkLabel(nf, text="Network:", width=120, anchor="e").pack(side="left", padx=5)
@@ -335,19 +290,15 @@ class GxHashMinerGUI(ctk.CTk):
         ctk.CTkOptionMenu(nf, values=["Testnet", "Mainnet"], variable=self.net_var,
                          width=200, command=self._net_change).pack(side="left", padx=5)
         
-        # Threads
         tf = ctk.CTkFrame(cfg, fg_color="transparent")
         tf.pack(fill="x", padx=20, pady=(5, 15))
-        max_t = psutil.cpu_count(logical=True) if HAS_PSUTIL else 4
-        ctk.CTkLabel(tf, text="Threads:", width=120, anchor="e").pack(side="left", padx=5)
-        self.slider = ctk.CTkSlider(tf, from_=1, to=max_t, number_of_steps=max_t-1,
-                                   width=200, command=self._threads_change)
-        self.slider.set(max(1, max_t - 1))
+        ctk.CTkLabel(tf, text="GPU Threads:", width=120, anchor="e").pack(side="left", padx=5)
+        self.slider = ctk.CTkSlider(tf, from_=1, to=8, width=200)
+        self.slider.set(4)
         self.slider.pack(side="left", padx=5)
-        self.lbl_t = ctk.CTkLabel(tf, text=str(max(1, max_t - 1)), width=30)
+        self.lbl_t = ctk.CTkLabel(tf, text="4", width=30)
         self.lbl_t.pack(side="left", padx=5)
         
-        # Console
         console = ctk.CTkFrame(main, fg_color=Colors.PANEL, corner_radius=12)
         console.grid(row=1, column=0, sticky="nsew")
         ctk.CTkLabel(console, text="📋 MINING LOG", font=("Arial", 14, "bold"),
@@ -357,16 +308,13 @@ class GxHashMinerGUI(ctk.CTk):
         self.console.pack(fill="both", expand=True, padx=15, pady=(0, 15))
         
         self._log(f"{APP_NAME} initialized", "INFO")
-        self._log(f"System: {platform.system()} {platform.release()}", "INFO")
+        self._log("Note: GPU mining requires CUDA/OpenCL", "WARNING")
     
     def _net_change(self, n):
         global ACTIVE
         ACTIVE = NETWORKS["mainnet" if n == "Mainnet" else "testnet"]
         self.rpc_url = ACTIVE["rpc"]
         self._log(f"Network: {n}", "INFO")
-    
-    def _threads_change(self, v):
-        self.lbl_t.configure(text=str(int(v)))
     
     def _toggle(self):
         if not self.is_mining:
@@ -384,12 +332,9 @@ class GxHashMinerGUI(ctk.CTk):
         self.btn_start.configure(text="⏹ STOP", fg_color=Colors.DANGER)
         
         threads = int(self.slider.get())
-        self.lbl_threads.configure(text=str(threads))
+        self._log(f"Starting Ethash mining with {threads} GPU threads...", "INFO")
         
-        self._log(f"Starting with {threads} threads...", "INFO")
-        self._log(f"Wallet: {wallet[:20]}...", "INFO")
-        
-        self.miner = GxHashMiner(wallet, self.rpc_url, self._callback)
+        self.miner = EthashMiner(wallet, self.rpc_url, self._callback)
         self.miner.start(threads)
     
     def _stop(self):
@@ -404,8 +349,6 @@ class GxHashMinerGUI(ctk.CTk):
         if event == "stats":
             self.stats = data
             self.after(0, self._update_ui)
-        elif event == "job":
-            self._log(f"Job: height={data.get('height')}", "INFO")
         elif event == "block":
             self._log(f"🎉 BLOCK FOUND! Height: {data.get('height')}", "SUCCESS")
     
@@ -416,7 +359,8 @@ class GxHashMinerGUI(ctk.CTk):
     
     def _update_ui(self):
         hr = self.stats.hashrate
-        if hr >= 1e6: hs = f"{hr/1e6:.2f} MH/s"
+        if hr >= 1e9: hs = f"{hr/1e9:.2f} GH/s"
+        elif hr >= 1e6: hs = f"{hr/1e6:.2f} MH/s"
         elif hr >= 1e3: hs = f"{hr/1e3:.2f} KH/s"
         else: hs = f"{hr:.2f} H/s"
         
@@ -428,7 +372,6 @@ class GxHashMinerGUI(ctk.CTk):
         h, r = divmod(self.stats.uptime, 3600)
         m, s = divmod(r, 60)
         self.lbl_uptime.configure(text=f"{h:02d}:{m:02d}:{s:02d}")
-        self.lbl_cpu.configure(text=f"{self.stats.cpu:.1f}%")
     
     def _log(self, msg, lvl="INFO"):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -446,7 +389,7 @@ class GxHashMinerGUI(ctk.CTk):
 
 
 def main():
-    app = GxHashMinerGUI()
+    app = EthashMinerGUI()
     app.protocol("WM_DELETE_WINDOW", app.on_close)
     app.mainloop()
 

@@ -1,25 +1,49 @@
 @echo off
-echo Installing GXC GXHash Miner...
+setlocal enabledelayedexpansion
+title GXC GxHash Miner Installer
+
+echo ===================================================
+echo     GXC GxHash CPU Miner Installer v2.0.0
+echo ===================================================
 echo.
 
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo Python not found! Please install Python 3.7+ from https://www.python.org/downloads/
+    echo [ERROR] Python not found!
+    echo Install from: https://python.org/downloads/
     pause
-    exit 1
+    exit /b 1
 )
-
-echo Installing dependencies...
-pip install -r requirements.txt --user
-if errorlevel 1 (
-    echo Installation failed!
-    pause
-    exit 1
-)
+echo [OK] Python found
 
 echo.
-echo ??? Installation complete!
+echo MIT License - Mining involves financial risk.
+set /p ACCEPT="Accept? [Y/N]: "
+if /i not "%ACCEPT%"=="Y" (
+    echo Cancelled.
+    pause
+    exit /b 1
+)
+
+set "INSTALL_DIR=%LOCALAPPDATA%\GXC-GxHash-Miner"
+mkdir "%INSTALL_DIR%" 2>nul
+copy /Y gxhash_miner.py "%INSTALL_DIR%\" >nul
+copy /Y requirements.txt "%INSTALL_DIR%\" >nul
+
+echo [INFO] Installing dependencies...
+python -m pip install -r requirements.txt
+
+echo @echo off > "%INSTALL_DIR%\gxhash-miner.bat"
+echo python "%INSTALL_DIR%\gxhash_miner.py" %%* >> "%INSTALL_DIR%\gxhash-miner.bat"
+
+powershell -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('%USERPROFILE%\Desktop\GXC GxHash Miner.lnk'); $sc.TargetPath = '%INSTALL_DIR%\gxhash-miner.bat'; $sc.Save()"
+
 echo.
-echo You can now run: python gxhash_miner.py
+echo ===================================================
+echo              Installation Complete!
+echo ===================================================
+echo.
+echo Run from Desktop shortcut or:
+echo   %INSTALL_DIR%\gxhash-miner.bat
 echo.
 pause

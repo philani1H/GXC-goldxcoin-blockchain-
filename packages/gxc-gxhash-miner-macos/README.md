@@ -1,39 +1,23 @@
-﻿# GXC GXHash Miner - Standalone Package
+# GXC GxHash Miner
 
-## Installation
+CPU miner for GXC blockchain using GxHash algorithm.
 
-### Windows
-1. Double-click install.bat
-2. Or run manually:
-   ``
-   pip install -r requirements.txt --user
-   python gxhash_miner.py
-   ``
+## Features
+- Real blockchain connection
+- CPU mining with GxHash algorithm
+- Modern GUI with live stats
+- Multi-threaded mining
 
-### Linux/macOS
-1. Run: ash install.sh
-2. Or run manually:
-   ``
-   pip3 install -r requirements.txt --user
-   python3 gxhash_miner.py
-   ``
+## Install
+```bash
+chmod +x install.sh
+./install.sh
+```
 
-## Usage
+## Run
+```bash
+gxhash-miner
+```
 
-``bash
-python gxhash_miner.py --rpc-url http://localhost:8545
-``
-
-## Options
-
-- --rpc-url URL - Blockchain RPC URL (default: http://localhost:8545)
-- --rest-url URL - Blockchain REST URL (default: http://localhost:8080)
-- --threads N - Number of mining threads (0 = auto-detect)
-- --address ADDRESS - Miner address for rewards
-- --daemon - Run in background mode
-
-## Requirements
-
-- Python 3.7 or higher
-- GXC blockchain node running
-- RPC enabled on node (port 8545)
+## License
+MIT License - Mining involves financial risk.
