@@ -1232,6 +1232,12 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
     double amount = 0.0;
     std::string privateKeyHex = "";
 
+    // Validate recipient address format (must be valid GXC address)
+    if (!Wallet::isValidAddress(recipientAddress)) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Invalid recipient address format. Must be a valid GXC address (tGXC... for testnet, GXC... for mainnet): " + recipientAddress);
+    }
+
     // Handle amount as number or string (for React Native compatibility)
     try {
         if (params[1].is_number()) {
@@ -1268,7 +1274,8 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
         // Create temporary wallet from private key
         txWallet = std::make_unique<Wallet>();
         if (!txWallet->createFromPrivateKey(privateKeyHex)) {
-            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid private key format");
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Invalid private key format. Private key must be 64 hex characters.");
         }
         walletToUse = txWallet.get();
         LOG_API(LogLevel::INFO, "Using wallet from provided private key: " + 
@@ -1277,7 +1284,8 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
         // Use node wallet if available
         if (!wallet) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-                "No wallet available. Please provide a private key as the 3rd parameter to send from your address.");
+                "No node wallet available. Please provide a private key as the 3rd parameter to send from your address. " +
+                "Format: sendtoaddress(recipient_address, amount, private_key_hex)");
         }
         walletToUse = wallet.get();
     }
@@ -1970,6 +1978,12 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
         privateKeyHex = params[3].get<std::string>();
     }
     
+    // Validate address format (must be valid GXC address)
+    if (!Wallet::isValidAddress(address)) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Invalid address format. Must be a valid GXC address (tGXC... for testnet, GXC... for mainnet): " + address);
+    }
+    
     // Validate minimum stake
     if (stakeAmount < Validator::MIN_STAKE) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
@@ -1991,32 +2005,34 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
         // Create temporary wallet from private key
         stakeWallet = std::make_unique<Wallet>();
         if (!stakeWallet->createFromPrivateKey(privateKeyHex)) {
-            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid private key format");
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Invalid private key format. Private key must be 64 hex characters.");
         }
         walletToUse = stakeWallet.get();
         
         // Verify the wallet address matches the provided address
         if (walletToUse->getAddress() != address) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-                "Private key does not control address: " + address + 
-                ". Private key address: " + walletToUse->getAddress());
+                "Private key does not control the provided address. " +
+                "Address provided: " + address + 
+                ", Address derived from private key: " + walletToUse->getAddress() + 
+                ". Please provide the private key that corresponds to address: " + address);
         }
         LOG_API(LogLevel::INFO, "Using wallet from provided private key for staking: " + 
                 walletToUse->getAddress().substr(0, 20) + "...");
     } else {
-        // Use node wallet if available
+        // Use node wallet if available and it matches
         if (!wallet) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-                "No wallet available. Please provide a private key as the 4th parameter to stake from your address.");
+                "No node wallet available. Please provide a private key as the 4th parameter to stake from address: " + address);
         }
         walletToUse = wallet.get();
         
-        // Verify the wallet controls this address
+        // If node wallet doesn't match, require private key
         if (walletToUse->getAddress() != address) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-                "Wallet does not control address: " + address + 
-                ". Use your wallet address: " + walletToUse->getAddress() + 
-                " or provide a private key as the 4th parameter.");
+                "Node wallet address (" + walletToUse->getAddress() + ") does not match the provided address (" + address + "). " +
+                "Please provide the private key for address " + address + " as the 4th parameter.");
         }
     }
     
@@ -2106,6 +2122,12 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
     double amount = params.size() > 1 ? params[1].get<double>() : 0.0;
     std::string privateKeyHex = "";
     
+    // Validate address format (must be valid GXC address)
+    if (!Wallet::isValidAddress(address)) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Invalid address format. Must be a valid GXC address (tGXC... for testnet, GXC... for mainnet): " + address);
+    }
+    
     // Check for optional private key parameter (3rd parameter)
     if (params.size() >= 3 && params[2].is_string()) {
         privateKeyHex = params[2].get<std::string>();
@@ -2119,32 +2141,34 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
         // Create temporary wallet from private key
         unstakeWallet = std::make_unique<Wallet>();
         if (!unstakeWallet->createFromPrivateKey(privateKeyHex)) {
-            throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Invalid private key format");
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Invalid private key format. Private key must be 64 hex characters.");
         }
         walletToUse = unstakeWallet.get();
         
         // Verify the wallet address matches the provided address
         if (walletToUse->getAddress() != address) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-                "Private key does not control address: " + address + 
-                ". Private key address: " + walletToUse->getAddress());
+                "Private key does not control the provided address. " +
+                "Address provided: " + address + 
+                ", Address derived from private key: " + walletToUse->getAddress() + 
+                ". Please provide the private key that corresponds to address: " + address);
         }
         LOG_API(LogLevel::INFO, "Using wallet from provided private key for unstaking: " + 
                 walletToUse->getAddress().substr(0, 20) + "...");
     } else {
-        // Use node wallet if available
+        // Use node wallet if available and it matches
         if (!wallet) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-                "No wallet available. Please provide a private key as the 3rd parameter to unstake from your address.");
+                "No node wallet available. Please provide a private key as the 3rd parameter to unstake from address: " + address);
         }
         walletToUse = wallet.get();
         
-        // Verify the wallet controls this address
+        // If node wallet doesn't match, require private key
         if (walletToUse->getAddress() != address) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-                "Wallet does not control this address: " + address + 
-                ". Use your wallet address: " + walletToUse->getAddress() + 
-                " or provide a private key as the 3rd parameter.");
+                "Node wallet address (" + walletToUse->getAddress() + ") does not match the provided address (" + address + "). " +
+                "Please provide the private key for address " + address + " as the 3rd parameter.");
         }
     }
 
