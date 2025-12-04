@@ -310,6 +310,34 @@ void RPCAPI::registerMethods() {
     // listunspent is already registered above with full UTXO access
     rpcMethods["getnewaddress"] = [this](const JsonValue& params) { return getNewAddress(params); };
     rpcMethods["sendtoaddress"] = [this](const JsonValue& params) { return sendToAddress(params); };
+    rpcMethods["gxc_sendToAddress"] = [this](const JsonValue& params) { return sendToAddress(params); };
+    
+    // sendfrom - explicit from address (for third-party wallets)
+    rpcMethods["sendfrom"] = [this](const JsonValue& params) { 
+        // sendfrom <from_address> <to_address> <amount>
+        // Rearrange params to match sendToAddress format: <to_address> <amount> <from_address>
+        if (params.size() < 3) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Missing parameters. Usage: sendfrom <from_address> <to_address> <amount>");
+        }
+        JsonValue newParams = JsonValue(JsonValue::array());
+        newParams.push_back(params[1]); // to_address
+        newParams.push_back(params[2]); // amount
+        newParams.push_back(params[0]); // from_address
+        return sendToAddress(newParams);
+    };
+    rpcMethods["gxc_sendFrom"] = [this](const JsonValue& params) { 
+        if (params.size() < 3) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Missing parameters. Usage: gxc_sendFrom <from_address> <to_address> <amount>");
+        }
+        JsonValue newParams = JsonValue(JsonValue::array());
+        newParams.push_back(params[1]);
+        newParams.push_back(params[2]);
+        newParams.push_back(params[0]);
+        return sendToAddress(newParams);
+    };
+    
     rpcMethods["estimatefee"] = [this](const JsonValue& params) { return estimateFee(params); };
     rpcMethods["estimateFee"] = [this](const JsonValue& params) { return estimateFee(params); };
     rpcMethods["gxc_estimateFee"] = [this](const JsonValue& params) { return estimateFee(params); };
@@ -1224,11 +1252,18 @@ JsonValue RPCAPI::getNewAddress(const JsonValue& params) {
 
 JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
     if (params.size() < 2) {
-        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address or amount parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Missing parameters. Usage: sendtoaddress <to_address> <amount> [from_address]");
     }
     
-    std::string address = params[0].get<std::string>();
+    std::string toAddress = params[0].get<std::string>();
     double amount = 0.0;
+    
+    // Optional: from_address for third-party wallet support
+    std::string fromAddress = "";
+    if (params.size() > 2 && !params[2].is_null()) {
+        fromAddress = params[2].get<std::string>();
+    }
 
     // Handle amount as number or string (for React Native compatibility)
     try {
@@ -1258,12 +1293,49 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
     }
     
+    // THIRD-PARTY WALLET SUPPORT:
+    // Determine which address to send from
+    std::string sendingFrom = fromAddress.empty() ? wallet->getAddress() : fromAddress;
+    
+    // If a from_address is specified, verify we control it
+    if (!fromAddress.empty()) {
+        if (!wallet->controlsAddress(fromAddress)) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Wallet does not control address: " + fromAddress + 
+                ". Import the private key first using 'importprivkey'.");
+        }
+        if (!wallet->canSignForAddress(fromAddress)) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+                "Address " + fromAddress + " is watch-only. Import the private key to enable sending.");
+        }
+    }
+    
+    // Check balance for the sending address
+    double balance = blockchain->getBalance(sendingFrom);
+    double fee = 0.001;
+    double totalRequired = amount + fee;
+    
+    if (balance < totalRequired) {
+        throw RPCException(RPCException::RPC_WALLET_INSUFFICIENT_FUNDS, 
+            "Insufficient funds. Required: " + std::to_string(totalRequired) + 
+            " GXC (amount: " + std::to_string(amount) + " + fee: " + std::to_string(fee) +
+            "), Available at " + sendingFrom.substr(0, 20) + "...: " + std::to_string(balance) + " GXC");
+    }
+    
     // Get UTXOs
     const auto& utxoSet = blockchain->getUtxoSet();
     
     try {
-        // Create transaction using wallet
-        Transaction tx = wallet->createTransaction(address, amount, utxoSet);
+        Transaction tx;
+        
+        // Create transaction from the appropriate address
+        if (fromAddress.empty() || fromAddress == wallet->getAddress()) {
+            // Use main wallet
+            tx = wallet->createTransaction(toAddress, amount, utxoSet, fee);
+        } else {
+            // Use imported address (third-party wallet support)
+            tx = wallet->createTransactionFrom(fromAddress, toAddress, amount, utxoSet, fee);
+        }
 
         // Add to blockchain
         if (blockchain->addTransaction(tx)) {
@@ -1271,12 +1343,15 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
             std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
             wallet->saveToFile(walletPath);
 
-            LOG_API(LogLevel::INFO, "Sent " + std::to_string(amount) + " GXC to " + address +
-                    ", TX: " + tx.getHash());
+            LOG_API(LogLevel::INFO, "Sent " + std::to_string(amount) + " GXC from " + 
+                    sendingFrom.substr(0, 20) + "... to " + toAddress.substr(0, 20) + 
+                    "..., TX: " + tx.getHash());
             return tx.getHash();
         } else {
             throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to add transaction to pool");
         }
+    } catch (const RPCException& e) {
+        throw;
     } catch (const std::exception& e) {
         LOG_API(LogLevel::ERROR, "Failed to create transaction: " + std::string(e.what()));
         throw RPCException(RPCException::RPC_WALLET_ERROR, "Transaction creation failed: " + std::string(e.what()));
