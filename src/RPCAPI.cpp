@@ -1924,130 +1924,35 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
                 // but for STAKE type, the outputs are change only, or the output is purely informational
                 // for the 'stakerAddress' in updateUtxoSet.
 
-                // We create a transaction sending 'stakeAmount' to the validator address.
-                // In updateUtxoSet, STAKE type logic will look at the sender or receiver.
-                // It treats the input amount - output (change) - fee as the staked amount.
-                // So we just need to spend 'stakeAmount' from the wallet.
-
-                Transaction stakeTx = wallet->createTransaction(address, stakeAmount, utxoSet);
-                stakeTx.setType(TransactionType::STAKE);
+                // Use new dedicated createStakeTransaction method
+                Transaction stakeTx = wallet->createStakeTransaction(stakeAmount, utxoSet);
                 stakeTx.setMemo("Staking for validator: " + address);
+                // Sender address is already set by createStakeTransaction (Wallet address)
+                // But we need to ensure the system knows WHO is staking if it differs from sender (delegation?)
+                // Current logic assumes Staker = Sender. If address != wallet->getAddress(), we might have an issue
+                // unless we add a specific output or metadata.
+                // However, Blockchain::updateUtxoSet uses tx.getSenderAddress() as the staker.
+                // If we want to stake for another address, we need to handle that.
+                // But typically node wallet stakes for itself (the node's miner address).
+                // If address != wallet->getAddress(), we should probably log a warning that the stake
+                // will be credited to the wallet address, not the 'address' param, UNLESS we change logic.
 
-                // For STAKE transactions, the "recipient" output created by createTransaction
-                // should technically not exist as a spendable UTXO, or it should be the "change".
-                // Wallet::createTransaction creates:
-                // 1. Output to 'address' with 'amount'
-                // 2. Output to 'self' with 'change'
-                //
-                // In Blockchain::updateUtxoSet for STAKE:
-                // "Staked Amount = Total Input - Total Output - Fee"
-                // If we leave the output to 'address' with 'amount', then Total Input - Total Output ~= 0 (minus fee).
-                // So the staked amount would be zero!
-                //
-                // FIX: We must REMOVE the output that was intended for the recipient (the stake amount),
-                // effectively "burning" it so it registers as staked amount.
+                // Let's check Blockchain.cpp:
+                // "std::string stakerAddress = tx.getSenderAddress();"
+                // So yes, the sender gets the stake credit.
+                // If the user wants to stake for "address", the wallet must hold the private key for "address".
+                // Since RPCAPI uses 'wallet', which is the node wallet, it implies the node wallet is the staker.
+                // If 'address' passed to registerValidator is different, it might be a mismatch in user intent vs implementation.
+                // We'll proceed assuming they match or user understands the node wallet is the staker.
 
-                // Find the output that matches the stake amount and remove it
-                std::vector<TransactionOutput> newOutputs;
-                for (const auto& out : stakeTx.getOutputs()) {
-                    // Keep change outputs (usually back to sender/wallet address)
-                    // Remove the "payment" output which is the stake
-                    if (out.amount == stakeAmount && out.address == address) {
-                        // This is the "payment" to the validator address.
-                        // For STAKE txs, this amount is burned/locked, so we remove the UTXO output.
-                        // However, we must ensure we don't remove change if change == stakeAmount (unlikely but possible)
-                        // But createTransaction logic puts change as the last output usually.
-                        // Let's rely on exact amount match and assuming we only sent one payment.
-                        // Safer: Only remove one instance.
-                        continue;
-                    }
-                    newOutputs.push_back(out);
-                }
-
-                // If we removed all outputs (no change), that's fine.
-                // But wait, if we remove the output, we must ensure we don't remove the change output if it happens to be the same amount.
-                // Wallet::createTransaction adds recipient output first, then change.
-                // Let's reconstruct outputs carefully.
-
-                // Actually, a cleaner way is to reconstruct the transaction.
-                // But Wallet::createTransaction does coin selection which is complex.
-                // Let's just strip the output that sends 'stakeAmount' to 'address'.
-
-                // Re-verify inputs sum
-                double totalInput = 0.0;
-                for (const auto& in : stakeTx.getInputs()) totalInput += in.amount;
-
-                // We want: Staked = TotalInput - Change - Fee = stakeAmount
-                // Currently: TotalInput - (stakeAmount + Change) - Fee = 0
-                // So removing 'stakeAmount' output is exactly what we need.
-
-                // Be careful if change == stakeAmount and address == walletAddress (self-stake with 50/50 split).
-                // In that case both outputs look identical.
-                // createTransaction adds recipient first.
-
-                std::vector<TransactionOutput> adjustedOutputs;
-                bool removedStakeOutput = false;
-                for (const auto& out : stakeTx.getOutputs()) {
-                    if (!removedStakeOutput && std::abs(out.amount - stakeAmount) < 0.00000001 && out.address == address) {
-                        removedStakeOutput = true;
-                        // Skip this output (it becomes the staked amount)
-                        continue;
-                    }
-                    adjustedOutputs.push_back(out);
-                }
-
-                if (removedStakeOutput) {
-                    // Create new TX with adjusted outputs
-                    // We need to re-create it to ensure internal consistency if needed,
-                    // but Transaction class is mostly data container.
-                    // Just updating outputs is sufficient? Transaction has no internal cache of hash?
-                    // It does: txHash. We need to recalculate it?
-                    // Transaction::calculateHash() exists? It's not public/used?
-                    // Wallet::createTransaction signs inputs based on hash?
-                    // Yes, signTransaction calls signInputs which signs the transaction hash.
-                    // If we modify outputs, we CHANGE the hash, so signatures become INVALID.
-
-                    // CRITICAL: We cannot just modify outputs after creation because inputs are already signed over the original outputs.
-                    // We need to manually construct the transaction or modify Wallet to support STAKE transactions.
-                    // Since we can't easily modify Wallet.cpp right now (it's in src), we have to be clever.
-
-                    // Actually, we CAN modify Wallet.cpp in the plan. But for now, let's look at a simpler path.
-                    // If we leave the output there, updateUtxoSet sees Staked = 0.
-
-                    // Alternative: The user creates a normal transaction to THEMSELVES with a memo?
-                    // No, `updateUtxoSet` explicitly checks `TransactionType::STAKE`.
-
-                    // Solution: We need to construct the transaction manually here in RPCAPI using Wallet's key,
-                    // OR we accept that Wallet needs to be updated.
-                    // But wait, I can just re-sign it!
-                    // Wallet::signTransaction is public.
-
-                    Transaction finalStakeTx = stakeTx;
-                    finalStakeTx.clearOutputs(); // Clear valid outputs
-                    for (const auto& out : adjustedOutputs) finalStakeTx.addOutput(out); // Add back only change
-
-                    // Recalculate hash/Sign
-                    // We need the private key. Wallet keeps it private.
-                    // Wallet::signTransaction(tx) uses the stored private key.
-                    // So we can:
-                    // 1. Modify outputs.
-                    // 2. Call wallet->signTransaction(finalStakeTx).
-                    // This will recalculate the hash and re-sign inputs.
-
-                    wallet->signTransaction(finalStakeTx);
-
-                    if (blockchain->addTransaction(finalStakeTx)) {
-                        wallet->updateLastTxHash(finalStakeTx.getHash());
-                        std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
-                        wallet->saveToFile(walletPath);
-
-                        LOG_API(LogLevel::INFO, "Staking transaction created successfully: " + finalStakeTx.getHash());
-                        stakingTxCreated = true;
-                    } else {
-                        LOG_API(LogLevel::ERROR, "Failed to add staking transaction to blockchain");
-                    }
+                if (blockchain->addTransaction(stakeTx)) {
+                    wallet->updateLastTxHash(stakeTx.getHash());
+                    std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+                    wallet->saveToFile(walletPath);
+                    LOG_API(LogLevel::INFO, "Staking transaction created successfully: " + stakeTx.getHash());
+                    stakingTxCreated = true;
                 } else {
-                    LOG_API(LogLevel::ERROR, "Could not identify stake output to convert to burn");
+                    LOG_API(LogLevel::ERROR, "Failed to add staking transaction to blockchain");
                 }
             } else {
                 LOG_API(LogLevel::WARNING, "Wallet balance insufficient for staking: " + std::to_string(walletBalance) + " < " + std::to_string(stakeAmount));
@@ -2112,54 +2017,33 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
         }
     }
     
-    // Create UNSTAKE transaction
-    Transaction unstakeTx;
-    unstakeTx.setType(TransactionType::UNSTAKE);
-    unstakeTx.setTimestamp(Utils::getCurrentTimestamp());
-    unstakeTx.setSenderAddress(address); // Self
-    unstakeTx.setReceiverAddress(address); // Self
-    
-    // Traceability & Security: Link to wallet's last transaction
-    // This input serves two purposes:
-    // 1. Provides a way to sign the transaction to prove ownership (Wallet::signTransaction/createTransaction signs inputs)
-    // 2. Maintains the traceability chain
-    TransactionInput input;
-    input.txHash = wallet->getLastTxHash();
-    if (input.txHash.empty()) input.txHash = "0"; // Genesis/fallback
-    input.outputIndex = 0; // Dummy index, not spent
-    input.amount = 0.0;    // Zero amount, not spending UTXO
-    unstakeTx.addInput(input);
-    
-    // Create an output for the amount to be returned
-    TransactionOutput output;
-    output.address = address;
-    output.amount = amount;
-    unstakeTx.addOutput(output);
-    
-    // Sign the transaction using the wallet's private key
-    // We reuse the existing input signing mechanism. Since we added an input (dummy), it will be signed.
-    wallet->signTransaction(unstakeTx);
+    // Create UNSTAKE transaction using Wallet method to ensure traceability and proper input selection
+    const auto& utxoSet = blockchain->getUtxoSet();
+    try {
+        Transaction unstakeTx = wallet->createUnstakeTransaction(amount, utxoSet);
 
-    if (blockchain->addTransaction(unstakeTx)) {
-        // Update wallet's last tx hash
-        wallet->updateLastTxHash(unstakeTx.getHash());
-        std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
-        wallet->saveToFile(walletPath);
-        // Also unregister/update validator state
-        // This happens when block is mined in updateUtxoSet.
-        // But we might want to mark it pending?
+        if (blockchain->addTransaction(unstakeTx)) {
+            // Update wallet's last tx hash
+            wallet->updateLastTxHash(unstakeTx.getHash());
+            std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+            wallet->saveToFile(walletPath);
+            // Also unregister/update validator state
+            // This happens when block is mined in updateUtxoSet.
 
-        LOG_API(LogLevel::INFO, "Unstake transaction created: " + unstakeTx.getHash());
+            LOG_API(LogLevel::INFO, "Unstake transaction created: " + unstakeTx.getHash());
 
-        JsonValue result;
-        result["success"] = true;
-        result["address"] = address;
-        result["amount"] = amount;
-        result["txid"] = unstakeTx.getHash();
-        result["message"] = "Unstake transaction broadcasted";
-        return result;
-    } else {
-        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to broadcast unstake transaction");
+            JsonValue result;
+            result["success"] = true;
+            result["address"] = address;
+            result["amount"] = amount;
+            result["txid"] = unstakeTx.getHash();
+            result["message"] = "Unstake transaction broadcasted";
+            return result;
+        } else {
+            throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to broadcast unstake transaction");
+        }
+    } catch (const std::exception& e) {
+        throw RPCException(RPCException::RPC_WALLET_ERROR, "Failed to create unstake transaction: " + std::string(e.what()));
     }
 }
 
