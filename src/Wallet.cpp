@@ -1,13 +1,12 @@
 #include "../include/Wallet.h"
 #include "../include/HashUtils.h"
 #include "../include/Crypto.h"
-#include "../include/Config.h" // Added to access Config::isTestnet()
+#include "../include/Config.h"
 #include "../include/Utils.h"
-
-#include <random>
-#include <sstream>
-#include <iomanip>
 #include <fstream>
+#include <sstream>
+#include <stdexcept>
+#include <algorithm>
 
 Wallet::Wallet() {
     generateKeyPair();
@@ -16,7 +15,6 @@ Wallet::Wallet() {
 void Wallet::generateKeyPair() {
     // Use proper secp256k1 ECDSA key generation
     Crypto::KeyPair keyPair = Crypto::generateKeyPair();
-    
     privateKey = keyPair.privateKey;
     publicKey = keyPair.publicKey;
     
@@ -37,12 +35,12 @@ bool Wallet::saveToFile(const std::string& filepath) const {
         if (!file.is_open()) {
             return false;
         }
-
+        
         file << privateKey << "\n";
         file << publicKey << "\n";
         file << address << "\n";
         file << lastTxHash << "\n";
-
+        
         return true;
     } catch (...) {
         return false;
@@ -55,18 +53,18 @@ bool Wallet::loadFromFile(const std::string& filepath) {
         if (!file.is_open()) {
             return false;
         }
-
+        
         std::string line;
         if (std::getline(file, line)) privateKey = Utils::trim(line);
         if (std::getline(file, line)) publicKey = Utils::trim(line);
         if (std::getline(file, line)) address = Utils::trim(line);
         if (std::getline(file, line)) lastTxHash = Utils::trim(line);
-
+        
         // Re-derive address based on current network configuration to ensure correctness
         // regardless of what's in the file (e.g. if file was from Mainnet but running Testnet)
         bool isTestnet = Config::isTestnet();
         address = Crypto::generateAddress(publicKey, isTestnet);
-
+        
         return !privateKey.empty() && !publicKey.empty() && !address.empty();
     } catch (...) {
         return false;
@@ -77,12 +75,11 @@ void Wallet::signTransaction(Transaction& tx) {
     tx.signInputs(privateKey);
 }
 
-Transaction Wallet::createTransaction(const std::string& recipientAddress, double amount, 
-                                     const std::unordered_map<std::string, TransactionOutput>& utxoSet) {
+Transaction Wallet::createTransaction(const std::string& recipientAddress, double amount,
+                                     const std::unordered_map<std::string, UTXO>& utxoSet) {
     // Find unspent outputs to use as inputs
     std::vector<TransactionInput> inputs;
     std::vector<TransactionOutput> outputs;
-    
     double availableAmount = 0.0;
     double fee = 0.001; // Standard transaction fee
     double requiredTotal = amount + fee;
@@ -97,22 +94,18 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
                     if (txHash == lastTxHash) {
                         // Found previous transaction output, use it first
                         uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
-
                         TransactionInput input;
                         input.txHash = txHash;
                         input.outputIndex = outputIndex;
                         input.amount = utxo.amount; // Critical for traceability
                         inputs.push_back(input);
-
                         availableAmount += utxo.amount;
-                        // Don't break immediately, keep collecting outputs from the last tx if multiple exist
-                        // break;
                     }
                 }
             }
         }
     }
-
+    
     // Find other unspent outputs if needed
     if (availableAmount < requiredTotal) {
         for (const auto& [utxoKey, utxo] : utxoSet) {
@@ -122,7 +115,7 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
                 if (sepPos != std::string::npos) {
                     std::string txHash = utxoKey.substr(0, sepPos);
                     uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
-
+                    
                     // Check if already added (avoid duplicates)
                     bool alreadyAdded = false;
                     for (const auto& inp : inputs) {
@@ -132,16 +125,15 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
                         }
                     }
                     if (alreadyAdded) continue;
-
+                    
                     // Create an input
                     TransactionInput input;
                     input.txHash = txHash;
                     input.outputIndex = outputIndex;
                     input.amount = utxo.amount;
                     inputs.push_back(input);
-
                     availableAmount += utxo.amount;
-
+                    
                     // If we have enough funds, break
                     if (availableAmount >= requiredTotal) {
                         break;
@@ -153,7 +145,8 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
     
     // Check if we have enough funds
     if (availableAmount < requiredTotal) {
-        throw std::runtime_error("Insufficient funds (Amount + Fee required: " + std::to_string(requiredTotal) + ")");
+        throw std::runtime_error("Insufficient funds (Amount + Fee required: " + 
+                               std::to_string(requiredTotal) + ")");
     }
     
     // Create the output to the recipient
@@ -169,33 +162,31 @@ Transaction Wallet::createTransaction(const std::string& recipientAddress, doubl
         changeOutput.amount = availableAmount - requiredTotal;
         outputs.push_back(changeOutput);
     }
-
+    
     // Create the transaction
     // Explicitly set prevTxHash to inputs[0].txHash to ensure traceability
-    // if we are not using lastTxHash as input
     std::string correctPrevTxHash = !inputs.empty() ? inputs[0].txHash : lastTxHash;
     Transaction tx(inputs, outputs, correctPrevTxHash);
     tx.setFee(fee);
-
+    
     // Sign the inputs
     tx.signInputs(privateKey);
-
+    
     // Update last transaction hash
     lastTxHash = tx.getHash();
-
+    
     return tx;
 }
 
 Transaction Wallet::createStakeTransaction(double stakeAmount,
-                                         const std::unordered_map<std::string, TransactionOutput>& utxoSet) {
+                                          const std::unordered_map<std::string, UTXO>& utxoSet) {
     // Find unspent outputs to use as inputs
     std::vector<TransactionInput> inputs;
     std::vector<TransactionOutput> outputs;
-
     double availableAmount = 0.0;
     double fee = 0.001; // Standard fee
     double requiredTotal = stakeAmount + fee;
-
+    
     // Traceability Requirement: Prioritize UTXO from last transaction (chaining)
     if (!lastTxHash.empty()) {
         for (const auto& [utxoKey, utxo] : utxoSet) {
@@ -206,20 +197,18 @@ Transaction Wallet::createStakeTransaction(double stakeAmount,
                     if (txHash == lastTxHash) {
                         // Found previous transaction output, use it first
                         uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
-
                         TransactionInput input;
                         input.txHash = txHash;
                         input.outputIndex = outputIndex;
                         input.amount = utxo.amount; // Critical for traceability
                         inputs.push_back(input);
-
                         availableAmount += utxo.amount;
                     }
                 }
             }
         }
     }
-
+    
     // Find other unspent outputs if needed
     if (availableAmount < requiredTotal) {
         for (const auto& [utxoKey, utxo] : utxoSet) {
@@ -229,7 +218,7 @@ Transaction Wallet::createStakeTransaction(double stakeAmount,
                 if (sepPos != std::string::npos) {
                     std::string txHash = utxoKey.substr(0, sepPos);
                     uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
-
+                    
                     // Check if already added (avoid duplicates)
                     bool alreadyAdded = false;
                     for (const auto& inp : inputs) {
@@ -239,16 +228,15 @@ Transaction Wallet::createStakeTransaction(double stakeAmount,
                         }
                     }
                     if (alreadyAdded) continue;
-
+                    
                     // Create an input
                     TransactionInput input;
                     input.txHash = txHash;
                     input.outputIndex = outputIndex;
                     input.amount = utxo.amount;
                     inputs.push_back(input);
-
                     availableAmount += utxo.amount;
-
+                    
                     // If we have enough funds, break
                     if (availableAmount >= requiredTotal) {
                         break;
@@ -257,12 +245,12 @@ Transaction Wallet::createStakeTransaction(double stakeAmount,
             }
         }
     }
-
+    
     // Check if we have enough funds
     if (availableAmount < requiredTotal) {
         throw std::runtime_error("Insufficient funds for stake + fee");
     }
-
+    
     // Create NO output for the stake amount (it is burned/locked)
     // Only create change output if there is excess
     if (availableAmount > requiredTotal) {
@@ -283,7 +271,7 @@ Transaction Wallet::createStakeTransaction(double stakeAmount,
     if (!inputs.empty()) {
         tx.setReferencedAmount(inputs[0].amount);
     }
-
+    
     // Sign the inputs
     tx.signInputs(privateKey);
     
@@ -294,18 +282,18 @@ Transaction Wallet::createStakeTransaction(double stakeAmount,
 }
 
 Transaction Wallet::createUnstakeTransaction(double unstakeAmount,
-                                           const std::unordered_map<std::string, TransactionOutput>& utxoSet) {
+                                            const std::unordered_map<std::string, UTXO>& utxoSet) {
     // UNSTAKE Transaction Strategy:
     // We want to link to the last transaction for traceability.
     // We should consume a UTXO if available to maintain the "chain" of ownership,
     // even if we are net-gaining funds.
     // Input: One valid UTXO (preferably the last one from this wallet).
     // Output: Input.Amount + UnstakeAmount - Fee.
-
+    
     std::vector<TransactionInput> inputs;
     std::vector<TransactionOutput> outputs;
     double inputAmount = 0.0;
-
+    
     // Find the last UTXO for traceability
     bool foundLast = false;
     if (!lastTxHash.empty()) {
@@ -316,13 +304,11 @@ Transaction Wallet::createUnstakeTransaction(double unstakeAmount,
                     std::string txHash = utxoKey.substr(0, sepPos);
                     if (txHash == lastTxHash) {
                         uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
-
                         TransactionInput input;
                         input.txHash = txHash;
                         input.outputIndex = outputIndex;
                         input.amount = utxo.amount;
                         inputs.push_back(input);
-
                         inputAmount += utxo.amount;
                         foundLast = true;
                         break; // Just need one link
@@ -331,7 +317,7 @@ Transaction Wallet::createUnstakeTransaction(double unstakeAmount,
             }
         }
     }
-
+    
     // If no "last" UTXO found (maybe spent or fresh wallet?), try ANY UTXO
     if (!foundLast) {
         for (const auto& [utxoKey, utxo] : utxoSet) {
@@ -340,13 +326,11 @@ Transaction Wallet::createUnstakeTransaction(double unstakeAmount,
                 if (sepPos != std::string::npos) {
                     std::string txHash = utxoKey.substr(0, sepPos);
                     uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
-
                     TransactionInput input;
                     input.txHash = txHash;
                     input.outputIndex = outputIndex;
                     input.amount = utxo.amount;
                     inputs.push_back(input);
-
                     inputAmount += utxo.amount;
                     foundLast = true;
                     break;
@@ -354,7 +338,7 @@ Transaction Wallet::createUnstakeTransaction(double unstakeAmount,
             }
         }
     }
-
+    
     // Fallback: Create a dummy input pointing to lastTxHash with 0 amount.
     if (!foundLast) {
         TransactionInput input;
@@ -362,47 +346,45 @@ Transaction Wallet::createUnstakeTransaction(double unstakeAmount,
         input.outputIndex = 0; // Dummy
         input.amount = 0.0;
         inputs.push_back(input);
-
         // inputAmount is 0
     }
-
+    
     double fee = 0.001;
     double totalOutput = inputAmount + unstakeAmount - fee;
-
+    
     if (totalOutput < 0) {
         // Should not happen unless unstakeAmount is tiny and input is 0 and fee is high
         throw std::runtime_error("Unstake amount too small to cover fee");
     }
-
+    
     TransactionOutput output;
     output.address = address;
     output.amount = totalOutput;
     outputs.push_back(output);
-
+    
     // Explicitly set prevTxHash to inputs[0].txHash to ensure traceability
     std::string correctPrevTxHash = !inputs.empty() ? inputs[0].txHash : lastTxHash;
     Transaction tx(inputs, outputs, correctPrevTxHash);
     tx.setType(TransactionType::UNSTAKE);
     tx.setFee(fee);
-
+    
     // Explicitly set ReferencedAmount to match Input[0].amount for traceability
     if (!inputs.empty()) {
         tx.setReferencedAmount(inputs[0].amount);
     }
-
+    
     tx.signInputs(privateKey);
     lastTxHash = tx.getHash();
-
+    
     return tx;
 }
 
-Transaction Wallet::createGoldBackedTransaction(const std::string& recipientAddress, double amount, 
-                                              const std::unordered_map<std::string, TransactionOutput>& utxoSet,
-                                              const std::string& popReference) {
+Transaction Wallet::createGoldBackedTransaction(const std::string& recipientAddress, double amount,
+                                               const std::unordered_map<std::string, UTXO>& utxoSet,
+                                               const std::string& popReference) {
     // Similar to createTransaction, but with the addition of the PoP reference
     std::vector<TransactionInput> inputs;
     std::vector<TransactionOutput> outputs;
-    
     double availableAmount = 0.0;
     
     // Find unspent outputs belonging to this wallet
@@ -419,7 +401,6 @@ Transaction Wallet::createGoldBackedTransaction(const std::string& recipientAddr
                 input.txHash = txHash;
                 input.outputIndex = outputIndex;
                 inputs.push_back(input);
-                
                 availableAmount += utxo.amount;
                 
                 // If we have enough funds, break
@@ -461,7 +442,7 @@ Transaction Wallet::createGoldBackedTransaction(const std::string& recipientAddr
     return tx;
 }
 
-double Wallet::getBalance(const std::unordered_map<std::string, TransactionOutput>& utxoSet) const {
+double Wallet::getBalance(const std::unordered_map<std::string, UTXO>& utxoSet) const {
     double balance = 0.0;
     
     // Sum up all unspent outputs belonging to this wallet
@@ -473,4 +454,3 @@ double Wallet::getBalance(const std::unordered_map<std::string, TransactionOutpu
     
     return balance;
 }
-

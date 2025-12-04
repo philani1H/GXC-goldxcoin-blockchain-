@@ -1,0 +1,31 @@
+[
+    {
+        "index": 0,
+        "hash": "67bc6570c84cf35fa3086cb4445c86ee10087b95999bd0bbc98781c1982545c4",
+        "prev": "0",
+        "txs": [
+            {
+                "id": "1769f0dc809b28286cc7077f2a37d4269a40c55c5bb8a8b214a71eac06947d9b",
+                "sender": "SYSTEM",
+                "receiver": "GENESIS_WALLET",
+                "amount": 0,
+                "fee": 0.01,
+                "timestamp": 1764837252.876069
+            }
+        ],
+        "diff": 1000,
+        "reward": 50.0,
+        "time_taken": 10.0,
+        "timestamp": 1764837252.876724
+    },
+    {
+        "index": 1,
+        "hash": "0f0e417c6fe8413928fbb18949d140ba69b3222938cfc3c9e9e2fbb271b697d3",
+        "prev": "67bc6570c84cf35fa3086cb4445c86ee10087b95999bd0bbc98781c1982545c4",
+        "txs": [],
+        "diff": 1000,
+        "reward": 5.0,
+        "time_taken": 0.00011920928955078125,
+        "timestamp": 1764837263.037876
+    }
+]
