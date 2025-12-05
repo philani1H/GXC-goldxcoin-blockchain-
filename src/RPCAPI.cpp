@@ -2141,8 +2141,11 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     }
     
     // Create validator record (will be finalized when block is mined)
-    Validator validator(address, stakeAmount, stakingDays);
+    // Initialize with 0 stake and pending status to prevent fake staking
+    // The stake will be added when the STAKE transaction is confirmed on-chain
+    Validator validator(address, 0.0, stakingDays);
     validator.setPublicKey(pubKeyForValidator);
+    validator.setPending(true);
     
     // Register validator in blockchain
     blockchain->registerValidator(validator);
