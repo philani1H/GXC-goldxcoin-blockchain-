@@ -2628,9 +2628,10 @@ JsonValue RPCAPI::registerExternalValidator(const JsonValue& params) {
             "Please fund the address first before registering as a validator.");
     }
     
-    // Create a pending validator record
-    // Note: The actual stake transaction will need to be created by the external wallet
-    Validator validator(address, stakeAmount, stakingDays);
+    // Create a pending validator record with 0 stake
+    // The actual stake will be added when the STAKE transaction is confirmed on-chain
+    // This prevents fake staking without locking funds
+    Validator validator(address, 0.0, stakingDays);
     if (!publicKey.empty()) {
         validator.setPublicKey(publicKey);
     }
