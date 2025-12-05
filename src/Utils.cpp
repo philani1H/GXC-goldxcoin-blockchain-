@@ -40,7 +40,7 @@ std::string randomString(size_t length) {
     return result;
 }
 
-std::string bytesToHex(const std::vector<uint8_t>& bytes) {
+std::string toHex(const std::vector<uint8_t>& bytes) {
     std::ostringstream oss;
     oss << std::hex << std::setfill('0');
     
@@ -51,7 +51,7 @@ std::string bytesToHex(const std::vector<uint8_t>& bytes) {
     return oss.str();
 }
 
-std::vector<uint8_t> hexToBytes(const std::string& hex) {
+std::vector<uint8_t> fromHex(const std::string& hex) {
     std::vector<uint8_t> bytes;
     
     for (size_t i = 0; i < hex.length(); i += 2) {

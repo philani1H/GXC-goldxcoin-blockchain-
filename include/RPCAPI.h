@@ -38,6 +38,7 @@ public:
     static constexpr int RPC_INVALID_ADDRESS_OR_KEY = -5;
     static constexpr int RPC_WALLET_ERROR = -4;
     static constexpr int RPC_WALLET_INSUFFICIENT_FUNDS = -6;
+    static constexpr int RPC_DESERIALIZATION_ERROR = -22;
 };
 
 // RPC method result
