@@ -2035,6 +2035,16 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
             " and " + std::to_string(Validator::MAX_STAKING_DAYS));
     }
     
+    // Check if we are receiving a raw transaction (Client-Side Signing)
+    // If params[0] is a long hex string, treat it as a raw transaction
+    if (params.size() > 0 && params[0].is_string() && params[0].get<std::string>().length() > 100) {
+        // Assume this is a raw hex transaction
+        std::string rawTxHex = params[0].get<std::string>();
+        JsonValue rawParams = JsonValue(JsonValue::array());
+        rawParams.push_back(rawTxHex);
+        return sendRawTransaction(rawParams);
+    }
+
     // Check if wallet is available
     if (!wallet) {
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
@@ -2131,14 +2141,20 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     }
     
     // Create validator record (will be finalized when block is mined)
-    Validator validator(address, stakeAmount, stakingDays);
+    // Initialize with 0 stake and pending status to prevent fake staking
+    // The stake will be added when the STAKE transaction is confirmed on-chain
+    Validator validator(address, 0.0, stakingDays);
     validator.setPublicKey(pubKeyForValidator);
+    validator.setPending(true);
     
     // Register validator in blockchain
-    blockchain->registerValidator(validator);
+    if (!blockchain->registerValidator(validator)) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR,
+            "Failed to register validator in blockchain.");
+    }
     
     LOG_API(LogLevel::INFO, "✅ Validator registered: " + address + ", Stake: " + 
-            std::to_string(stakeAmount) + " GXC, Days: " + std::to_string(stakingDays) +
+            std::to_string(stakeAmount) + " GXC (Pending), Days: " + std::to_string(stakingDays) +
             ", TX: " + stakeTxHash);
     
     JsonValue result;
@@ -2628,16 +2644,20 @@ JsonValue RPCAPI::registerExternalValidator(const JsonValue& params) {
             "Please fund the address first before registering as a validator.");
     }
     
-    // Create a pending validator record
-    // Note: The actual stake transaction will need to be created by the external wallet
-    Validator validator(address, stakeAmount, stakingDays);
+    // Create a pending validator record with 0 stake
+    // The actual stake will be added when the STAKE transaction is confirmed on-chain
+    // This prevents fake staking without locking funds
+    Validator validator(address, 0.0, stakingDays);
     if (!publicKey.empty()) {
         validator.setPublicKey(publicKey);
     }
     validator.setPending(true); // Mark as pending until stake tx is confirmed
     
     // Register validator in blockchain (pending status)
-    blockchain->registerValidator(validator);
+    if (!blockchain->registerValidator(validator)) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR,
+            "Failed to register validator. Check logs for details.");
+    }
     
     LOG_API(LogLevel::INFO, "✅ External validator registered (pending stake confirmation): " + address + 
             ", Stake: " + std::to_string(stakeAmount) + " GXC, Days: " + std::to_string(stakingDays));

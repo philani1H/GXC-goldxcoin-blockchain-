@@ -673,14 +673,22 @@ void Blockchain::updateUtxoSet(const Block& block) {
             bool found = false;
             for (auto& v : validators) {
                 if (v.getAddress() == stakerAddress) {
-                    // Use proper removeStake method
                     double currentStake = v.getStakeAmount();
+
+                    // Deduct from stake first, then rewards
                     if (currentStake >= unstakeAmount) {
                         v.removeStake(unstakeAmount);
                     } else {
-                        LOG_BLOCKCHAIN(LogLevel::WARNING, "UNSTAKE: Requested " + std::to_string(unstakeAmount) +
-                                      " but only " + std::to_string(currentStake) + " staked");
+                        // Withdraw full stake
                         v.removeStake(currentStake);
+
+                        // Withdraw remainder from rewards
+                        double remaining = unstakeAmount - currentStake;
+                        if (remaining > 0) {
+                            v.withdrawRewards(remaining);
+                            LOG_BLOCKCHAIN(LogLevel::INFO, "UNSTAKE: Withdrew " + std::to_string(remaining) +
+                                          " GXC from rewards.");
+                        }
                     }
                     
                     validatorMap[stakerAddress] = v;
@@ -1129,9 +1137,13 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
             return false;
         }
 
-        if (it->second.getStakeAmount() < unstakeAmount) {
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "UNSTAKE failed: Insufficient stake. Has " +
-                          std::to_string(it->second.getStakeAmount()) + " GXC, trying to unstake " + 
+        // Check stake + accumulated rewards
+        double availableTotal = it->second.getStakeAmount() + it->second.getTotalRewards();
+        if (availableTotal < unstakeAmount) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "UNSTAKE failed: Insufficient funds (stake + rewards). Has " +
+                          std::to_string(availableTotal) + " GXC (Stake: " +
+                          std::to_string(it->second.getStakeAmount()) + ", Rewards: " +
+                          std::to_string(it->second.getTotalRewards()) + "), trying to unstake " +
                           std::to_string(unstakeAmount) + " GXC");
             return false;
         }
@@ -1172,6 +1184,20 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
                           std::to_string(it->second.amount) + " GXC");
             return false;
         }
+
+        // Verify that the input's signature is authorized to spend the UTXO
+        // The public key in the input must generate the address in the UTXO's script/address
+        const TransactionOutput& utxo = it->second;
+        if (!Transaction::verifyScript(input.signature, input.publicKey, utxo.script.empty() ? utxo.address : utxo.script)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input signature verification failed for UTXO: " + utxoKey);
+            return false;
+        }
+    }
+
+    // Verify signatures (matches message and public key)
+    if (!tx.validateSignatures()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction signature validation failed: " + tx.getHash());
+        return false;
     }
     
     // Validate amounts
@@ -1817,12 +1843,13 @@ bool Blockchain::verifyInputReferences(const Transaction& tx) const {
 }
 
 // Validator management methods
-void Blockchain::registerValidator(const Validator& validator) {
+bool Blockchain::registerValidator(const Validator& validator) {
     std::lock_guard<std::mutex> lock(chainMutex);
     
-    if (!validator.isValidValidator()) {
+    // Allow pending validators (waiting for stake confirmation) to be registered
+    if (!validator.isValidValidator() && !validator.getIsPending()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid validator: " + validator.getAddress());
-        return;
+        return false;
     }
     
     // Check if validator already exists
@@ -1843,10 +1870,14 @@ void Blockchain::registerValidator(const Validator& validator) {
     try {
         if (!Database::getInstance().storeValidator(validator)) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to persist validator: " + validator.getAddress());
+            return false;
         }
     } catch (const std::exception& e) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Exception persisting validator: " + std::string(e.what()));
+        return false;
     }
+
+    return true;
 }
 
 void Blockchain::unregisterValidator(const std::string& address) {

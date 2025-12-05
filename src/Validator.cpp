@@ -8,8 +8,8 @@ const double Validator::MIN_STAKE = 100.0;
 const uint32_t Validator::MIN_STAKING_DAYS = 14;
 const uint32_t Validator::MAX_STAKING_DAYS = 365;
 
-Validator::Validator() 
-    : address(""), stakeAmount(0.0), stakingDays(0), stakeStartTime(0), 
+Validator::Validator()
+    : address(""), stakeAmount(0.0), stakingDays(0), stakeStartTime(0),
       isActive(false), publicKey(""), signature(""),
       blocksProduced(0), missedBlocks(0), uptime(0.0),
       totalRewards(0.0), pendingRewards(0.0),
@@ -29,7 +29,7 @@ void Validator::stake(double amount, uint32_t days) {
     if (amount < MIN_STAKE) {
         return; // Don't stake if below minimum
     }
-    
+
     stakeAmount = amount;
     stakingDays = days;
     stakeStartTime = std::time(nullptr);
@@ -44,6 +44,12 @@ void Validator::unstake() {
 
 void Validator::addStake(double amount) {
     stakeAmount += amount;
+
+    // If stake meets minimum, activate validator
+    if (stakeAmount >= MIN_STAKE) {
+        isActive = true;
+        isPending = false; // Clear pending status
+    }
 }
 
 void Validator::removeStake(double amount) {
@@ -51,7 +57,7 @@ void Validator::removeStake(double amount) {
         amount = stakeAmount; // Can't remove more than we have
     }
     stakeAmount -= amount;
-    
+
     // If stake drops below minimum, deactivate validator
     if (stakeAmount < MIN_STAKE) {
         isActive = false;
@@ -107,6 +113,13 @@ void Validator::addReward(double amount) {
 void Validator::distributePendingRewards() {
     totalRewards += pendingRewards;
     pendingRewards = 0.0;
+}
+
+void Validator::withdrawRewards(double amount) {
+    if (amount > totalRewards) {
+        amount = totalRewards;
+    }
+    totalRewards -= amount;
 }
 
 double Validator::calculateAPY() const {
