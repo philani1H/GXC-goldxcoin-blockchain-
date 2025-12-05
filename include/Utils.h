@@ -82,6 +82,7 @@ namespace Utils {
     uint64_t nextPowerOfTwo(uint64_t value);
     
     // Validation utilities
+    bool isNumeric(const std::string& str);
     bool isValidHex(const std::string& hex);
     bool isValidBase64(const std::string& base64);
     bool isValidAmount(double amount);

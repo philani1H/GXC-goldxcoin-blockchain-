@@ -135,4 +135,7 @@ public:
     void addOutput(const TransactionOutput& output);
     void clearInputs();
     void clearOutputs();
+
+    // Script verification
+    static bool verifyScript(const std::string& signature, const std::string& publicKey, const std::string& scriptPubKey);
 };
