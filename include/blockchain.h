@@ -161,7 +161,7 @@ public:
     // bool executeProposal(const std::string& proposalId);
     
     // Validator management
-    void registerValidator(const Validator& validator);
+    bool registerValidator(const Validator& validator);
     void unregisterValidator(const std::string& address);
     bool slashValidator(const std::string& address, double amount, const std::string& reason);
     std::vector<Validator> getActiveValidators() const;

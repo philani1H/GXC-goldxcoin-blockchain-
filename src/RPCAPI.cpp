@@ -2648,7 +2648,10 @@ JsonValue RPCAPI::registerExternalValidator(const JsonValue& params) {
     validator.setPending(true); // Mark as pending until stake tx is confirmed
     
     // Register validator in blockchain (pending status)
-    blockchain->registerValidator(validator);
+    if (!blockchain->registerValidator(validator)) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR,
+            "Failed to register validator. Check logs for details.");
+    }
     
     LOG_API(LogLevel::INFO, "✅ External validator registered (pending stake confirmation): " + address + 
             ", Stake: " + std::to_string(stakeAmount) + " GXC, Days: " + std::to_string(stakingDays));

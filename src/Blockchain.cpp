@@ -1831,13 +1831,13 @@ bool Blockchain::verifyInputReferences(const Transaction& tx) const {
 }
 
 // Validator management methods
-void Blockchain::registerValidator(const Validator& validator) {
+bool Blockchain::registerValidator(const Validator& validator) {
     std::lock_guard<std::mutex> lock(chainMutex);
     
     // Allow pending validators (waiting for stake confirmation) to be registered
     if (!validator.isValidValidator() && !validator.getIsPending()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid validator: " + validator.getAddress());
-        return;
+        return false;
     }
     
     // Check if validator already exists
@@ -1858,10 +1858,14 @@ void Blockchain::registerValidator(const Validator& validator) {
     try {
         if (!Database::getInstance().storeValidator(validator)) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to persist validator: " + validator.getAddress());
+            return false;
         }
     } catch (const std::exception& e) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Exception persisting validator: " + std::string(e.what()));
+        return false;
     }
+
+    return true;
 }
 
 void Blockchain::unregisterValidator(const std::string& address) {
