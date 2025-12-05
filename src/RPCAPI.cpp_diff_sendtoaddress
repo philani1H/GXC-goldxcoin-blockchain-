@@ -1,0 +1,55 @@
+<<<<<<< SEARCH
+    // Check if wallet is available
+    if (!wallet) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
+    }
+
+    // THIRD-PARTY WALLET SUPPORT:
+    // Determine which address to send from
+    std::string sendingFrom = fromAddress.empty() ? wallet->getAddress() : fromAddress;
+
+    // If a from_address is specified, verify we control it
+    if (!fromAddress.empty()) {
+        if (!wallet->controlsAddress(fromAddress)) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER,
+                "Wallet does not control address: " + fromAddress +
+                ". Import the private key first using 'importprivkey'.");
+        }
+        if (!wallet->canSignForAddress(fromAddress)) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER,
+                "Address " + fromAddress + " is watch-only. Import the private key to enable sending.");
+        }
+    }
+=======
+    // Check if we are receiving a raw transaction (Client-Side Signing)
+    // If params[0] is a long hex string, treat it as a raw transaction
+    if (params.size() > 0 && params[0].is_string() && params[0].get<std::string>().length() > 100) {
+        // Assume this is a raw hex transaction
+        std::string rawTxHex = params[0].get<std::string>();
+        JsonValue rawParams = JsonValue(JsonValue::array());
+        rawParams.push_back(rawTxHex);
+        return sendRawTransaction(rawParams);
+    }
+
+    // Check if wallet is available
+    if (!wallet) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
+    }
+
+    // THIRD-PARTY WALLET SUPPORT:
+    // Determine which address to send from
+    std::string sendingFrom = fromAddress.empty() ? wallet->getAddress() : fromAddress;
+
+    // If a from_address is specified, verify we control it
+    if (!fromAddress.empty()) {
+        if (!wallet->controlsAddress(fromAddress)) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER,
+                "Wallet does not control address: " + fromAddress +
+                ". Import the private key first using 'importprivkey'.");
+        }
+        if (!wallet->canSignForAddress(fromAddress)) {
+            throw RPCException(RPCException::RPC_INVALID_PARAMETER,
+                "Address " + fromAddress + " is watch-only. Import the private key to enable sending.");
+        }
+    }
+>>>>>>> REPLACE

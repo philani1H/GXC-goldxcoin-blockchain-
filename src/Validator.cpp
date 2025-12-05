@@ -44,6 +44,12 @@ void Validator::unstake() {
 
 void Validator::addStake(double amount) {
     stakeAmount += amount;
+
+    // If stake meets minimum, activate validator
+    if (stakeAmount >= MIN_STAKE) {
+        isActive = true;
+        isPending = false; // Clear pending status
+    }
 }
 
 void Validator::removeStake(double amount) {
