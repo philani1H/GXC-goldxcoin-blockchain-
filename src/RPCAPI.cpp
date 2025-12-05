@@ -1074,12 +1074,39 @@ JsonValue RPCAPI::sendRawTransaction(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing raw transaction data parameter");
     }
     
-    std::string rawTx = params[0].get<std::string>();
+    std::string rawTxHex = params[0].get<std::string>();
     
-    // In a real implementation, would decode and broadcast the transaction
-    LOG_API(LogLevel::INFO, "Broadcasting raw transaction");
-    
-    return "transaction_hash";
+    // 1. Decode hex to string/bytes
+    std::string rawTxData;
+    try {
+        std::vector<uint8_t> bytes = Utils::fromHex(rawTxHex);
+        rawTxData = std::string(bytes.begin(), bytes.end());
+    } catch (...) {
+        throw RPCException(RPCException::RPC_DESERIALIZATION_ERROR, "Invalid hex encoding");
+    }
+
+    // 2. Deserialize transaction
+    Transaction tx;
+    if (!tx.deserialize(rawTxData)) {
+        throw RPCException(RPCException::RPC_DESERIALIZATION_ERROR, "Failed to deserialize transaction");
+    }
+
+    LOG_API(LogLevel::INFO, "Received raw transaction: " + tx.getHash());
+
+    // 3. Add to blockchain (this performs validation including signatures and UTXOs)
+    if (blockchain->addTransaction(tx)) {
+        // Broadcast to network
+        if (network) {
+            network->broadcastTransaction(tx);
+            LOG_API(LogLevel::INFO, "Broadcasting transaction: " + tx.getHash());
+        } else {
+            LOG_API(LogLevel::WARNING, "Network not initialized, cannot broadcast transaction: " + tx.getHash());
+        }
+
+        return tx.getHash();
+    } else {
+        throw RPCException(RPCException::RPC_VERIFY_REJECTED, "Transaction verification failed");
+    }
 }
 
 JsonValue RPCAPI::getTransaction(const JsonValue& params) {
@@ -2232,9 +2259,50 @@ JsonValue RPCAPI::unstake(const JsonValue& params) {
 }
 
 JsonValue RPCAPI::addStake(const JsonValue& params) {
+    // Check if we are receiving a raw transaction (Client-Side Signing)
+    if (params.size() == 1 && params[0].is_string() && params[0].get<std::string>().length() > 100) {
+        // Assume this is a raw hex transaction
+        // Use sendRawTransaction logic but verify it is a STAKE transaction
+        std::string rawTxHex = params[0].get<std::string>();
+
+        std::string rawTxData;
+        try {
+            std::vector<uint8_t> bytes = Utils::fromHex(rawTxHex);
+            rawTxData = std::string(bytes.begin(), bytes.end());
+        } catch (...) {
+            throw RPCException(RPCException::RPC_DESERIALIZATION_ERROR, "Invalid hex encoding");
+        }
+
+        Transaction tx;
+        if (!tx.deserialize(rawTxData)) {
+            throw RPCException(RPCException::RPC_DESERIALIZATION_ERROR, "Failed to deserialize transaction");
+        }
+
+        // Verify it is a STAKE transaction
+        if (tx.getType() != TransactionType::STAKE) {
+             throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Transaction is not a STAKE transaction");
+        }
+
+        // Add to blockchain
+        if (blockchain->addTransaction(tx)) {
+            JsonValue result;
+            result["success"] = true;
+            result["txid"] = tx.getHash();
+            result["message"] = "Stake transaction broadcasted successfully";
+            return result;
+        } else {
+             throw RPCException(RPCException::RPC_VERIFY_REJECTED, "Stake transaction verification failed");
+        }
+    }
+
+    // Legacy Server-Side Signing Logic (Keep for backward compatibility or fail if desired,
+    // but the prompt implies refactoring logic. If params match old signature, we can keep it or deprecate it.
+    // Given the prompt "Refactor the addstake logic to accept a signed raw transaction", I will prioritize that.
+    // However, to avoid breaking existing internal tools if any, I'll keep the old path as fallback if params match old signature.)
+
     if (params.size() < 2) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-            "Missing parameters: address, additionalAmount");
+            "Invalid parameters. Usage: addstake <raw_hex_transaction> OR addstake <address> <amount>");
     }
     
     std::string address = params[0].get<std::string>();
@@ -2254,7 +2322,7 @@ JsonValue RPCAPI::addStake(const JsonValue& params) {
     // Check if wallet controls this address (either main wallet or imported)
     if (!wallet->controlsAddress(address)) {
         std::string errorMsg = "Wallet does not control this address: " + address + ". ";
-        errorMsg += "To add stake from a third-party wallet, first import its private key using 'importprivkey' RPC method.";
+        errorMsg += "For client-side signing, pass the raw signed transaction hex as the single argument to addstake.";
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, errorMsg);
     }
     
@@ -2280,9 +2348,32 @@ JsonValue RPCAPI::addStake(const JsonValue& params) {
     
     for (auto& validator : validators) {
         if (validator.getAddress() == address) {
-            validator.addStake(additionalAmount);
-            found = true;
-            break;
+            // Create proper STAKE transaction using wallet
+            try {
+                const auto& utxoSet = blockchain->getUtxoSet();
+                Transaction stakeTx;
+
+                if (address == wallet->getAddress()) {
+                     stakeTx = wallet->createStakeTransaction(additionalAmount, utxoSet, fee);
+                } else {
+                     stakeTx = wallet->createStakeTransactionFrom(address, additionalAmount, utxoSet, fee);
+                }
+
+                if (blockchain->addTransaction(stakeTx)) {
+                     LOG_API(LogLevel::INFO, "Additional stake added via tx: " + stakeTx.getHash());
+                     JsonValue result;
+                     result["success"] = true;
+                     result["address"] = address;
+                     result["additional_amount"] = additionalAmount;
+                     result["txid"] = stakeTx.getHash();
+                     result["message"] = "Additional stake transaction broadcasted";
+                     return result;
+                } else {
+                     throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to add stake transaction");
+                }
+            } catch (const std::exception& e) {
+                 throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Failed to create stake transaction: " + std::string(e.what()));
+            }
         }
     }
     
@@ -2291,16 +2382,7 @@ JsonValue RPCAPI::addStake(const JsonValue& params) {
             "Validator not found for address: " + address);
     }
     
-    LOG_API(LogLevel::INFO, "Additional stake added: " + address + ", Amount: " + 
-            std::to_string(additionalAmount) + " GXC");
-    
-    JsonValue result;
-    result["success"] = true;
-    result["address"] = address;
-    result["additional_amount"] = additionalAmount;
-    result["message"] = "Additional stake added successfully";
-    
-    return result;
+    return JsonValue(); // Should be unreachable
 }
 
 JsonValue RPCAPI::getValidators(const JsonValue& params) {
