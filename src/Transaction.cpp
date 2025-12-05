@@ -462,6 +462,7 @@ void Transaction::clearOutputs() {
 }
 
 // Validation function: verify that the scriptSig in the inputs matches the scriptPubKey of the UTXOs being spent
+// Validates signature against public key and public key against script/address
 bool Transaction::verifyScript(const std::string& signature, const std::string& publicKey, const std::string& scriptPubKey) {
     // This is a simplified P2PKH script verification
     // scriptPubKey format: "OP_DUP OP_HASH160 <address> OP_EQUALVERIFY OP_CHECKSIG"

@@ -1172,6 +1172,20 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
                           std::to_string(it->second.amount) + " GXC");
             return false;
         }
+
+        // Verify that the input's signature is authorized to spend the UTXO
+        // The public key in the input must generate the address in the UTXO's script/address
+        const TransactionOutput& utxo = it->second;
+        if (!Transaction::verifyScript(input.signature, input.publicKey, utxo.script.empty() ? utxo.address : utxo.script)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction input signature verification failed for UTXO: " + utxoKey);
+            return false;
+        }
+    }
+
+    // Verify signatures (matches message and public key)
+    if (!tx.validateSignatures()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Transaction signature validation failed: " + tx.getHash());
+        return false;
     }
     
     // Validate amounts
