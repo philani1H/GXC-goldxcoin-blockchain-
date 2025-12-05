@@ -1834,7 +1834,8 @@ bool Blockchain::verifyInputReferences(const Transaction& tx) const {
 void Blockchain::registerValidator(const Validator& validator) {
     std::lock_guard<std::mutex> lock(chainMutex);
     
-    if (!validator.isValidValidator()) {
+    // Allow pending validators (waiting for stake confirmation) to be registered
+    if (!validator.isValidValidator() && !validator.getIsPending()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid validator: " + validator.getAddress());
         return;
     }

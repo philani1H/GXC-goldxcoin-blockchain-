@@ -2035,6 +2035,16 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
             " and " + std::to_string(Validator::MAX_STAKING_DAYS));
     }
     
+    // Check if we are receiving a raw transaction (Client-Side Signing)
+    // If params[0] is a long hex string, treat it as a raw transaction
+    if (params.size() > 0 && params[0].is_string() && params[0].get<std::string>().length() > 100) {
+        // Assume this is a raw hex transaction
+        std::string rawTxHex = params[0].get<std::string>();
+        JsonValue rawParams = JsonValue(JsonValue::array());
+        rawParams.push_back(rawTxHex);
+        return sendRawTransaction(rawParams);
+    }
+
     // Check if wallet is available
     if (!wallet) {
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
