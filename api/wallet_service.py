@@ -887,7 +887,7 @@ class WalletService:
     
     def create_user(self, username, email, password, backup_phrase=None):
         """Create a new user account"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -929,7 +929,7 @@ class WalletService:
     
     def get_user_info(self, user_id):
         """Get user information by user_id"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -957,7 +957,7 @@ class WalletService:
     
     def authenticate_user(self, username, password):
         """Authenticate user and return JWT token"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1008,7 +1008,7 @@ class WalletService:
     
     def create_wallet(self, user_id, wallet_name, password, wallet_type='standard'):
         """Create a new wallet for user - returns all data needed for wallet access"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1107,7 +1107,7 @@ class WalletService:
     
     def get_wallet(self, wallet_id):
         """Get a single wallet by ID"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1145,7 +1145,7 @@ class WalletService:
     
     def get_user_wallets(self, user_id):
         """Get all wallets for a user with real blockchain balances"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1193,7 +1193,7 @@ class WalletService:
     
     def get_wallet_balance(self, wallet_id, user_id):
         """Get real balance for a specific wallet"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1241,7 +1241,7 @@ class WalletService:
     
     def get_wallet_transactions(self, wallet_id, user_id, limit=50):
         """Get real transactions for a wallet from blockchain"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1266,7 +1266,7 @@ class WalletService:
     
     def send_transaction(self, wallet_id, user_id, to_address, amount, password, fee=None):
         """Send transaction using real blockchain - supports third-party wallets"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1367,7 +1367,7 @@ class WalletService:
     
     def register_validator(self, wallet_id, user_id, stake_amount, staking_days, password):
         """Register wallet as a validator"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1461,7 +1461,7 @@ class WalletService:
     
     def get_validator_status(self, wallet_id, user_id):
         """Get validator status for a wallet"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1501,7 +1501,7 @@ class WalletService:
     
     def store_backup(self, user_id, wallet_id, storage_type, storage_reference, encryption_hint=None):
         """Store wallet backup reference"""
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = self.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -1717,14 +1717,9 @@ def send_page(wallet_id):
             flash(result.get('error', 'Transaction failed'), 'error')
     
     # Get wallet info
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
-                  (wallet_id, user['user_id']))
-    wallet = cursor.fetchone()
-    conn.close()
+    wallet = wallet_service.get_wallet(wallet_id)
     
-    if not wallet:
+    if not wallet or wallet['user_id'] != user['user_id']:
         flash('Wallet not found', 'error')
         return redirect(url_for('dashboard'))
     
@@ -1733,7 +1728,7 @@ def send_page(wallet_id):
     balance = balance_result.get('balance', 0.0) if balance_result['success'] else 0.0
     
     return render_template('send.html',
-                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2]},
+                         wallet=wallet,
                          balance=balance,
                          network_info=NETWORK_INFO,
                          user=user)
@@ -1747,19 +1742,14 @@ def receive_page(wallet_id):
         return redirect(url_for('login_page'))
     
     # Get wallet info
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
-                  (wallet_id, user['user_id']))
-    wallet = cursor.fetchone()
-    conn.close()
+    wallet = wallet_service.get_wallet(wallet_id)
     
-    if not wallet:
+    if not wallet or wallet['user_id'] != user['user_id']:
         flash('Wallet not found', 'error')
         return redirect(url_for('dashboard'))
     
     return render_template('receive.html',
-                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2]},
+                         wallet=wallet,
                          network_info=NETWORK_INFO,
                          user=user)
 
@@ -1778,19 +1768,14 @@ def wallet_history(wallet_id):
     transactions = tx_result.get('transactions', []) if tx_result['success'] else []
     
     # Get wallet info
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
-                  (wallet_id, user['user_id']))
-    wallet = cursor.fetchone()
-    conn.close()
+    wallet = wallet_service.get_wallet(wallet_id)
     
-    if not wallet:
+    if not wallet or wallet['user_id'] != user['user_id']:
         flash('Wallet not found', 'error')
         return redirect(url_for('dashboard'))
     
     return render_template('history.html',
-                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2]},
+                         wallet=wallet,
                          transactions=transactions,
                          network_info=NETWORK_INFO,
                          user=user)
@@ -1805,7 +1790,7 @@ def wallet_settings(wallet_id):
     
     if request.method == 'POST':
         data = request.form
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = wallet_service.get_db_connection()
         cursor = conn.cursor()
         
         if 'wallet_name' in data:
@@ -1818,20 +1803,14 @@ def wallet_settings(wallet_id):
         return redirect(url_for('wallet_settings', wallet_id=wallet_id))
     
     # Get wallet info
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT wallet_id, wallet_name, address, wallet_type, created_at FROM wallets WHERE wallet_id = ? AND user_id = ?', 
-                  (wallet_id, user['user_id']))
-    wallet = cursor.fetchone()
-    conn.close()
+    wallet = wallet_service.get_wallet(wallet_id)
     
-    if not wallet:
+    if not wallet or wallet['user_id'] != user['user_id']:
         flash('Wallet not found', 'error')
         return redirect(url_for('dashboard'))
     
     return render_template('settings.html',
-                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2], 
-                                'wallet_type': wallet[3], 'created_at': wallet[4]},
+                         wallet=wallet,
                          network_info=NETWORK_INFO,
                          user=user)
 
@@ -1844,14 +1823,9 @@ def staking_page(wallet_id):
         return redirect(url_for('login_page'))
     
     # Get wallet info
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
-                  (wallet_id, user['user_id']))
-    wallet = cursor.fetchone()
-    conn.close()
+    wallet = wallet_service.get_wallet(wallet_id)
     
-    if not wallet:
+    if not wallet or wallet['user_id'] != user['user_id']:
         flash('Wallet not found', 'error')
         return redirect(url_for('dashboard'))
     
@@ -1896,14 +1870,9 @@ def become_validator_page(wallet_id):
             flash(result.get('error', 'Validator registration failed'), 'error')
     
     # Get wallet info
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT wallet_id, wallet_name, address FROM wallets WHERE wallet_id = ? AND user_id = ?', 
-                  (wallet_id, user['user_id']))
-    wallet = cursor.fetchone()
-    conn.close()
+    wallet = wallet_service.get_wallet(wallet_id)
     
-    if not wallet:
+    if not wallet or wallet['user_id'] != user['user_id']:
         flash('Wallet not found', 'error')
         return redirect(url_for('dashboard'))
     
@@ -1923,7 +1892,7 @@ def become_validator_page(wallet_id):
     MAX_STAKING_DAYS = 365
     
     return render_template('become_validator.html',
-                         wallet={'wallet_id': wallet[0], 'wallet_name': wallet[1], 'address': wallet[2]},
+                         wallet=wallet,
                          balance=balance,
                          min_stake=MIN_STAKE,
                          min_staking_days=MIN_STAKING_DAYS,
