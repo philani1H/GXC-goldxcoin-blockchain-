@@ -1325,15 +1325,24 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
     std::string sendingFrom = fromAddress.empty() ? wallet->getAddress() : fromAddress;
     
     // If a from_address is specified, verify we control it
+    // 
+    // NOTE FOR THIRD-PARTY WALLET DEVELOPERS:
+    // This method requires importing your private key, which defeats decentralization.
+    // For true decentralized operation, use 'sendrawtransaction' with client-signed transactions.
+    // See THIRD_PARTY_WALLET_GUIDE.md for proper integration.
     if (!fromAddress.empty()) {
         if (!wallet->controlsAddress(fromAddress)) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-                "Wallet does not control address: " + fromAddress + 
-                ". Import the private key first using 'importprivkey'.");
+                "Wallet does not control address: " + fromAddress + ". " +
+                "RECOMMENDED: Use 'sendrawtransaction' with a client-signed transaction for decentralized operation. " +
+                "See THIRD_PARTY_WALLET_GUIDE.md. " +
+                "Alternative: Import private key using 'importprivkey' (not recommended for security).");
         }
         if (!wallet->canSignForAddress(fromAddress)) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-                "Address " + fromAddress + " is watch-only. Import the private key to enable sending.");
+                "Address " + fromAddress + " is watch-only. " +
+                "RECOMMENDED: Use 'sendrawtransaction' with a client-signed transaction. " +
+                "See THIRD_PARTY_WALLET_GUIDE.md.");
         }
     }
     
@@ -2070,8 +2079,9 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
             errorMsg += ". ";
         }
         
-        errorMsg += "To use a third-party wallet, first import its private key using 'importprivkey' RPC method, "
-                   "or use 'registerexternalvalidator' with a signed message proving ownership.";
+        errorMsg += "RECOMMENDED FOR DECENTRALIZATION: Use 'registerexternalvalidator' with a signed message proving ownership. "
+                   "See THIRD_PARTY_WALLET_GUIDE.md. "
+                   "Alternative: Import private key using 'importprivkey' (not recommended for security).";
         
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, errorMsg);
     }
@@ -2079,8 +2089,9 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     // Verify we can sign for this address (not just watch-only)
     if (!wallet->canSignForAddress(address)) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-            "Address " + address + " is watch-only. Import the private key to enable signing, "
-            "or use 'registerexternalvalidator' with a signed message.");
+            "Address " + address + " is watch-only. " +
+            "RECOMMENDED: Use 'registerexternalvalidator' with a signed message for decentralized operation. " +
+            "See THIRD_PARTY_WALLET_GUIDE.md.");
     }
     
     // Check balance (must have enough for stake + fee)
