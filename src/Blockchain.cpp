@@ -634,9 +634,11 @@ void Blockchain::updateUtxoSet(const Block& block) {
                 }
                 
                 if (!found) {
-                    LOG_BLOCKCHAIN(LogLevel::WARNING, "STAKE TX for unknown validator: " + stakerAddress + 
-                                  ". Amount: " + std::to_string(stakedAmount) + " GXC may be lost!");
-                }
+                    // This should never happen because validateTransaction() checks validator existence
+                    // If we reach here, it means validation was bypassed or there's a race condition
+                    LOG_BLOCKCHAIN(LogLevel::ERROR, "CRITICAL: STAKE TX for unknown validator: " + stakerAddress + 
+                                  ". Amount: " + std::to_string(stakedAmount) + " GXC will be lost! " +
+                                  "This indicates a validation bypass or race condition.");
             }
             
             // Step 6: Add change outputs as UTXOs
@@ -1098,11 +1100,50 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
             return false;
         }
         
-        // Verify inputs reference valid UTXOs (they exist)
+        // CRITICAL FIX: Verify inputs reference valid, unspent UTXOs
+        // This ensures the staker actually has the funds they're trying to stake
         for (const auto& input : tx.getInputs()) {
             std::string utxoKey = input.txHash + "_" + std::to_string(input.outputIndex);
-            if (utxoSet.find(utxoKey) == utxoSet.end()) {
-                LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE input references non-existent UTXO: " + utxoKey);
+            auto it = utxoSet.find(utxoKey);
+            if (it == utxoSet.end()) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE input references non-existent UTXO: " + utxoKey + 
+                              " (double-spend attempt or invalid input)");
+                return false;
+            }
+            
+            // Verify the input amount matches the UTXO amount
+            if (std::abs(it->second.amount - input.amount) > 0.00000001) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE input amount mismatch: input claims " + 
+                              std::to_string(input.amount) + " GXC but UTXO has " + 
+                              std::to_string(it->second.amount) + " GXC");
+                return false;
+            }
+            
+            // Verify the UTXO belongs to the staker (address match)
+            std::string stakerAddress = tx.getSenderAddress();
+            if (stakerAddress.empty() && !tx.getOutputs().empty()) {
+                stakerAddress = tx.getOutputs()[0].address;
+            }
+            if (!stakerAddress.empty() && it->second.address != stakerAddress) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE input UTXO doesn't belong to staker: UTXO address " + 
+                              it->second.address + " != staker address " + stakerAddress);
+                return false;
+            }
+        }
+        
+        // CRITICAL FIX: Verify validator exists before accepting stake transaction
+        // This prevents orphaned stake amounts
+        std::string stakerAddress = tx.getSenderAddress();
+        if (stakerAddress.empty() && !tx.getOutputs().empty()) {
+            stakerAddress = tx.getOutputs()[0].address;
+        }
+        
+        if (!stakerAddress.empty()) {
+            std::lock_guard<std::mutex> lock(chainMutex);
+            auto it = validatorMap.find(stakerAddress);
+            if (it == validatorMap.end()) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE transaction rejected: Validator not registered for address " + 
+                              stakerAddress + ". Register as validator first using 'registervalidator' RPC.");
                 return false;
             }
         }
