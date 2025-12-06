@@ -1071,29 +1071,136 @@ JsonValue RPCAPI::getRawTransaction(const JsonValue& params) {
 
 JsonValue RPCAPI::sendRawTransaction(const JsonValue& params) {
     if (params.size() < 1) {
-        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing raw transaction data parameter");
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Missing raw transaction data parameter. " +
+            "Accepts: hex string OR JSON object with transaction fields.");
     }
     
-    std::string rawTxHex = params[0].get<std::string>();
-    
-    // 1. Decode hex to string/bytes
-    std::string rawTxData;
-    try {
-        std::vector<uint8_t> bytes = Utils::fromHex(rawTxHex);
-        rawTxData = std::string(bytes.begin(), bytes.end());
-    } catch (...) {
-        throw RPCException(RPCException::RPC_DESERIALIZATION_ERROR, "Invalid hex encoding");
-    }
-
-    // 2. Deserialize transaction
     Transaction tx;
-    if (!tx.deserialize(rawTxData)) {
-        throw RPCException(RPCException::RPC_DESERIALIZATION_ERROR, "Failed to deserialize transaction");
+    
+    // FLEXIBLE INPUT: Accept both hex string AND JSON object
+    // This supports React Native, web apps, and any JSON-based client
+    if (params[0].is_string()) {
+        // Traditional hex-encoded transaction
+        std::string rawTxHex = params[0].get<std::string>();
+        
+        // 1. Decode hex to string/bytes
+        std::string rawTxData;
+        try {
+            std::vector<uint8_t> bytes = Utils::fromHex(rawTxHex);
+            rawTxData = std::string(bytes.begin(), bytes.end());
+        } catch (...) {
+            throw RPCException(RPCException::RPC_DESERIALIZATION_ERROR, 
+                "Invalid hex encoding. Use hex string or JSON object.");
+        }
+
+        // 2. Deserialize transaction
+        if (!tx.deserialize(rawTxData)) {
+            throw RPCException(RPCException::RPC_DESERIALIZATION_ERROR, 
+                "Failed to deserialize transaction from hex");
+        }
+        
+        LOG_API(LogLevel::INFO, "Received hex-encoded transaction: " + tx.getHash());
+        
+    } else if (params[0].is_object()) {
+        // JSON transaction object (for React Native, web apps, etc.)
+        // This allows clients to send transactions as JSON directly
+        const JsonValue& txJson = params[0];
+        
+        try {
+            // Parse inputs
+            if (txJson.contains("inputs") && txJson["inputs"].is_array()) {
+                for (const auto& inputJson : txJson["inputs"]) {
+                    TransactionInput input;
+                    input.txHash = inputJson.value("txHash", std::string(""));
+                    input.outputIndex = inputJson.value("outputIndex", 0u);
+                    
+                    // Handle amount as number or string (React Native compatibility)
+                    if (inputJson.contains("amount")) {
+                        if (inputJson["amount"].is_number()) {
+                            input.amount = inputJson["amount"].get<double>();
+                        } else if (inputJson["amount"].is_string()) {
+                            input.amount = std::stod(inputJson["amount"].get<std::string>());
+                        }
+                    }
+                    
+                    input.signature = inputJson.value("signature", std::string(""));
+                    input.publicKey = inputJson.value("publicKey", std::string(""));
+                    tx.addInput(input);
+                }
+            }
+            
+            // Parse outputs
+            if (txJson.contains("outputs") && txJson["outputs"].is_array()) {
+                for (const auto& outputJson : txJson["outputs"]) {
+                    TransactionOutput output;
+                    output.address = outputJson.value("address", std::string(""));
+                    
+                    // Handle amount as number or string
+                    if (outputJson.contains("amount")) {
+                        if (outputJson["amount"].is_number()) {
+                            output.amount = outputJson["amount"].get<double>();
+                        } else if (outputJson["amount"].is_string()) {
+                            output.amount = std::stod(outputJson["amount"].get<std::string>());
+                        }
+                    }
+                    
+                    output.script = outputJson.value("script", std::string(""));
+                    tx.addOutput(output);
+                }
+            }
+            
+            // Parse transaction metadata
+            if (txJson.contains("fee")) {
+                if (txJson["fee"].is_number()) {
+                    tx.setFee(txJson["fee"].get<double>());
+                } else if (txJson["fee"].is_string()) {
+                    tx.setFee(std::stod(txJson["fee"].get<std::string>()));
+                }
+            }
+            
+            tx.setSenderAddress(txJson.value("senderAddress", std::string("")));
+            tx.setReceiverAddress(txJson.value("receiverAddress", std::string("")));
+            tx.setPrevTxHash(txJson.value("prevTxHash", std::string("")));
+            
+            if (txJson.contains("referencedAmount")) {
+                if (txJson["referencedAmount"].is_number()) {
+                    tx.setReferencedAmount(txJson["referencedAmount"].get<double>());
+                } else if (txJson["referencedAmount"].is_string()) {
+                    tx.setReferencedAmount(std::stod(txJson["referencedAmount"].get<std::string>()));
+                }
+            }
+            
+            // Handle transaction type
+            if (txJson.contains("type")) {
+                std::string typeStr = txJson["type"].get<std::string>();
+                if (typeStr == "STAKE") {
+                    tx.setType(TransactionType::STAKE);
+                } else if (typeStr == "UNSTAKE") {
+                    tx.setType(TransactionType::UNSTAKE);
+                } else {
+                    tx.setType(TransactionType::NORMAL);
+                }
+            }
+            
+            // Recalculate hash after setting all fields
+            // Note: The transaction should already be signed by the client
+            // We just need to verify the signature matches
+            
+            LOG_API(LogLevel::INFO, "Received JSON transaction: " + tx.getHash());
+            
+        } catch (const std::exception& e) {
+            throw RPCException(RPCException::RPC_DESERIALIZATION_ERROR, 
+                "Failed to parse JSON transaction: " + std::string(e.what()));
+        }
+        
+    } else {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
+            "Invalid transaction format. Expected hex string or JSON object.");
     }
 
-    LOG_API(LogLevel::INFO, "Received raw transaction: " + tx.getHash());
-
-    // 3. Add to blockchain (this performs validation including signatures and UTXOs)
+    // Validate and add to blockchain (works for both hex and JSON)
+    // This performs full validation including signatures and UTXOs
     if (blockchain->addTransaction(tx)) {
         // Broadcast to network
         if (network) {
@@ -1105,7 +1212,8 @@ JsonValue RPCAPI::sendRawTransaction(const JsonValue& params) {
 
         return tx.getHash();
     } else {
-        throw RPCException(RPCException::RPC_VERIFY_REJECTED, "Transaction verification failed");
+        throw RPCException(RPCException::RPC_VERIFY_REJECTED, 
+            "Transaction verification failed. Check signatures, UTXOs, and balance.");
     }
 }
 
