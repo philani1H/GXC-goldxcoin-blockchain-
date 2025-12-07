@@ -1072,7 +1072,7 @@ JsonValue RPCAPI::getRawTransaction(const JsonValue& params) {
 JsonValue RPCAPI::sendRawTransaction(const JsonValue& params) {
     if (params.size() < 1) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
-            "Missing raw transaction data parameter. " +
+            std::string("Missing raw transaction data parameter. ") +
             "Accepts: hex string OR JSON object with transaction fields.");
     }
     

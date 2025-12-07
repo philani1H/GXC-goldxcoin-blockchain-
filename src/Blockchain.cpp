@@ -658,6 +658,7 @@ void Blockchain::updateUtxoSet(const Block& block) {
                               std::to_string(output.amount) + " GXC");
                 outputIndex++;
             }
+            }
             
             continue; // Skip normal processing
         }
