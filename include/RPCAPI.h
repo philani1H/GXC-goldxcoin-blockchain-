@@ -409,6 +409,8 @@ private:
     JsonValue transactionToJson(const Transaction& tx, uint32_t blockHeight, const std::string& blockHash);
     JsonValue getPeerInfo(const JsonValue& params);
     JsonValue getConnectionCount(const JsonValue& params);
+    JsonValue getMempoolInfo(const JsonValue& params);
+    JsonValue getRawMempool(const JsonValue& params);
     JsonValue addNode(const JsonValue& params);
     JsonValue disconnectNode(const JsonValue& params);
     JsonValue help(const JsonValue& params);

@@ -422,6 +422,10 @@ void RPCAPI::registerMethods() {
         return result;
     };
     
+    // Mempool methods
+    rpcMethods["getmempoolinfo"] = [this](const JsonValue& params) { return getMempoolInfo(params); };
+    rpcMethods["getrawmempool"] = [this](const JsonValue& params) { return getRawMempool(params); };
+    
     // Network methods
     rpcMethods["getpeerinfo"] = [this](const JsonValue& params) { return getPeerInfo(params); };
     rpcMethods["getconnectioncount"] = [this](const JsonValue& params) { return getConnectionCount(params); };
@@ -2050,6 +2054,37 @@ JsonValue RPCAPI::getPeerInfo(const JsonValue& params) {
 JsonValue RPCAPI::getConnectionCount(const JsonValue& params) {
     // In a real implementation, would get actual connection count
     return 3;
+}
+
+JsonValue RPCAPI::getMempoolInfo(const JsonValue& params) {
+    // Get mempool information from blockchain
+    if (!blockchain) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Blockchain not initialized");
+    }
+    
+    // Get mempool size (would access blockchain's pending transactions)
+    // For now, return basic info
+    JsonValue result;
+    result["size"] = 0; // Number of transactions in mempool
+    result["bytes"] = 0; // Total size in bytes
+    result["usage"] = 0; // Memory usage
+    result["maxmempool"] = 300000000; // 300 MB max
+    result["mempoolminfee"] = 0.00001; // Min fee in GXC
+    result["minrelaytxfee"] = 0.00001; // Min relay fee
+    
+    return result;
+}
+
+JsonValue RPCAPI::getRawMempool(const JsonValue& params) {
+    // Get raw mempool (list of transaction hashes)
+    if (!blockchain) {
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Blockchain not initialized");
+    }
+    
+    // Return empty array for now (would list pending transaction hashes)
+    JsonValue result = JsonValue::array();
+    
+    return result;
 }
 
 JsonValue RPCAPI::addNode(const JsonValue& params) {
