@@ -420,6 +420,11 @@ private:
     // Staking and Validator methods
     JsonValue registerValidator(const JsonValue& params);
     JsonValue registerExternalValidator(const JsonValue& params);  // For third-party wallets
+    
+    // External wallet helper methods
+    JsonValue createTransaction(const JsonValue& params);  // Create unsigned transaction template
+    JsonValue getSigningMessage(const JsonValue& params);  // Get message format for signing
+    JsonValue listUnspent(const JsonValue& params);  // List UTXOs for address
     JsonValue stake(const JsonValue& params);
     JsonValue unstake(const JsonValue& params);
     JsonValue addStake(const JsonValue& params);

@@ -1134,6 +1134,7 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         
         // CRITICAL FIX: Verify validator exists before accepting stake transaction
         // This prevents orphaned stake amounts
+        // ALLOW PENDING validators - the STAKE transaction activates them
         std::string stakerAddress = tx.getSenderAddress();
         if (stakerAddress.empty() && !tx.getOutputs().empty()) {
             stakerAddress = tx.getOutputs()[0].address;
@@ -1144,8 +1145,17 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
             auto it = validatorMap.find(stakerAddress);
             if (it == validatorMap.end()) {
                 LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE transaction rejected: Validator not registered for address " + 
-                              stakerAddress + ". Register as validator first using 'registervalidator' RPC.");
+                              stakerAddress + ". Register as validator first using 'registervalidator' or 'registerexternalvalidator' RPC.");
                 return false;
+            }
+            
+            // Log validator status for debugging
+            if (it->second.getIsPending()) {
+                LOG_BLOCKCHAIN(LogLevel::INFO, "STAKE transaction for PENDING validator " + stakerAddress + 
+                              " - this will activate the validator");
+            } else {
+                LOG_BLOCKCHAIN(LogLevel::INFO, "STAKE transaction for ACTIVE validator " + stakerAddress + 
+                              " - adding to existing stake");
             }
         }
         

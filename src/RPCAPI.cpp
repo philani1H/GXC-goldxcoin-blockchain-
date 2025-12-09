@@ -378,6 +378,14 @@ void RPCAPI::registerMethods() {
     rpcMethods["registerexternalvalidator"] = [this](const JsonValue& params) { return registerExternalValidator(params); };
     rpcMethods["gxc_registerExternalValidator"] = [this](const JsonValue& params) { return registerExternalValidator(params); };
     
+    // External wallet helper methods
+    rpcMethods["createtransaction"] = [this](const JsonValue& params) { return createTransaction(params); };
+    rpcMethods["gxc_createTransaction"] = [this](const JsonValue& params) { return createTransaction(params); };
+    rpcMethods["getsigningmessage"] = [this](const JsonValue& params) { return getSigningMessage(params); };
+    rpcMethods["gxc_getSigningMessage"] = [this](const JsonValue& params) { return getSigningMessage(params); };
+    rpcMethods["listunspent"] = [this](const JsonValue& params) { return listUnspent(params); };
+    rpcMethods["gxc_listUnspent"] = [this](const JsonValue& params) { return listUnspent(params); };
+    
     // Third-party wallet import methods
     rpcMethods["importprivkey"] = [this](const JsonValue& params) { return importPrivKey(params); };
     rpcMethods["gxc_importPrivKey"] = [this](const JsonValue& params) { return importPrivKey(params); };
@@ -1205,6 +1213,26 @@ JsonValue RPCAPI::sendRawTransaction(const JsonValue& params) {
 
     // Validate and add to blockchain (works for both hex and JSON)
     // This performs full validation including signatures and UTXOs
+    
+    // DETAILED VALIDATION LOGGING for debugging external wallet issues
+    LOG_API(LogLevel::INFO, "Validating transaction: " + tx.getHash());
+    LOG_API(LogLevel::INFO, "  Inputs: " + std::to_string(tx.getInputs().size()));
+    LOG_API(LogLevel::INFO, "  Outputs: " + std::to_string(tx.getOutputs().size()));
+    LOG_API(LogLevel::INFO, "  Fee: " + std::to_string(tx.getFee()));
+    LOG_API(LogLevel::INFO, "  Type: " + std::to_string(static_cast<int>(tx.getType())));
+    LOG_API(LogLevel::INFO, "  Sender: " + tx.getSenderAddress());
+    LOG_API(LogLevel::INFO, "  Receiver: " + tx.getReceiverAddress());
+    
+    // Check inputs have required fields
+    for (size_t i = 0; i < tx.getInputs().size(); i++) {
+        const auto& input = tx.getInputs()[i];
+        LOG_API(LogLevel::INFO, "  Input[" + std::to_string(i) + "]: txHash=" + input.txHash + 
+                ", outputIndex=" + std::to_string(input.outputIndex) + 
+                ", amount=" + std::to_string(input.amount) +
+                ", hasSignature=" + (input.signature.empty() ? "NO" : "YES") +
+                ", hasPublicKey=" + (input.publicKey.empty() ? "NO" : "YES"));
+    }
+    
     if (blockchain->addTransaction(tx)) {
         // Broadcast to network
         if (network) {
@@ -1216,8 +1244,34 @@ JsonValue RPCAPI::sendRawTransaction(const JsonValue& params) {
 
         return tx.getHash();
     } else {
-        throw RPCException(RPCException::RPC_VERIFY_REJECTED, 
-            "Transaction verification failed. Check signatures, UTXOs, and balance.");
+        // Provide detailed error message
+        std::string errorDetails = "Transaction verification failed for " + tx.getHash() + ". ";
+        
+        // Check common issues
+        if (tx.getInputs().empty()) {
+            errorDetails += "No inputs provided. ";
+        } else {
+            bool hasSignatures = true;
+            bool hasPublicKeys = true;
+            for (const auto& input : tx.getInputs()) {
+                if (input.signature.empty()) hasSignatures = false;
+                if (input.publicKey.empty()) hasPublicKeys = false;
+            }
+            if (!hasSignatures) errorDetails += "Missing signatures on inputs. ";
+            if (!hasPublicKeys) errorDetails += "Missing public keys on inputs. ";
+        }
+        
+        if (tx.getOutputs().empty()) {
+            errorDetails += "No outputs provided. ";
+        }
+        
+        errorDetails += "Check: 1) All inputs have valid signatures and public keys, " +
+                       std::string("2) UTXOs exist and are unspent, ") +
+                       "3) Sufficient balance for amount + fee, " +
+                       "4) Correct network (testnet vs mainnet addresses).";
+        
+        LOG_API(LogLevel::ERROR, errorDetails);
+        throw RPCException(RPCException::RPC_VERIFY_REJECTED, errorDetails);
     }
 }
 
@@ -2795,9 +2849,8 @@ JsonValue RPCAPI::registerExternalValidator(const JsonValue& params) {
             "Please fund the address first before registering as a validator.");
     }
     
-    // Create a pending validator record with 0 stake
+    // Create a pending validator record with 0 stake initially
     // The actual stake will be added when the STAKE transaction is confirmed on-chain
-    // This prevents fake staking without locking funds
     Validator validator(address, 0.0, stakingDays);
     if (!publicKey.empty()) {
         validator.setPublicKey(publicKey);
@@ -2810,8 +2863,39 @@ JsonValue RPCAPI::registerExternalValidator(const JsonValue& params) {
             "Failed to register validator. Check logs for details.");
     }
     
-    LOG_API(LogLevel::INFO, "✅ External validator registered (pending stake confirmation): " + address + 
+    LOG_API(LogLevel::INFO, "✅ External validator registered (pending): " + address + 
             ", Stake: " + std::to_string(stakeAmount) + " GXC, Days: " + std::to_string(stakingDays));
+    
+    // AUTOMATIC STAKE TRANSACTION CREATION
+    // Instead of asking user to manually create STAKE tx, we create it automatically
+    // This requires the user to have imported their private key first
+    std::string stakeTxHash;
+    bool stakeCreated = false;
+    
+    try {
+        // Check if wallet can sign for this address
+        if (wallet && wallet->canSignForAddress(address)) {
+            const auto& utxoSet = blockchain->getUtxoSet();
+            Transaction stakeTx = wallet->createStakeTransactionFrom(address, stakeAmount, utxoSet, fee);
+            
+            LOG_API(LogLevel::INFO, "Created automatic stake transaction: " + stakeTx.getHash());
+            
+            // Add to transaction pool
+            if (blockchain->addTransaction(stakeTx)) {
+                stakeTxHash = stakeTx.getHash();
+                stakeCreated = true;
+                
+                // Save wallet state
+                std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
+                wallet->saveToFile(walletPath);
+                
+                LOG_API(LogLevel::INFO, "✅ Automatic stake transaction added to mempool: " + stakeTxHash);
+            }
+        }
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::WARNING, "Could not create automatic stake transaction: " + std::string(e.what()));
+        // Don't throw - validator is still registered, user can stake manually
+    }
     
     JsonValue result;
     result["success"] = true;
@@ -2819,11 +2903,21 @@ JsonValue RPCAPI::registerExternalValidator(const JsonValue& params) {
     result["stake_amount"] = stakeAmount;
     result["staking_days"] = stakingDays;
     result["weighted_stake"] = validator.getWeightedStake();
-    result["status"] = "pending";
-    result["message"] = "External validator registered successfully. Status: PENDING. "
-                        "Please create a stake transaction from your wallet to complete registration.";
-    result["instructions"] = "To complete registration, send a STAKE transaction of " + 
-                            std::to_string(stakeAmount) + " GXC from address " + address;
+    
+    if (stakeCreated) {
+        result["status"] = "active_pending_confirmation";
+        result["stake_tx"] = stakeTxHash;
+        result["message"] = "External validator registered and stake transaction created! "
+                           "Validator will be fully active after the next block is mined.";
+    } else {
+        result["status"] = "pending";
+        result["message"] = "External validator registered successfully. Status: PENDING. "
+                           "To activate, import your private key using 'importprivkey' and call 'registerexternalvalidator' again, "
+                           "OR manually create a STAKE transaction from your wallet.";
+        result["instructions"] = "Option 1: importprivkey <your_private_key> then call registerexternalvalidator again. "
+                                "Option 2: Send a STAKE transaction of " + std::to_string(stakeAmount) + 
+                                " GXC from address " + address + " using your external wallet.";
+    }
     
     return result;
 }
@@ -3163,6 +3257,175 @@ JsonValue RPCAPI::submitPoSBlock(const JsonValue& params) {
     submitParams.push_back(blockData);
     
     return submitBlock(submitParams);
+}
+
+// ============= EXTERNAL WALLET HELPER METHODS =============
+
+JsonValue RPCAPI::createTransaction(const JsonValue& params) {
+    // Helper method for external wallets to create unsigned transactions
+    // Returns transaction template with UTXOs selected and amounts calculated
+    
+    if (params.size() < 3) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER,
+            "Usage: createtransaction <from_address> <to_address> <amount> [fee]");
+    }
+    
+    std::string fromAddress = params[0].get<std::string>();
+    std::string toAddress = params[1].get<std::string>();
+    double amount = params[2].get<double>();
+    double fee = params.size() > 3 ? params[3].get<double>() : 0.001;
+    
+    // Get UTXOs for sender
+    const auto& utxoSet = blockchain->getUtxoSet();
+    std::vector<TransactionInput> selectedInputs;
+    double totalInput = 0.0;
+    double required = amount + fee;
+    
+    for (const auto& [utxoKey, utxo] : utxoSet) {
+        if (utxo.address == fromAddress) {
+            size_t sepPos = utxoKey.find('_');
+            if (sepPos != std::string::npos) {
+                std::string txHash = utxoKey.substr(0, sepPos);
+                uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
+                
+                TransactionInput input;
+                input.txHash = txHash;
+                input.outputIndex = outputIndex;
+                input.amount = utxo.amount;
+                // Leave signature and publicKey empty - external wallet will fill these
+                
+                selectedInputs.push_back(input);
+                totalInput += utxo.amount;
+                
+                if (totalInput >= required) {
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (totalInput < required) {
+        throw RPCException(RPCException::RPC_WALLET_INSUFFICIENT_FUNDS,
+            "Insufficient funds. Need " + std::to_string(required) + 
+            " GXC, have " + std::to_string(totalInput) + " GXC");
+    }
+    
+    // Calculate change
+    double change = totalInput - amount - fee;
+    
+    // Build transaction template
+    JsonValue result;
+    result["from"] = fromAddress;
+    result["to"] = toAddress;
+    result["amount"] = amount;
+    result["fee"] = fee;
+    result["change"] = change;
+    
+    // Add inputs (unsigned)
+    JsonValue inputsArray = JsonValue::array();
+    for (const auto& input : selectedInputs) {
+        JsonValue inputObj;
+        inputObj["txHash"] = input.txHash;
+        inputObj["outputIndex"] = input.outputIndex;
+        inputObj["amount"] = input.amount;
+        inputObj["signature"] = "";  // External wallet must sign
+        inputObj["publicKey"] = "";  // External wallet must provide
+        inputsArray.push_back(inputObj);
+    }
+    result["inputs"] = inputsArray;
+    
+    // Add outputs
+    JsonValue outputsArray = JsonValue::array();
+    
+    // Main output (to recipient)
+    JsonValue mainOutput;
+    mainOutput["address"] = toAddress;
+    mainOutput["amount"] = amount;
+    outputsArray.push_back(mainOutput);
+    
+    // Change output (if any)
+    if (change > 0.00000001) {
+        JsonValue changeOutput;
+        changeOutput["address"] = fromAddress;
+        changeOutput["amount"] = change;
+        outputsArray.push_back(changeOutput);
+    }
+    result["outputs"] = outputsArray;
+    
+    // Add metadata
+    result["senderAddress"] = fromAddress;
+    result["receiverAddress"] = toAddress;
+    result["type"] = "NORMAL";
+    
+    // Add signing instructions
+    result["instructions"] = "For each input, sign the message: txHash + outputIndex + amount, "
+                            "then add the signature and your public key to the input object. "
+                            "Finally, call sendrawtransaction with the complete transaction.";
+    
+    return result;
+}
+
+JsonValue RPCAPI::getSigningMessage(const JsonValue& params) {
+    // Returns the exact message format that needs to be signed for transaction inputs
+    
+    if (params.size() < 3) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER,
+            "Usage: getsigningmessage <txHash> <outputIndex> <amount>");
+    }
+    
+    std::string txHash = params[0].get<std::string>();
+    uint32_t outputIndex = params[1].get<uint32_t>();
+    double amount = params[2].get<double>();
+    
+    // This is the exact format used in Transaction::validateSignatures()
+    std::string message = txHash + std::to_string(outputIndex) + std::to_string(amount);
+    
+    JsonValue result;
+    result["message"] = message;
+    result["txHash"] = txHash;
+    result["outputIndex"] = outputIndex;
+    result["amount"] = amount;
+    result["instructions"] = "Sign this message with your private key using ECDSA (secp256k1). "
+                            "The signature should be in hex format. "
+                            "Also provide your public key in hex format.";
+    
+    return result;
+}
+
+JsonValue RPCAPI::listUnspent(const JsonValue& params) {
+    // List all unspent transaction outputs (UTXOs) for an address
+    
+    std::string address = "";
+    if (params.size() > 0) {
+        address = params[0].get<std::string>();
+    }
+    
+    const auto& utxoSet = blockchain->getUtxoSet();
+    JsonValue result = JsonValue::array();
+    
+    for (const auto& [utxoKey, utxo] : utxoSet) {
+        // Filter by address if provided
+        if (!address.empty() && utxo.address != address) {
+            continue;
+        }
+        
+        size_t sepPos = utxoKey.find('_');
+        if (sepPos != std::string::npos) {
+            std::string txHash = utxoKey.substr(0, sepPos);
+            uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
+            
+            JsonValue utxoObj;
+            utxoObj["txHash"] = txHash;
+            utxoObj["outputIndex"] = outputIndex;
+            utxoObj["address"] = utxo.address;
+            utxoObj["amount"] = utxo.amount;
+            utxoObj["script"] = utxo.script;
+            
+            result.push_back(utxoObj);
+        }
+    }
+    
+    return result;
 }
 
 // RPCException implementation
