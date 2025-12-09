@@ -7,6 +7,7 @@
 #include <cstring>
 #include <algorithm>
 #include <stdexcept>
+#include <vector>
 
 #define ARGON2_BLOCK_SIZE 1024
 #define ARGON2_QWORDS_IN_BLOCK (ARGON2_BLOCK_SIZE / 8)
@@ -31,12 +32,14 @@ static void blake2b_long(const uint8_t* in, size_t inlen, uint8_t* out, size_t o
     
     uint8_t out_buffer[64];
     uint32_t toproduce = outlen;
-    uint8_t in_buffer[68];
+    
+    // Allocate buffer large enough for length prefix + input
+    std::vector<uint8_t> in_buffer(inlen + 4);
     
     // First block
-    *(uint32_t*)in_buffer = (uint32_t)outlen;
-    std::memcpy(in_buffer + 4, in, inlen);
-    blake2b(in_buffer, inlen + 4, out_buffer, 64);
+    *(uint32_t*)in_buffer.data() = (uint32_t)outlen;
+    std::memcpy(in_buffer.data() + 4, in, inlen);
+    blake2b(in_buffer.data(), inlen + 4, out_buffer, 64);
     std::memcpy(out, out_buffer, 32);
     out += 32;
     toproduce -= 32;

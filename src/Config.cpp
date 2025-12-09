@@ -59,7 +59,7 @@ void Config::setDefaults() {
     // Mining settings
     configMap["enable_mining"] = "false";
     configMap["mining_threads"] = "1";
-    configMap["mining_algorithm"] = "SHA256";
+    configMap["mining_algorithm"] = "GXHASH";  // Default to GXHASH (ASIC-resistant)
     configMap["pool_address"] = "";
     configMap["miner_address"] = "";
     
@@ -503,4 +503,16 @@ void Config::setNetworkMode(bool testnet) {
 bool Config::isInitialized() {
     std::lock_guard<std::mutex> lock(configMutex);
     return initialized;
+}
+
+std::string Config::getMiningAlgorithm() {
+    return get("mining_algorithm", "SHA256");
+}
+
+std::string Config::getPoolAddress() {
+    return get("pool_address", "");
+}
+
+bool Config::isGpuMiningEnabled() {
+    return getBool("enable_gpu_mining", false);
 }

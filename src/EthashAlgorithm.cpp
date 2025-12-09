@@ -128,15 +128,18 @@ void EthashAlgorithm::generate_cache() {
 }
 
 // Calculate dataset item
-void EthashAlgorithm::calc_dataset_item(uint32_t index, uint8_t* output) {
+void EthashAlgorithm::calc_dataset_item(uint32_t index, uint8_t* output) const {
     uint32_t cache_items = cache_size / ETHASH_HASH_BYTES;
-    uint32_t* mix = reinterpret_cast<uint32_t*>(output);
+    
+    // Use a temporary buffer to avoid aliasing issues
+    uint8_t temp[ETHASH_HASH_BYTES];
+    uint32_t* mix = reinterpret_cast<uint32_t*>(temp);
     
     // Initial mix
-    std::memcpy(output, cache + (index % cache_items) * ETHASH_HASH_BYTES, ETHASH_HASH_BYTES);
+    std::memcpy(temp, cache + (index % cache_items) * ETHASH_HASH_BYTES, ETHASH_HASH_BYTES);
     mix[0] ^= index;
     
-    keccak256_raw(output, ETHASH_HASH_BYTES, output);
+    keccak256_raw(temp, ETHASH_HASH_BYTES, temp);
     
     // Mix in parents
     for (uint32_t i = 0; i < ETHASH_DATASET_PARENTS; i++) {
@@ -148,7 +151,7 @@ void EthashAlgorithm::calc_dataset_item(uint32_t index, uint8_t* output) {
         }
     }
     
-    keccak256_raw(output, ETHASH_HASH_BYTES, output);
+    keccak256_raw(temp, ETHASH_HASH_BYTES, output);
 }
 
 // Generate full dataset (for mining)
@@ -177,15 +180,15 @@ bool EthashAlgorithm::hash_light(const uint8_t header_hash[32], uint64_t nonce,
     uint32_t mix_words = ETHASH_MIX_BYTES / 4;
     
     // Combine header and nonce
-    uint8_t seed[40];
+    uint8_t seed[40] = {0};
     std::memcpy(seed, header_hash, 32);
     std::memcpy(seed + 32, &nonce, 8);
     
-    uint8_t seed_hash[32];
+    uint8_t seed_hash[32] = {0};
     keccak256_raw(seed, 40, seed_hash);
     
     // Initialize mix
-    uint32_t mix[ETHASH_MIX_BYTES / 4];
+    uint32_t mix[ETHASH_MIX_BYTES / 4] = {0};
     for (uint32_t i = 0; i < mix_words; i++) {
         mix[i] = reinterpret_cast<uint32_t*>(seed_hash)[i % 8];
     }
@@ -194,7 +197,7 @@ bool EthashAlgorithm::hash_light(const uint8_t header_hash[32], uint64_t nonce,
     for (uint32_t i = 0; i < ETHASH_ACCESSES; i++) {
         uint32_t p = fnv_hash(i ^ reinterpret_cast<uint32_t*>(seed_hash)[0], mix[i % mix_words]) % dataset_items;
         
-        uint8_t dataset_item[ETHASH_HASH_BYTES];
+        uint8_t dataset_item[ETHASH_HASH_BYTES] = {0};
         calc_dataset_item(p, dataset_item);
         
         for (uint32_t j = 0; j < mix_words; j++) {

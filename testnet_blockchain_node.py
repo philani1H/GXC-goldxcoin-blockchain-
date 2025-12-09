@@ -114,7 +114,7 @@ class Blockchain:
             }
         return None
     
-    def get_block_template(self, algorithm='sha256'):
+    def get_block_template(self, algorithm='gxhash'):
         """Get block template for mining"""
         latest = self.get_latest_block()
         if not latest:
@@ -255,7 +255,7 @@ class RPCHandler(BaseHTTPRequestHandler):
             if method == 'getblockchaininfo':
                 result = self.blockchain.get_blockchain_info()
             elif method == 'getblocktemplate' or method == 'gxc_getBlockTemplate':
-                algorithm = params[0].get('algorithm', 'sha256') if params and isinstance(params[0], dict) else 'sha256'
+                algorithm = params[0].get('algorithm', 'gxhash') if params and isinstance(params[0], dict) else 'gxhash'
                 result = self.blockchain.get_block_template(algorithm)
             elif method == 'submitblock' or method == 'gxc_submitBlock':
                 block_data = params[0] if params else {}

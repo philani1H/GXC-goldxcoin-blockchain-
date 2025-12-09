@@ -54,7 +54,7 @@ private:
     void generate_cache();
     
     // Calculate single dataset item
-    void calc_dataset_item(uint32_t index, uint8_t* output);
+    void calc_dataset_item(uint32_t index, uint8_t* output) const;
     
     // Prevent copying
     EthashAlgorithm(const EthashAlgorithm&) = delete;

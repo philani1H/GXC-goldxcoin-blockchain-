@@ -401,6 +401,20 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/gxc
 )
 
+# Test executable for all algorithms
+add_executable(test_all_algorithms
+    tests/test_all_algorithms.cpp
+)
+
+target_link_libraries(test_all_algorithms
+    gxc_core
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    ${LEVELDB_LIBRARY}
+    sqlite3
+    pthread
+)
+
 # Display build configuration
 message(STATUS "")
 message(STATUS "GXC Blockchain Build Configuration:")

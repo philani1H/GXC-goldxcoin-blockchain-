@@ -1005,8 +1005,15 @@ BlockType Blockchain::getNextBlockType() const {
     // Alternate: PoW for even heights, PoS for odd heights
     // But only if we have validators for PoS blocks
     if (currentHeight % 2 == 0) {
-        // Even height: PoW block
-        return BlockType::POW_SHA256;
+        // Even height: PoW block - use configured algorithm
+        std::string algorithm = Config::getMiningAlgorithm();
+        if (algorithm == "ETHASH" || algorithm == "ethash") {
+            return BlockType::POW_ETHASH;
+        } else if (algorithm == "GXHASH" || algorithm == "gxhash") {
+            return BlockType::POW_GXHASH;
+        } else {
+            return BlockType::POW_SHA256;  // Default to SHA256
+        }
     } else {
         // Odd height: PoS block (if validators exist)
         std::lock_guard<std::mutex> lock(chainMutex);
@@ -1021,9 +1028,16 @@ BlockType Blockchain::getNextBlockType() const {
         if (hasValidators) {
             return BlockType::POS;
         } else {
-            // Fallback to PoW if no validators
+            // Fallback to PoW if no validators - use configured algorithm
             LOG_BLOCKCHAIN(LogLevel::WARNING, "getNextBlockType: No validators, using PoW");
-            return BlockType::POW_SHA256;
+            std::string algorithm = Config::getMiningAlgorithm();
+            if (algorithm == "ETHASH" || algorithm == "ethash") {
+                return BlockType::POW_ETHASH;
+            } else if (algorithm == "GXHASH" || algorithm == "gxhash") {
+                return BlockType::POW_GXHASH;
+            } else {
+                return BlockType::POW_SHA256;
+            }
         }
     }
 }
