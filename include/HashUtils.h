@@ -13,6 +13,10 @@ std::string sha256d(const std::string& data);
 // Ethash function (simplified for demonstration)
 std::string ethash(const std::string& data, uint64_t nonce);
 
+
+// GXHash function (ASIC-resistant, memory-hard)
+std::string gxhash(const std::string& data, uint64_t nonce);
+
 // RIPEMD-160 hash function
 std::string ripemd160(const std::string& data);
 

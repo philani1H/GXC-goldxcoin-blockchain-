@@ -9,6 +9,7 @@
 enum class BlockType {
     POW_SHA256,  // Bitcoin-style SHA-256 mining
     POW_ETHASH,  // Ethereum-style Ethash mining
+    POW_GXHASH,  // GXC-specific ASIC-resistant mining
     POS          // Proof-of-Stake validation
 };
 

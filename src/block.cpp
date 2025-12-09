@@ -22,6 +22,8 @@ std::string Block::calculateHash() const {
         return sha256d(ss.str());
     } else if (blockType == BlockType::POW_ETHASH) {
         return ethash(ss.str(), nonce);
+    } else if (blockType == BlockType::POW_GXHASH) {
+        return gxhash(ss.str(), nonce);
     } else {
         // For PoS blocks, we just use SHA-256 for the hash
         return sha256(ss.str());
@@ -32,7 +34,7 @@ void Block::mineBlock(double difficultyIn) {
     difficulty = difficultyIn;
     
     // Only mine if this is a PoW block
-    if (blockType == BlockType::POW_SHA256 || blockType == BlockType::POW_ETHASH) {
+    if (blockType == BlockType::POW_SHA256 || blockType == BlockType::POW_ETHASH || blockType == BlockType::POW_GXHASH) {
         calculateMerkleRoot();
         
         std::string target(64, '0');
