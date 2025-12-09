@@ -1,7 +1,10 @@
 #include "../include/HashUtils.h"
+#include "../include/Argon2id.h"
+#include "../include/Blake2b.h"
 #include <sstream>
 #include <iomanip>
 #include <cstring>
+#include <vector>
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
 
@@ -280,48 +283,37 @@ double hashToValue(const std::string& hash) {
     return static_cast<double>(value);
 }
 
-// GXHash - ASIC-resistant, memory-hard algorithm
-// Combines multiple hash functions with memory-intensive operations
+// GXHash - ASIC-resistant, memory-hard algorithm using Argon2id
+// Production implementation with full Argon2id
 std::string gxhash(const std::string& data, uint64_t nonce) {
-    // Step 1: Prepare input with nonce
+    // Prepare input: data + nonce
+    std::vector<uint8_t> input;
+    input.insert(input.end(), data.begin(), data.end());
+    input.insert(input.end(), (uint8_t*)&nonce, (uint8_t*)&nonce + sizeof(nonce));
+    
+    // Use Argon2id with production parameters
+    // Memory: 64MB, Time: 3 iterations, Parallelism: 4 lanes
+    const uint32_t MEMORY_COST = 65536;  // 64MB (in KB)
+    const uint32_t TIME_COST = 3;
+    const uint32_t PARALLELISM = 4;
+    
+    // Salt derived from data
+    uint8_t salt[16];
+    blake2b(reinterpret_cast<const uint8_t*>(data.data()), data.length(), salt, 16);
+    
+    // Hash with Argon2id
+    uint8_t hash[32];
+    argon2id_hash(input.data(), input.size(),
+                  salt, sizeof(salt),
+                  TIME_COST, MEMORY_COST, PARALLELISM,
+                  hash, 32);
+    
+    // Convert to hex string
     std::stringstream ss;
-    ss << data << nonce;
-    std::string input = ss.str();
-    
-    // Step 2: Initial hash with Keccak-256
-    std::string hash1 = keccak256(input);
-    
-    // Step 3: Memory-hard mixing (simplified Argon2-like)
-    // Create a memory buffer (16KB for performance)
-    const size_t MEMORY_SIZE = 16 * 1024;  // 16KB
-    std::vector<uint8_t> memory(MEMORY_SIZE);
-    
-    // Fill memory with hash-derived data
-    for (size_t i = 0; i < MEMORY_SIZE; i += 32) {
-        std::string temp = sha256(hash1 + std::to_string(i));
-        size_t copy_size = std::min(size_t(32), MEMORY_SIZE - i);
-        std::memcpy(memory.data() + i, temp.data(), copy_size);
+    ss << std::hex << std::setfill('0');
+    for (int i = 0; i < 32; i++) {
+        ss << std::setw(2) << static_cast<int>(hash[i]);
     }
     
-    // Step 4: Multiple mixing rounds (memory-hard)
-    std::string current_hash = hash1;
-    const int ROUNDS = 8;
-    
-    for (int round = 0; round < ROUNDS; round++) {
-        // Mix with memory
-        uint32_t index = (*reinterpret_cast<const uint32_t*>(current_hash.data())) % (MEMORY_SIZE - 32);
-        std::string memory_chunk(reinterpret_cast<char*>(memory.data() + index), 32);
-        
-        // Combine current hash with memory chunk
-        current_hash = sha256d(current_hash + memory_chunk);
-        
-        // Update memory at different location
-        uint32_t write_index = (*reinterpret_cast<const uint32_t*>(current_hash.data() + 4)) % (MEMORY_SIZE - 32);
-        std::memcpy(memory.data() + write_index, current_hash.data(), std::min(size_t(32), MEMORY_SIZE - write_index));
-    }
-    
-    // Step 5: Final hash with Keccak-256
-    std::string final_hash = keccak256(current_hash);
-    
-    return final_hash;
+    return ss.str();
 }

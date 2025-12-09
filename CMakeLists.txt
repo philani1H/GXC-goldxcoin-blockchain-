@@ -170,6 +170,10 @@ set(CORE_SOURCES
     src/Config.cpp
     src/Logger.cpp
     src/Utils.cpp
+    src/Keccak256.cpp
+    src/Blake2b.cpp
+    src/Argon2id.cpp
+    src/EthashAlgorithm.cpp
 )
 
 # Network and API sources
