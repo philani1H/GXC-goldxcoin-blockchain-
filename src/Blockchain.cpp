@@ -853,10 +853,20 @@ bool Blockchain::validateBlockInternal(const Block& block, uint32_t expectedInde
 }
 
 bool Blockchain::validateProofOfWork(const Block& block) const {
-    std::string hash = block.getHash();
+    std::string submittedHash = block.getHash();
     
-    if (hash.empty()) {
+    if (submittedHash.empty()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Block hash is empty");
+        return false;
+    }
+    
+    // CRITICAL: Recalculate hash to verify it's correct
+    std::string calculatedHash = block.calculateHash();
+    
+    if (calculatedHash != submittedHash) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Hash mismatch! Submitted: " + 
+                      submittedHash.substr(0, 16) + "..., Calculated: " + calculatedHash.substr(0, 16) + "...");
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Block type: " + std::to_string(static_cast<int>(block.getBlockType())));
         return false;
     }
     
@@ -866,12 +876,12 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
     
     // For testnet, use easier validation (difficulty 0.1 means 0 leading zeros required)
     // For mainnet, use stricter validation
-    bool isValid = meetsTarget(hash, validationDifficulty);
+    bool isValid = meetsTarget(calculatedHash, validationDifficulty);
     
     if (!isValid) {
         // Count leading zeros for logging
         int leadingZeros = 0;
-        for (char c : hash) {
+        for (char c : calculatedHash) {
             if (c == '0') {
                 leadingZeros++;
             } else {
@@ -879,7 +889,7 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
             }
         }
         size_t requiredZeros = static_cast<size_t>(validationDifficulty);
-        LOG_BLOCKCHAIN(LogLevel::DEBUG, "validateProofOfWork: Hash " + hash.substr(0, 16) + 
+        LOG_BLOCKCHAIN(LogLevel::DEBUG, "validateProofOfWork: Hash " + calculatedHash.substr(0, 16) + 
                       "... has " + std::to_string(leadingZeros) + " leading zeros, required: " + 
                       std::to_string(requiredZeros) + " (difficulty: " + std::to_string(validationDifficulty) + ")");
     }

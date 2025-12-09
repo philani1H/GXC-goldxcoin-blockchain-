@@ -415,6 +415,20 @@ target_link_libraries(test_all_algorithms
     pthread
 )
 
+# Test executable for block validation
+add_executable(test_block_validation
+    tests/test_block_validation.cpp
+)
+
+target_link_libraries(test_block_validation
+    gxc_core
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    ${LEVELDB_LIBRARY}
+    sqlite3
+    pthread
+)
+
 # Display build configuration
 message(STATUS "")
 message(STATUS "GXC Blockchain Build Configuration:")
