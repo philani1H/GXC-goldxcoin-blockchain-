@@ -1514,7 +1514,9 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
     
     // Check balance for the sending address
     double balance = blockchain->getBalance(sendingFrom);
-    double fee = 0.001;
+    
+    // Calculate dynamic fee based on network conditions
+    double fee = blockchain->calculateRecommendedFee();
     double totalRequired = amount + fee;
     
     if (balance < totalRequired) {

@@ -352,8 +352,16 @@ bool Blockchain::addBlock(const Block& block) {
             }
         }
         
-        // Update difficulty
-        // Difficulty adjustment handled automatically
+        // Update difficulty every DIFFICULTY_ADJUSTMENT_INTERVAL blocks
+        uint32_t currentHeight = chain.size();
+        if (currentHeight % DIFFICULTY_ADJUSTMENT_INTERVAL == 0 && currentHeight >= DIFFICULTY_ADJUSTMENT_INTERVAL) {
+            // Use SecurityEngine for advanced difficulty calculation
+            double newDifficulty = getSecurityAdjustedDifficulty();
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Difficulty adjustment at height " + std::to_string(currentHeight) + 
+                          ": " + std::to_string(difficulty) + " → " + std::to_string(newDifficulty) + 
+                          " (SecurityEngine)");
+            difficulty = newDifficulty;
+        }
         
         // Update transaction pool (remove confirmed transactions)
         updateTransactionPool(blockToAdd);
@@ -1480,55 +1488,26 @@ std::vector<Transaction> Blockchain::getPendingTransactions(size_t maxCount) {
 }
 
 double Blockchain::calculateRecommendedFee() const {
-    // Check if dynamic fees are enabled
-    bool dynamicFeesEnabled = Config::getBool("enable_dynamic_fees", true);
-    
-    if (!dynamicFeesEnabled) {
-        // Return base fee if dynamic fees disabled
-        return Config::getDouble("base_transaction_fee", 0.001);
+    // Use SecurityEngine for advanced fee calculation
+    if (securityEngine) {
+        // Update mempool size in SecurityEngine
+        std::lock_guard<std::mutex> lock(transactionMutex);
+        size_t pendingTxCount = pendingTransactions.size();
+        
+        // Update SecurityEngine with current mempool size
+        const_cast<Blockchain*>(this)->securityEngine->updateMempoolSize(pendingTxCount);
+        
+        // SecurityEngine calculates fee based on mempool congestion
+        double fee = securityEngine->calculateDynamicFee(pendingTxCount);
+        
+        LOG_BLOCKCHAIN(LogLevel::DEBUG, "SecurityEngine recommended fee: " + std::to_string(fee) + 
+                       " GXC (pending tx: " + std::to_string(pendingTxCount) + ")");
+        
+        return fee;
     }
     
-    // Get pending transaction count
-    std::lock_guard<std::mutex> lock(transactionMutex);
-    size_t pendingTxCount = pendingTransactions.size();
-    
-    // Get configuration values
-    double baseFee = Config::getDouble("base_transaction_fee", 0.001);
-    double maxFee = Config::getDouble("max_transaction_fee", 0.01);
-    
-    size_t lowThreshold = Config::getInt("fee_low_threshold", 10);
-    size_t mediumThreshold = Config::getInt("fee_medium_threshold", 50);
-    size_t highThreshold = Config::getInt("fee_high_threshold", 100);
-    
-    double lowMultiplier = Config::getDouble("fee_low_multiplier", 1.0);
-    double mediumMultiplier = Config::getDouble("fee_medium_multiplier", 1.5);
-    double highMultiplier = Config::getDouble("fee_high_multiplier", 2.0);
-    double veryHighMultiplier = Config::getDouble("fee_very_high_multiplier", 3.0);
-    
-    // Calculate fee based on pending transaction count
-    double fee;
-    if (pendingTxCount < lowThreshold) {
-        // Low activity: base fee
-        fee = baseFee * lowMultiplier;
-    } else if (pendingTxCount < mediumThreshold) {
-        // Medium activity: 1.5x base fee
-        fee = baseFee * mediumMultiplier;
-    } else if (pendingTxCount < highThreshold) {
-        // High activity: 2x base fee
-        fee = baseFee * highMultiplier;
-    } else {
-        // Very high activity: 3x base fee (capped at maxFee)
-        fee = baseFee * veryHighMultiplier;
-        fee = std::min(fee, maxFee);
-    }
-    
-    // Ensure fee is at least base fee
-    fee = std::max(fee, baseFee);
-    
-    LOG_BLOCKCHAIN(LogLevel::DEBUG, "Calculated recommended fee: " + std::to_string(fee) + 
-                   " GXC (pending tx: " + std::to_string(pendingTxCount) + ")");
-    
-    return fee;
+    // Fallback if SecurityEngine not available
+    return Config::getDouble("base_transaction_fee", 0.001);
 }
 
 Block Blockchain::getLatestBlock() const {

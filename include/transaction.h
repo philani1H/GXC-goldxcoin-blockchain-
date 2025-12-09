@@ -108,12 +108,12 @@ public:
     void setHash(const std::string& hash) { txHash = hash; }
     void setTimestamp(std::time_t ts) { timestamp = ts; }
     void setCoinbaseTransaction(bool isCoinbaseTx) { isCoinbase = isCoinbaseTx; }
+    void setFee(double feeAmount) { fee = feeAmount; }
     void setPrevTxHash(const std::string& hash) { prevTxHash = hash; }
     void setReferencedAmount(double amount) { referencedAmount = amount; }
     void setSenderAddress(const std::string& addr) { senderAddress = addr; }
     void setReceiverAddress(const std::string& addr) { receiverAddress = addr; }
     void setNonce(uint32_t n) { nonce = n; }
-    void setFee(double f) { fee = f; }
     void setMemo(const std::string& m) { memo = m; }
     void setLockTime(uint32_t time) { lockTime = time; }
     void setType(TransactionType t) { type = t; }
