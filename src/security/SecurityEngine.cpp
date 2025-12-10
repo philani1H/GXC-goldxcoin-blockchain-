@@ -225,8 +225,8 @@ double SecurityEngine::getRecommendedFee() const {
 //            6) HYBRID PENALTY LOGIC
 // =========================================================
 
-double SecurityEngine::calculateHybridPenalty(double minerReward,
-                                               double stakerReward,
+double SecurityEngine::calculateHybridPenalty(double /* minerReward */,
+                                               double /* stakerReward */,
                                                uint32_t recentPoWBlocks,
                                                uint32_t recentPoSBlocks) {
     // Balance enforcement between PoW and PoS
@@ -234,7 +234,8 @@ double SecurityEngine::calculateHybridPenalty(double minerReward,
     if (totalBlocks == 0) return 1.0; // No penalty
     
     double powRatio = static_cast<double>(recentPoWBlocks) / totalBlocks;
-    double posRatio = static_cast<double>(recentPoSBlocks) / totalBlocks;
+    // posRatio calculated for future use in reward balancing
+    (void)powRatio; // TODO: Use in reward penalty calculation
     
     // Ideal ratio is 50/50 for hybrid consensus
     double idealRatio = 0.5;

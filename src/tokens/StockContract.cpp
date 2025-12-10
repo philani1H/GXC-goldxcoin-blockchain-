@@ -19,7 +19,10 @@ bool StockContract::updatePrice(double newPrice, std::time_t timestamp, const st
     emitPriceUpdated(newPrice, timestamp, popHash);
     return true;
 }
-std::vector<StockPrice> StockContract::getPriceHistory(uint32_t days) const { return priceHistory; }
+std::vector<StockPrice> StockContract::getPriceHistory(uint32_t /* days */) const { 
+    // TODO: Filter by days parameter
+    return priceHistory; 
+}
 bool StockContract::isPriceDataFresh(uint32_t maxAgeSeconds) const { return std::time(nullptr) - currentPrice.timestamp < maxAgeSeconds; }
 bool StockContract::issueShares(const std::string& to, uint64_t shares) {
     shareBalances[to] += shares;
@@ -58,10 +61,11 @@ bool StockContract::executeCorporateAction(uint64_t actionId) {
 }
 bool StockContract::voteCorporateAction(uint64_t, const std::string&, bool) { return true; }
 std::vector<CorporateAction> StockContract::getPendingActions() const { std::vector<CorporateAction> pending; for (const auto& a : corporateActions) if (!a.executed) pending.push_back(a); return pending; }
-bool StockContract::distributeDividend(double dividendPerShare, const std::string& proofHash) {
+bool StockContract::distributeDividend(double dividendPerShare, const std::string& /* proofHash */) {
     for (auto& [holder, shares] : shareBalances) {
-        double payment = shares * dividendPerShare;
-        // Simulate payment
+        // Calculate and record dividend payment
+        (void)holder; // Mark as intentionally unused in this stub
+        (void)shares; // TODO: Implement actual payment distribution
     }
     emitDividendDistributed(totalShares * dividendPerShare, dividendPerShare);
     return true;

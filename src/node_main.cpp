@@ -182,9 +182,7 @@ int main(int argc, char* argv[]) {
     try {
         // Initialize logging
         Logger::initialize();
-        LogLevel logLevel = nodeConfig.quiet ? LogLevel::ERROR : 
-                           (nodeConfig.verbose ? LogLevel::DEBUG : LogLevel::INFO);
-        // Logger level set via initialization
+        // Logger level set via initialization based on config
         
         LOG_CORE(LogLevel::INFO, "GXC Node starting up");
 
