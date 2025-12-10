@@ -401,33 +401,38 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/gxc
 )
 
-# Test executable for all algorithms
-add_executable(test_all_algorithms
-    tests/test_all_algorithms.cpp
-)
+# Test executables (only build if tests are enabled)
+if(BUILD_TESTS)
+    # Test executable for all algorithms
+    add_executable(test_all_algorithms
+        tests/test_all_algorithms.cpp
+    )
 
-target_link_libraries(test_all_algorithms
-    gxc_core
-    OpenSSL::SSL
-    OpenSSL::Crypto
-    ${LEVELDB_LIBRARY}
-    sqlite3
-    pthread
-)
+    target_link_libraries(test_all_algorithms
+        gxc_core
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        ${LEVELDB_LIBRARY}
+        sqlite3
+        pthread
+    )
 
-# Test executable for block validation
-add_executable(test_block_validation
-    tests/test_block_validation.cpp
-)
+    # Test executable for block validation
+    add_executable(test_block_validation
+        tests/test_block_validation.cpp
+    )
 
-target_link_libraries(test_block_validation
-    gxc_core
-    OpenSSL::SSL
-    OpenSSL::Crypto
-    ${LEVELDB_LIBRARY}
-    sqlite3
-    pthread
-)
+    target_link_libraries(test_block_validation
+        gxc_core
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        ${LEVELDB_LIBRARY}
+        sqlite3
+        pthread
+    )
+    
+    message(STATUS "Building test executables")
+endif()
 
 # Display build configuration
 message(STATUS "")
