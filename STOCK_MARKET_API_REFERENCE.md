@@ -2,10 +2,30 @@
 
 ## Complete API Documentation for Market Makers, Buyers, Sellers, and Financial Institutions
 
-**Version**: 2.0  
+**Version**: 3.0  
 **Status**: Production Ready ✅  
 **Tests**: 18/18 Passed ✅  
+**Model**: Synthetic Price-Tracking Tokens  
 **Traceability**: All transactions follow Ti.Inputs[0].txHash == Ti.PrevTxHash formula
+
+---
+
+## ⚠️ CRITICAL LEGAL NOTICE
+
+**GXC stock tokens are SYNTHETIC INSTRUMENTS that track the price of real stocks.**
+
+### These tokens:
+- ✅ **DO** provide price exposure to real stocks
+- ✅ **DO** settle in cash or cryptocurrency
+- ✅ **DO** trade 24/7 on blockchain
+- ❌ **DO NOT** represent legal ownership of real shares
+- ❌ **DO NOT** provide voting rights
+- ❌ **DO NOT** provide dividend rights (unless explicitly paid by market maker)
+- ❌ **ARE NOT** redeemable for real shares
+
+**By using this API, you acknowledge these tokens are price-tracking derivatives, not securities ownership.**
+
+---
 
 ## 🎉 TEST RESULTS - ALL PASSED
 
@@ -92,12 +112,18 @@ POST /api/v1/stock/register-market-maker
 ```json
 {
   "market_maker_address": "tGXC_mm_address",
+  "asset_type": "SYNTHETIC_EQUITY",
   "ticker": "AAPL",
   "company_name": "Apple Inc.",
   "exchange": "NASDAQ",
-  "total_shares": 1000000,
+  "token_supply": 1000000,
+  "price_source": "Bloomberg Terminal",
+  "legal_ownership": false,
+  "settlement_type": "cash_crypto",
+  "voting_rights": false,
   "sector": "Technology",
-  "industry": "Consumer Electronics"
+  "industry": "Consumer Electronics",
+  "description": "Synthetic token tracking AAPL price"
 }
 ```
 

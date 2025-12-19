@@ -3,13 +3,30 @@
 ## What Market Makers Can Do After Registration
 
 **Status**: ✅ TESTED AND VERIFIED  
-**Version**: 2.0
+**Version**: 3.0  
+**Model**: Synthetic Price-Tracking Tokens
+
+---
+
+## ⚠️ CRITICAL: What You're Actually Deploying
+
+**GXC stock tokens are SYNTHETIC INSTRUMENTS, not real shares.**
+
+When you deploy a stock token:
+- ✅ You create a **price-tracking instrument**
+- ✅ Users get **price exposure** to the real stock
+- ✅ Settlement is in **cash or cryptocurrency**
+- ❌ You do NOT transfer legal ownership of real shares
+- ❌ Users do NOT get voting rights
+- ❌ Users do NOT get dividend rights (unless you explicitly pay)
+
+**Think of it like**: Creating a CFD (Contract for Difference) or futures contract, not issuing real shares.
 
 ---
 
 ## Overview
 
-Once a market maker is **registered and approved** by the GXC team, they gain access to powerful capabilities for deploying and managing stock contracts on the GXC blockchain.
+Once a market maker is **registered and approved** by the GXC team, they gain access to powerful capabilities for deploying and managing synthetic stock contracts on the GXC blockchain.
 
 ---
 
@@ -41,44 +58,47 @@ Market maker can now use all capabilities!
 
 ## Market Maker Capabilities
 
-### 1. Deploy Stock Contracts ✅
+### 1. Deploy Synthetic Stock Contracts ✅
 
-**Unlimited Stock Contracts!**
+**Unlimited Synthetic Contracts!**
 
-Market makers can deploy **as many stock contracts as they want**. There is **NO LIMIT**.
+Market makers can deploy **as many synthetic stock contracts as they want**. There is **NO LIMIT**.
 
 **Examples**:
 ```javascript
-// Deploy Apple stock
+// Deploy synthetic AAPL token
 await api.deployStock(
     "tGXC_mm_goldman",
+    "SYNTHETIC_EQUITY",      // Asset type
     "AAPL",
     "Apple Inc.",
     "NASDAQ",
-    1000000  // 1 million shares
+    1000000,                 // Token supply (arbitrary, NOT real outstanding shares)
+    "Bloomberg Terminal",    // Price source
+    false,                   // legal_ownership
+    "cash_crypto",           // settlement_type
+    false                    // voting_rights
 );
 
-// Deploy Microsoft stock
+// Deploy synthetic MSFT token
 await api.deployStock(
     "tGXC_mm_goldman",
+    "SYNTHETIC_EQUITY",
     "MSFT",
     "Microsoft Corporation",
     "NASDAQ",
-    1000000
-);
-
-// Deploy Google stock
-await api.deployStock(
-    "tGXC_mm_goldman",
-    "GOOGL",
-    "Alphabet Inc.",
-    "NASDAQ",
-    1000000
+    1000000,                 // Arbitrary supply
+    "Reuters Eikon",
+    false,
+    "cash_crypto",
+    false
 );
 
 // Deploy as many as you want!
 // Tesla, Amazon, Meta, Netflix, etc.
 ```
+
+**Important**: Token supply is arbitrary. It does NOT need to match real outstanding shares because these are synthetic price-tracking instruments.
 
 **What You Can Deploy**:
 - ✅ US stocks (NASDAQ, NYSE)
