@@ -623,30 +623,43 @@ void Blockchain::updateUtxoSet(const Block& block) {
                 }
                 
                 bool found = false;
-                for (auto& v : validators) {
-                    if (v.getAddress() == stakerAddress) {
-                        v.addStake(stakedAmount);
-                        validatorMap[stakerAddress] = v;
-                        
-                        try {
-                            Database::getInstance().updateValidator(v);
-                        } catch (const std::exception& e) {
-                            LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to update validator in DB: " + std::string(e.what()));
-                        }
-                        
-                        found = true;
-                        LOG_BLOCKCHAIN(LogLevel::INFO, "✅ STAKE confirmed: " + std::to_string(stakedAmount) +
-                                      " GXC locked for " + stakerAddress.substr(0, 20) + "...");
-                        break;
-                    }
-                }
                 
-                if (!found) {
+                // CRITICAL FIX: Check validatorMap first (contains pending validators)
+                auto mapIt = validatorMap.find(stakerAddress);
+                if (mapIt != validatorMap.end()) {
+                    // Update validator in map
+                    mapIt->second.addStake(stakedAmount);
+                    
+                    // Update validator in vector if it exists
+                    for (auto& v : validators) {
+                        if (v.getAddress() == stakerAddress) {
+                            v.addStake(stakedAmount);
+                            found = true;
+                            break;
+                        }
+                    }
+                    
+                    // If not in vector, add it (was pending)
+                    if (!found) {
+                        validators.push_back(mapIt->second);
+                        found = true;
+                        LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Validator activated from pending: " + stakerAddress.substr(0, 20) + "...");
+                    }
+                    
+                    try {
+                        Database::getInstance().updateValidator(mapIt->second);
+                    } catch (const std::exception& e) {
+                        LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to update validator in DB: " + std::string(e.what()));
+                    }
+                    
+                    LOG_BLOCKCHAIN(LogLevel::INFO, "✅ STAKE confirmed: " + std::to_string(stakedAmount) +
+                                  " GXC locked for " + stakerAddress.substr(0, 20) + "...");
+                } else {
                     // This should never happen because validateTransaction() checks validator existence
-                    // If we reach here, it means validation was bypassed or there's a race condition
                     LOG_BLOCKCHAIN(LogLevel::ERROR, "CRITICAL: STAKE TX for unknown validator: " + stakerAddress + 
                                   ". Amount: " + std::to_string(stakedAmount) + " GXC will be lost! " +
                                   "This indicates a validation bypass or race condition.");
+                }
             }
             
             // Step 6: Add change outputs as UTXOs
@@ -666,7 +679,6 @@ void Blockchain::updateUtxoSet(const Block& block) {
                               std::to_string(output.amount) + " GXC");
                 outputIndex++;
             }
-            }
             
             continue; // Skip normal processing
         }
@@ -682,34 +694,38 @@ void Blockchain::updateUtxoSet(const Block& block) {
             
             // Reduce validator's stake
             bool found = false;
-            for (auto& v : validators) {
-                if (v.getAddress() == stakerAddress) {
-                    // Use proper removeStake method
-                    double currentStake = v.getStakeAmount();
-                    if (currentStake >= unstakeAmount) {
-                        v.removeStake(unstakeAmount);
-                    } else {
-                        LOG_BLOCKCHAIN(LogLevel::WARNING, "UNSTAKE: Requested " + std::to_string(unstakeAmount) +
-                                      " but only " + std::to_string(currentStake) + " staked");
-                        v.removeStake(currentStake);
-                    }
-                    
-                    validatorMap[stakerAddress] = v;
-                    
-                    try {
-                        Database::getInstance().updateValidator(v);
-                    } catch (const std::exception& e) {
-                        LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to update validator in DB: " + std::string(e.what()));
-                    }
-                    
-                    found = true;
-                    LOG_BLOCKCHAIN(LogLevel::INFO, "✅ UNSTAKE confirmed: " + std::to_string(unstakeAmount) +
-                                  " GXC returned to " + stakerAddress.substr(0, 20) + "...");
-                    break;
-                }
-            }
             
-            if (!found) {
+            // CRITICAL FIX: Check validatorMap first (authoritative source)
+            auto mapIt = validatorMap.find(stakerAddress);
+            if (mapIt != validatorMap.end()) {
+                // Use proper removeStake method
+                double currentStake = mapIt->second.getStakeAmount();
+                if (currentStake >= unstakeAmount) {
+                    mapIt->second.removeStake(unstakeAmount);
+                } else {
+                    LOG_BLOCKCHAIN(LogLevel::WARNING, "UNSTAKE: Requested " + std::to_string(unstakeAmount) +
+                                  " but only " + std::to_string(currentStake) + " staked");
+                    mapIt->second.removeStake(currentStake);
+                }
+                
+                // Update validator in vector if it exists
+                for (auto& v : validators) {
+                    if (v.getAddress() == stakerAddress) {
+                        v = mapIt->second;
+                        found = true;
+                        break;
+                    }
+                }
+                
+                try {
+                    Database::getInstance().updateValidator(mapIt->second);
+                } catch (const std::exception& e) {
+                    LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to update validator in DB: " + std::string(e.what()));
+                }
+                
+                LOG_BLOCKCHAIN(LogLevel::INFO, "✅ UNSTAKE confirmed: " + std::to_string(unstakeAmount) +
+                              " GXC returned to " + stakerAddress.substr(0, 20) + "...");
+            } else {
                 LOG_BLOCKCHAIN(LogLevel::ERROR, "UNSTAKE TX for unknown validator: " + stakerAddress);
             }
             
@@ -1898,8 +1914,24 @@ bool Blockchain::registerValidator(const Validator& validator) {
     // Check if validator already exists
     if (validatorMap.find(validator.getAddress()) != validatorMap.end()) {
         LOG_BLOCKCHAIN(LogLevel::WARNING, "Validator already registered: " + validator.getAddress());
-        // Update existing validator
+        // Update existing validator in map
         validatorMap[validator.getAddress()] = validator;
+        
+        // Update in vector as well
+        bool foundInVector = false;
+        for (auto& v : validators) {
+            if (v.getAddress() == validator.getAddress()) {
+                v = validator;
+                foundInVector = true;
+                break;
+            }
+        }
+        
+        // If not in vector but in map, add it (was pending)
+        if (!foundInVector) {
+            validators.push_back(validator);
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Validator moved from pending to active: " + validator.getAddress());
+        }
     } else {
         // Add new validator
         validatorMap[validator.getAddress()] = validator;
