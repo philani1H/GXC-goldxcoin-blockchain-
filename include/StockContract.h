@@ -6,6 +6,20 @@
 #include <unordered_map>
 #include <ctime>
 
+// Asset type classification (3 legitimate models)
+enum class AssetType {
+    SYNTHETIC_EQUITY,      // Model 1: Price-tracking only (no legal ownership)
+    CUSTODIAL_BACKED,      // Model 2: 1:1 backed by real shares in custody
+    ISSUER_AUTHORIZED      // Model 3: Company-issued shares on-chain
+};
+
+// Settlement type
+enum class SettlementType {
+    CASH_CRYPTO,           // Cash or cryptocurrency settlement
+    PHYSICAL_REDEMPTION,   // Redeemable for real shares
+    COMPANY_REGISTRY       // On company cap table
+};
+
 enum class ActionType {
     DIVIDEND,
     SPLIT,
@@ -51,6 +65,25 @@ private:
     std::string companyName;
     std::string exchange;   // e.g., "NYSE", "NASDAQ"
     
+    // Asset classification (CRITICAL)
+    AssetType assetType;
+    SettlementType settlementType;
+    bool legalOwnership;
+    bool votingRights;
+    bool dividendRights;
+    bool redemptionRights;
+    
+    // Custodial-backed specific fields
+    std::string custodian;
+    std::string proofOfReservesUrl;
+    std::string auditFrequency;
+    std::time_t lastAuditDate;
+    
+    // Issuer-authorized specific fields
+    std::string issuerAddress;
+    std::string capTableUrl;
+    std::string shareholderRegistryUrl;
+    
     // Price feed
     std::string priceOracle;
     StockPrice currentPrice;
@@ -85,10 +118,41 @@ private:
     double dividendYield;
     
 public:
-    // Constructor
+    // Constructors
     StockContract();
-    StockContract(const std::string& tickerIn, const std::string& companyNameIn, 
-                  const std::string& exchangeIn, const std::string& priceOracleIn);
+    
+    // Synthetic equity constructor (Model 1)
+    static StockContract createSyntheticEquity(
+        const std::string& ticker,
+        const std::string& companyName,
+        const std::string& exchange,
+        uint64_t tokenSupply,
+        const std::string& priceSource
+    );
+    
+    // Custodial-backed constructor (Model 2)
+    static StockContract createCustodialBacked(
+        const std::string& ticker,
+        const std::string& companyName,
+        const std::string& exchange,
+        uint64_t sharesHeld,
+        const std::string& custodian,
+        const std::string& proofOfReservesUrl,
+        const std::string& auditFrequency,
+        bool votingRights = false,
+        bool dividendRights = false
+    );
+    
+    // Issuer-authorized constructor (Model 3)
+    static StockContract createIssuerAuthorized(
+        const std::string& ticker,
+        const std::string& companyName,
+        const std::string& exchange,
+        uint64_t sharesIssued,
+        const std::string& issuerAddress,
+        const std::string& capTableUrl,
+        const std::string& shareholderRegistryUrl
+    );
     
     // Price management
     bool updatePrice(double newPrice, std::time_t timestamp, const std::string& popHash, 
@@ -159,6 +223,28 @@ public:
     double getPriceChange24h() const;
     double getAveragePrice(uint32_t days) const;
     double getVolatility(uint32_t days) const;
+    
+    // Asset type getters
+    AssetType getAssetType() const { return assetType; }
+    SettlementType getSettlementType() const { return settlementType; }
+    bool hasLegalOwnership() const { return legalOwnership; }
+    bool hasVotingRights() const { return votingRights; }
+    bool hasDividendRights() const { return dividendRights; }
+    bool hasRedemptionRights() const { return redemptionRights; }
+    
+    // Custodial-backed getters
+    std::string getCustodian() const { return custodian; }
+    std::string getProofOfReservesUrl() const { return proofOfReservesUrl; }
+    std::string getAuditFrequency() const { return auditFrequency; }
+    std::time_t getLastAuditDate() const { return lastAuditDate; }
+    
+    // Issuer-authorized getters
+    std::string getIssuerAddress() const { return issuerAddress; }
+    std::string getCapTableUrl() const { return capTableUrl; }
+    std::string getShareholderRegistryUrl() const { return shareholderRegistryUrl; }
+    
+    // Get legal disclaimer based on asset type
+    std::string getDisclaimer() const;
     
     // Getters
     std::string getContractAddress() const { return contractAddress; }

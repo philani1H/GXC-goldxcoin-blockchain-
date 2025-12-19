@@ -87,10 +87,76 @@ public:
     // ===== MARKET MAKER APIs =====
     
     /**
-     * Deploy new stock contract (Market Makers only)
+     * Deploy synthetic equity contract (Model 1 - Price-tracking only)
      * Requires: Market maker authorization
      * Returns: Contract address
+     * 
+     * This creates a SYNTHETIC INSTRUMENT that tracks price only.
+     * - NO legal ownership
+     * - NO voting rights
+     * - Settlement in cash/crypto
+     * - Token supply is arbitrary (NOT real outstanding shares)
      */
+    std::string deploySyntheticEquity(
+        const std::string& makerAddress,
+        const std::string& ticker,
+        const std::string& companyName,
+        const std::string& exchange,
+        uint64_t tokenSupply,
+        const std::string& priceSource,
+        const std::string& sector = "",
+        const std::string& industry = ""
+    );
+    
+    /**
+     * Deploy custodial-backed contract (Model 2 - 1:1 backed by real shares)
+     * Requires: Market maker authorization + custodian verification
+     * Returns: Contract address
+     * 
+     * This creates tokens backed 1:1 by real shares held in custody.
+     * - Legal ownership: YES
+     * - Voting rights: Optional
+     * - Redeemable for real shares: YES
+     * - Token supply MUST equal shares held
+     */
+    std::string deployCustodialBacked(
+        const std::string& makerAddress,
+        const std::string& ticker,
+        const std::string& companyName,
+        const std::string& exchange,
+        uint64_t sharesHeld,
+        const std::string& custodian,
+        const std::string& proofOfReservesUrl,
+        const std::string& auditFrequency,
+        bool votingRights = false,
+        bool dividendRights = false
+    );
+    
+    /**
+     * Deploy issuer-authorized contract (Model 3 - Company-issued on-chain)
+     * Requires: Company authorization + regulatory approval
+     * Returns: Contract address
+     * 
+     * This creates shares issued directly by the company on-chain.
+     * - Legal ownership: YES
+     * - Voting rights: YES
+     * - Part of company cap table: YES
+     * - Requires company cooperation
+     */
+    std::string deployIssuerAuthorized(
+        const std::string& issuerAddress,
+        const std::string& ticker,
+        const std::string& companyName,
+        const std::string& exchange,
+        uint64_t sharesIssued,
+        const std::string& capTableUrl,
+        const std::string& shareholderRegistryUrl
+    );
+    
+    /**
+     * DEPRECATED: Use deploySyntheticEquity, deployCustodialBacked, or deployIssuerAuthorized
+     */
+    [[deprecated("Use deploySyntheticEquity for synthetic tokens")]]
     std::string deployStock(
         const std::string& makerAddress,
         const std::string& ticker,
@@ -103,6 +169,10 @@ public:
      * Update stock price (Market Makers only)
      * Requires: Market maker authorization for this stock
      * Uses: Market maker's own price software/oracle
+     * 
+     * For synthetic equity: Price reflects real stock price
+     * For custodial-backed: Price reflects real stock price
+     * For issuer-authorized: Price from company registry
      */
     bool updateStockPrice(
         const std::string& makerAddress,
@@ -110,6 +180,21 @@ public:
         double price,
         const std::string& priceSource,
         const std::string& proofHash
+    );
+    
+    /**
+     * Submit proof of reserves (Custodial-backed only)
+     * Requires: Custodian verification
+     * Verifies: shares_held == tokens_issued
+     */
+    bool submitProofOfReserves(
+        const std::string& contractAddress,
+        const std::string& custodian,
+        uint64_t sharesHeld,
+        uint64_t tokensIssued,
+        const std::string& auditor,
+        const std::string& reportUrl,
+        const std::string& signature
     );
     
     /**
@@ -190,6 +275,35 @@ public:
      * Get stock price
      */
     double getStockPrice(const std::string& ticker) const;
+    
+    /**
+     * Get stock contract details including asset type
+     */
+    struct StockDetails {
+        std::string ticker;
+        std::string companyName;
+        std::string exchange;
+        AssetType assetType;
+        SettlementType settlementType;
+        bool legalOwnership;
+        bool votingRights;
+        bool dividendRights;
+        bool redemptionRights;
+        uint64_t tokenSupply;
+        double currentPrice;
+        std::string priceSource;
+        std::string disclaimer;
+        
+        // Custodial-backed specific
+        std::string custodian;
+        std::string proofOfReservesUrl;
+        std::time_t lastAuditDate;
+        
+        // Issuer-authorized specific
+        std::string issuerAddress;
+        std::string capTableUrl;
+    };
+    StockDetails getStockDetails(const std::string& ticker) const;
     
     /**
      * Get order book
