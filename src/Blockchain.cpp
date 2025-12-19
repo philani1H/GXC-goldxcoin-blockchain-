@@ -1630,8 +1630,9 @@ std::vector<Block> Blockchain::getBlocks(size_t count) const {
 bool Blockchain::isValid() const {
     std::lock_guard<std::mutex> lock(chainMutex);
     
+    // Empty chain is valid (waiting for genesis block)
     if (chain.empty()) {
-        return false;
+        return true;
     }
     
     // Validate each block and its connection to previous block
