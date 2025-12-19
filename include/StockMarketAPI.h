@@ -12,21 +12,24 @@
  * Market Maker Authorization System
  * Only authorized market makers can deploy stocks and set prices
  */
+
+// Forward declaration
+struct MarketMakerInfo {
+    std::string address;
+    std::string name;
+    std::string licenseNumber;
+    std::string country;
+    bool isActive;
+    std::time_t registeredAt;
+    std::vector<std::string> authorizedStocks;
+};
+
 class MarketMakerRegistry {
 private:
     std::unordered_map<std::string, MarketMakerInfo> authorizedMakers;
     Blockchain* blockchain;
     
 public:
-    struct MarketMakerInfo {
-        std::string address;
-        std::string name;
-        std::string licenseNumber;
-        std::string country;
-        bool isActive;
-        std::time_t registeredAt;
-        std::vector<std::string> authorizedStocks;
-    };
     
     MarketMakerRegistry(Blockchain* bc) : blockchain(bc) {}
     
