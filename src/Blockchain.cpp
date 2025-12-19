@@ -627,23 +627,46 @@ void Blockchain::updateUtxoSet(const Block& block) {
                 // CRITICAL FIX: Check validatorMap first (contains pending validators)
                 auto mapIt = validatorMap.find(stakerAddress);
                 if (mapIt != validatorMap.end()) {
-                    // Update validator in map
-                    mapIt->second.addStake(stakedAmount);
+                    // Check if this is a pending validator (first stake) or additional stake
+                    if (mapIt->second.getIsPending()) {
+                        // First stake - activate the validator
+                        // The stake amount was already set during registration
+                        // Just verify it matches and activate
+                        double registeredStake = mapIt->second.getStakeAmount();
+                        
+                        if (std::abs(registeredStake - stakedAmount) > 0.00000001) {
+                            LOG_BLOCKCHAIN(LogLevel::WARNING, "STAKE amount mismatch: registered " + 
+                                          std::to_string(registeredStake) + " GXC but transaction stakes " + 
+                                          std::to_string(stakedAmount) + " GXC. Using transaction amount.");
+                            mapIt->second.addStake(stakedAmount - registeredStake); // Adjust to match
+                        }
+                        
+                        // Activate the validator
+                        mapIt->second.setPending(false);
+                        mapIt->second.setIsActive(true);
+                        
+                        LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Validator activated from pending: " + stakerAddress.substr(0, 20) + 
+                                      "..., Stake: " + std::to_string(mapIt->second.getStakeAmount()) + " GXC");
+                    } else {
+                        // Additional stake to existing active validator
+                        mapIt->second.addStake(stakedAmount);
+                        LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Additional stake added: " + std::to_string(stakedAmount) +
+                                      " GXC to " + stakerAddress.substr(0, 20) + "...");
+                    }
                     
                     // Update validator in vector if it exists
                     for (auto& v : validators) {
                         if (v.getAddress() == stakerAddress) {
-                            v.addStake(stakedAmount);
+                            v = mapIt->second;
                             found = true;
                             break;
                         }
                     }
                     
-                    // If not in vector, add it (was pending)
+                    // If not in vector, add it (was pending, now active)
                     if (!found) {
                         validators.push_back(mapIt->second);
                         found = true;
-                        LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Validator activated from pending: " + stakerAddress.substr(0, 20) + "...");
                     }
                     
                     try {
@@ -1149,8 +1172,10 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
             return false;
         }
         
-        // CRITICAL FIX: Verify inputs reference valid, unspent UTXOs
+        // CRITICAL: Verify inputs reference valid, unspent UTXOs
         // This ensures the staker actually has the funds they're trying to stake
+        // When this transaction is added to mempool, these UTXOs are marked as spent
+        // When the block is mined, updateUtxoSet removes them permanently (funds are locked)
         for (const auto& input : tx.getInputs()) {
             std::string utxoKey = input.txHash + "_" + std::to_string(input.outputIndex);
             auto it = utxoSet.find(utxoKey);

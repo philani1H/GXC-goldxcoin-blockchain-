@@ -2350,18 +2350,19 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
             "Failed to create staking transaction: " + std::string(e.what()));
     }
     
-    // Create validator record (will be finalized when block is mined)
-    // Initialize with 0 stake and pending status to prevent fake staking
-    // The stake will be added when the STAKE transaction is confirmed on-chain
-    Validator validator(address, 0.0, stakingDays);
+    // Create validator record with the requested stake amount
+    // Mark as pending until the STAKE transaction is confirmed on-chain
+    // This shows users their funds are being staked, but validator won't be active until confirmed
+    Validator validator(address, stakeAmount, stakingDays);
     validator.setPublicKey(pubKeyForValidator);
     validator.setPending(true);
+    validator.setIsActive(false); // Not active until stake tx is confirmed
     
     // Register validator in blockchain
     blockchain->registerValidator(validator);
     
     LOG_API(LogLevel::INFO, "✅ Validator registered: " + address + ", Stake: " + 
-            std::to_string(stakeAmount) + " GXC, Days: " + std::to_string(stakingDays) +
+            std::to_string(stakeAmount) + " GXC (pending confirmation), Days: " + std::to_string(stakingDays) +
             ", TX: " + stakeTxHash);
     
     JsonValue result;
@@ -2371,7 +2372,9 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     result["staking_days"] = stakingDays;
     result["weighted_stake"] = validator.getWeightedStake();
     result["stake_tx"] = stakeTxHash;
-    result["message"] = "Validator registered successfully. Stake transaction: " + stakeTxHash;
+    result["status"] = "pending";
+    result["message"] = "Validator registered successfully. Stake of " + std::to_string(stakeAmount) + 
+                       " GXC is pending confirmation. Transaction: " + stakeTxHash;
     
     return result;
 }
@@ -2651,6 +2654,9 @@ JsonValue RPCAPI::getValidatorInfo(const JsonValue& params) {
             result["weighted_stake"] = validator.getWeightedStake();
             result["time_weight"] = validator.getTimeWeight();
             result["is_active"] = validator.getIsActive();
+            result["is_pending"] = validator.getIsPending();
+            result["status"] = validator.getIsPending() ? "pending_confirmation" : 
+                              (validator.getIsActive() ? "active" : "inactive");
             result["blocks_produced"] = validator.getBlocksProduced();
             result["missed_blocks"] = validator.getMissedBlocks();
             result["uptime"] = validator.getUptime();

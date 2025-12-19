@@ -121,45 +121,46 @@ TEST_F(TransactionStakingFixTest, StakingTransactionLocksFunds) {
     EXPECT_TRUE(stakeTx.verifyTraceabilityFormula());
 }
 
-// Test: Validator registration and stake confirmation
-TEST_F(TransactionStakingFixTest, ValidatorRegistrationAndStakeConfirmation) {
+// Test: Validator registration shows stake amount immediately
+TEST_F(TransactionStakingFixTest, ValidatorRegistrationShowsStakeImmediately) {
     std::string addr = wallet1->getAddress();
     std::string pubKey = wallet1->getPublicKey();
     
-    // Step 1: Register validator with 0 stake (pending)
-    Validator validator(addr, 0.0, 30);
+    // Step 1: Register validator with stake amount (pending confirmation)
+    double stakeAmount = 100.0;
+    Validator validator(addr, stakeAmount, 30);
     validator.setPublicKey(pubKey);
     validator.setPending(true);
+    validator.setIsActive(false); // Not active until confirmed
     
     bool registered = blockchain->registerValidator(validator);
     EXPECT_TRUE(registered);
     
-    // Step 2: Verify validator is in pending state
+    // Step 2: Verify validator shows the stake amount immediately (even though pending)
     auto validators = blockchain->getActiveValidators();
-    bool foundPending = false;
+    bool foundValidator = false;
     for (const auto& v : validators) {
         if (v.getAddress() == addr) {
-            foundPending = true;
+            foundValidator = true;
             EXPECT_TRUE(v.getIsPending());
-            EXPECT_EQ(v.getStakeAmount(), 0.0);
+            EXPECT_FALSE(v.getIsActive()); // Not active until stake tx confirmed
+            EXPECT_EQ(v.getStakeAmount(), stakeAmount); // Shows stake amount immediately!
             break;
         }
     }
     
-    // Note: Pending validators might not be in active list
-    // The validator should be in validatorMap even if not active
+    // Note: Pending validators might not be in active list, but should be in validatorMap
     
-    // Step 3: Create and add stake transaction
+    // Step 3: Create stake transaction to lock the funds
     auto utxoSet = createUtxoSet(addr, 200.0);
-    double stakeAmount = 100.0;
     Transaction stakeTx = wallet1->createStakeTransaction(stakeAmount, utxoSet, 0.001);
     
     // Verify stake transaction is valid
     EXPECT_EQ(stakeTx.getType(), TransactionType::STAKE);
     EXPECT_TRUE(stakeTx.verifyTraceabilityFormula());
     
-    // The actual stake confirmation happens when the transaction is included in a block
-    // and updateUtxoSet is called. This test verifies the transaction structure is correct.
+    // When this transaction is confirmed in a block, the validator will be activated
+    // and the funds will be permanently locked in the stake
 }
 
 // Test: Multiple stake transactions to same validator
