@@ -6,11 +6,11 @@
 
 // Constructor
 MarketMakerAdmin::MarketMakerAdmin() {
-    // Create default super admin
+    // Create first super admin: Philani-GXC.Foundation
     AdminUser superAdmin;
-    superAdmin.adminId = "admin_super_001";
-    superAdmin.username = "gxc_admin";
-    superAdmin.passwordHash = hashPassword("change_this_password");
+    superAdmin.adminId = "admin_philani_gxc_foundation";
+    superAdmin.username = "Philani-GXC.Foundation";
+    superAdmin.passwordHash = hashPassword("GXC$ecure2025!Philani#Foundation@Admin");
     superAdmin.role = "super_admin";
     superAdmin.permissions = {"all"};
     superAdmin.isActive = true;
@@ -18,6 +18,19 @@ MarketMakerAdmin::MarketMakerAdmin() {
     superAdmin.lastLoginAt = 0;
     
     admins[superAdmin.adminId] = superAdmin;
+    
+    std::cout << "========================================" << std::endl;
+    std::cout << "GXC Market Maker Admin System Initialized" << std::endl;
+    std::cout << "========================================" << std::endl;
+    std::cout << "First Admin Created:" << std::endl;
+    std::cout << "  Username: Philani-GXC.Foundation" << std::endl;
+    std::cout << "  Password: GXC$ecure2025!Philani#Foundation@Admin" << std::endl;
+    std::cout << "  Role: super_admin" << std::endl;
+    std::cout << "  Admin ID: admin_philani_gxc_foundation" << std::endl;
+    std::cout << "========================================" << std::endl;
+    std::cout << "IMPORTANT: Save this password securely!" << std::endl;
+    std::cout << "You can change it after first login." << std::endl;
+    std::cout << "========================================" << std::endl;
 }
 
 // Generate unique application ID
@@ -517,6 +530,141 @@ json MarketMakerAdmin::getVerificationStatistics(const std::string& adminId) {
     stats["rejected"] = rejected;
     
     return stats;
+}
+
+// Change password
+bool MarketMakerAdmin::changePassword(
+    const std::string& adminId,
+    const std::string& oldPassword,
+    const std::string& newPassword
+) {
+    auto it = admins.find(adminId);
+    if (it == admins.end()) {
+        throw std::runtime_error("Admin not found");
+    }
+    
+    // Verify old password
+    if (it->second.passwordHash != hashPassword(oldPassword)) {
+        throw std::runtime_error("Incorrect old password");
+    }
+    
+    // Update password
+    it->second.passwordHash = hashPassword(newPassword);
+    
+    logAction(adminId, "change_password", "", "Password changed");
+    
+    return true;
+}
+
+// Update admin permissions
+bool MarketMakerAdmin::updateAdminPermissions(
+    const std::string& superAdminId,
+    const std::string& targetAdminId,
+    const std::vector<std::string>& newPermissions
+) {
+    if (!verifyAdminPermission(superAdminId, "update_permissions")) {
+        throw std::runtime_error("Permission denied: Only super admin can update permissions");
+    }
+    
+    auto it = admins.find(targetAdminId);
+    if (it == admins.end()) {
+        throw std::runtime_error("Target admin not found");
+    }
+    
+    it->second.permissions = newPermissions;
+    
+    logAction(superAdminId, "update_permissions", "", 
+              "Updated permissions for " + it->second.username);
+    
+    return true;
+}
+
+// Deactivate admin
+bool MarketMakerAdmin::deactivateAdmin(
+    const std::string& superAdminId,
+    const std::string& targetAdminId
+) {
+    if (!verifyAdminPermission(superAdminId, "deactivate_admin")) {
+        throw std::runtime_error("Permission denied: Only super admin can deactivate admins");
+    }
+    
+    auto it = admins.find(targetAdminId);
+    if (it == admins.end()) {
+        throw std::runtime_error("Target admin not found");
+    }
+    
+    if (targetAdminId == superAdminId) {
+        throw std::runtime_error("Cannot deactivate yourself");
+    }
+    
+    it->second.isActive = false;
+    
+    logAction(superAdminId, "deactivate_admin", "", 
+              "Deactivated admin: " + it->second.username);
+    
+    return true;
+}
+
+// Reactivate admin
+bool MarketMakerAdmin::reactivateAdmin(
+    const std::string& superAdminId,
+    const std::string& targetAdminId
+) {
+    if (!verifyAdminPermission(superAdminId, "reactivate_admin")) {
+        throw std::runtime_error("Permission denied: Only super admin can reactivate admins");
+    }
+    
+    auto it = admins.find(targetAdminId);
+    if (it == admins.end()) {
+        throw std::runtime_error("Target admin not found");
+    }
+    
+    it->second.isActive = true;
+    
+    logAction(superAdminId, "reactivate_admin", "", 
+              "Reactivated admin: " + it->second.username);
+    
+    return true;
+}
+
+// Remove admin
+bool MarketMakerAdmin::removeAdmin(
+    const std::string& superAdminId,
+    const std::string& targetAdminId
+) {
+    if (!verifyAdminPermission(superAdminId, "remove_admin")) {
+        throw std::runtime_error("Permission denied: Only super admin can remove admins");
+    }
+    
+    auto it = admins.find(targetAdminId);
+    if (it == admins.end()) {
+        throw std::runtime_error("Target admin not found");
+    }
+    
+    if (targetAdminId == superAdminId) {
+        throw std::runtime_error("Cannot remove yourself");
+    }
+    
+    std::string username = it->second.username;
+    admins.erase(it);
+    
+    logAction(superAdminId, "remove_admin", "", "Removed admin: " + username);
+    
+    return true;
+}
+
+// List all admins
+std::vector<AdminUser> MarketMakerAdmin::listAllAdmins(const std::string& superAdminId) {
+    if (!verifyAdminPermission(superAdminId, "list_admins")) {
+        throw std::runtime_error("Permission denied: Only super admin can list admins");
+    }
+    
+    std::vector<AdminUser> adminList;
+    for (const auto& [id, admin] : admins) {
+        adminList.push_back(admin);
+    }
+    
+    return adminList;
 }
 
 // Helper: Convert status to string

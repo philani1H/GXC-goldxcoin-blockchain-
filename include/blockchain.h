@@ -101,6 +101,7 @@ public:
     void rebuildUtxoSet();
     void shutdown();
     void createGenesisBlock();
+    void ensureGenesisBlockExists(); // Create genesis only if chain is empty
     bool addBlock(const Block& block);
     bool validateBlock(const Block& block);
     bool validateBlockInternal(const Block& block, uint32_t expectedIndex);

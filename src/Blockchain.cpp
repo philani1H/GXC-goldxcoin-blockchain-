@@ -44,9 +44,11 @@ bool Blockchain::initialize() {
         }
         
         // Create genesis block ONLY if blockchain is still empty after loading from database
+        // AND only if explicitly requested (not on every startup)
         if (chain.empty()) {
-            LOG_BLOCKCHAIN(LogLevel::INFO, "No blocks found in database, creating genesis block");
-            createGenesisBlock();
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain is empty. Genesis block will be created when first block is mined.");
+            // Do NOT create genesis block automatically
+            // It will be created when the first mining operation starts
         } else {
             LOG_BLOCKCHAIN(LogLevel::INFO, "Loaded " + std::to_string(chain.size()) + 
                           " blocks from database, rebuilding UTXO set...");
@@ -103,6 +105,15 @@ bool Blockchain::loadValidatorsFromDatabase() {
     } catch (const std::exception& e) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "Error loading validators from database: " + std::string(e.what()));
         return false;
+    }
+}
+
+void Blockchain::ensureGenesisBlockExists() {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    if (chain.empty()) {
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Chain is empty, creating genesis block for first mining operation");
+        lock.~lock_guard(); // Release lock before calling createGenesisBlock
+        createGenesisBlock();
     }
 }
 

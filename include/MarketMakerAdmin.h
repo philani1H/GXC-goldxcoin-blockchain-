@@ -158,6 +158,59 @@ public:
      */
     AdminUser getAdminInfo(const std::string& adminId);
     
+    /**
+     * Change admin password
+     * Admin can change their own password
+     */
+    bool changePassword(
+        const std::string& adminId,
+        const std::string& oldPassword,
+        const std::string& newPassword
+    );
+    
+    /**
+     * Update admin permissions
+     * Requires: super_admin permission
+     */
+    bool updateAdminPermissions(
+        const std::string& superAdminId,
+        const std::string& targetAdminId,
+        const std::vector<std::string>& newPermissions
+    );
+    
+    /**
+     * Deactivate admin
+     * Requires: super_admin permission
+     */
+    bool deactivateAdmin(
+        const std::string& superAdminId,
+        const std::string& targetAdminId
+    );
+    
+    /**
+     * Reactivate admin
+     * Requires: super_admin permission
+     */
+    bool reactivateAdmin(
+        const std::string& superAdminId,
+        const std::string& targetAdminId
+    );
+    
+    /**
+     * Remove admin
+     * Requires: super_admin permission
+     */
+    bool removeAdmin(
+        const std::string& superAdminId,
+        const std::string& targetAdminId
+    );
+    
+    /**
+     * List all admins
+     * Requires: super_admin permission
+     */
+    std::vector<AdminUser> listAllAdmins(const std::string& superAdminId);
+    
     // ===== APPLICATION SUBMISSION =====
     
     /**
