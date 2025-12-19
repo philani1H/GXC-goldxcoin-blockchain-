@@ -2,7 +2,11 @@
 #include <random>
 #include <sstream>
 #include <iomanip>
+#include <iostream>
 #include <openssl/sha.h>
+
+// Forward declare hashPassword
+std::string hashPassword(const std::string& password);
 
 // Constructor
 MarketMakerAdmin::MarketMakerAdmin() {
@@ -54,8 +58,8 @@ std::string MarketMakerAdmin::generateLogId() {
     return ss.str();
 }
 
-// Hash password
-std::string MarketMakerAdmin::hashPassword(const std::string& password) {
+// Hash password (helper function)
+std::string hashPassword(const std::string& password) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256((unsigned char*)password.c_str(), password.length(), hash);
     
