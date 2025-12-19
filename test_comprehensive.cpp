@@ -37,7 +37,8 @@ bool test_traceability() {
     std::cout << "   Ti.Inputs[0].txHash == Ti.PrevTxHash\n";
     std::cout << "   Ti.Inputs[0].amount == Ti.ReferencedAmount\n\n";
     
-    // Initialize config
+    // Initialize config for testnet
+    Config::set("testnet", "true");
     Config::set("network", "testnet");
     
     // Create wallets
@@ -230,11 +231,58 @@ bool test_traceability() {
         return false;
     }
     
+    // Test 4: Verify amount matching with different amounts
+    print_section("TEST 4: Amount Matching Verification");
+    
+    // Reset UTXO set with different amount
+    utxoSet.clear();
+    TransactionOutput testUtxo;
+    testUtxo.address = wallet1.getAddress();
+    testUtxo.amount = 150.5; // Different amount
+    std::string testTxHash = "0000000000000000000000000000000000000000000000000000000000000003";
+    utxoSet[testTxHash + "_0"] = testUtxo;
+    
+    try {
+        Transaction testTx = wallet1.createTransaction(wallet2.getAddress(), 30.0, utxoSet, 0.001);
+        print_success("Test transaction created with 150.5 GXC input");
+        
+        // Verify the referenced amount matches the input amount
+        print_info("Verifying amount matching...");
+        std::cout << "   Input amount: " << testTx.getInputs()[0].amount << " GXC\n";
+        std::cout << "   Referenced amount: " << testTx.getReferencedAmount() << " GXC\n";
+        
+        double inputAmount = testTx.getInputs()[0].amount;
+        double refAmount = testTx.getReferencedAmount();
+        
+        if (std::abs(inputAmount - refAmount) < 0.00000001) {
+            print_success("✓ Amount matching VERIFIED: " + std::to_string(inputAmount) + " == " + std::to_string(refAmount));
+        } else {
+            print_error("✗ Amount matching FAILED");
+            std::cout << "   Expected: " << inputAmount << " GXC\n";
+            std::cout << "   Got: " << refAmount << " GXC\n";
+            std::cout << "   Difference: " << std::abs(inputAmount - refAmount) << " GXC\n";
+            return false;
+        }
+        
+        // Verify the formula holds
+        if (testTx.verifyTraceabilityFormula()) {
+            print_success("✓ Traceability formula verified with amount " + std::to_string(inputAmount) + " GXC");
+        } else {
+            print_error("✗ Traceability formula failed");
+            return false;
+        }
+        
+    } catch (const std::exception& e) {
+        print_error("Amount matching test failed: " + std::string(e.what()));
+        return false;
+    }
+    
     print_section("ALL TESTS PASSED");
     print_success("Fund transfers work correctly");
     print_success("Traceability formula is enforced");
     print_success("Transaction chains are preserved");
     print_success("Staking transactions maintain traceability");
+    print_success("Amount matching verified with different values");
     
     return true;
 }
