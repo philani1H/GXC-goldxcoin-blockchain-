@@ -48,11 +48,62 @@
 ## Table of Contents
 
 1. [Authentication](#authentication)
-2. [Market Maker APIs](#market-maker-apis)
-3. [Buyer/Seller APIs](#buyerseller-apis)
-4. [Query APIs](#query-apis)
-5. [Financial Institution APIs](#financial-institution-apis)
-6. [Traceability Verification](#traceability-verification)
+2. [Asset Models Overview](#asset-models-overview)
+3. [Market Maker APIs](#market-maker-apis)
+   - [Model 1: Synthetic Equity](#model-1-synthetic-equity-deployment)
+   - [Model 2: Custodial-Backed](#model-2-custodial-backed-deployment)
+   - [Model 3: Issuer-Authorized](#model-3-issuer-authorized-deployment)
+4. [Buyer/Seller APIs](#buyerseller-apis)
+5. [Query APIs](#query-apis)
+6. [Financial Institution APIs](#financial-institution-apis)
+7. [Traceability Verification](#traceability-verification)
+
+---
+
+## Asset Models Overview
+
+GXC supports **3 legitimate asset models** for tokenized stocks. Market makers must choose which model to use when deploying.
+
+### 🟦 Model 1: Synthetic Equity (PRIMARY)
+
+**What It Is**: Price-tracking tokens that provide exposure without legal ownership
+
+**Characteristics**:
+- ❌ NO legal ownership
+- ❌ NO voting rights
+- ❌ NO redemption rights
+- ✅ Price exposure only
+- ✅ Settlement in cash/crypto
+- ✅ Token supply is arbitrary
+
+**Use Case**: Most market makers start here (easiest, most scalable)
+
+### 🟨 Model 2: Custodial-Backed (PREMIUM)
+
+**What It Is**: Tokens backed 1:1 by real shares held in custody
+
+**Characteristics**:
+- ✅ Legal ownership: YES
+- ✅ Redeemable for real shares
+- ✅ 1:1 backed
+- ⚠️ Requires licensed custodian
+- ⚠️ Requires proof of reserves
+- ⚠️ Token supply MUST equal shares held
+
+**Use Case**: Institutional clients who need real ownership
+
+### 🟥 Model 3: Issuer-Authorized (FUTURE)
+
+**What It Is**: Company issues shares natively on-chain
+
+**Characteristics**:
+- ✅ Legal ownership: YES
+- ✅ Voting rights: YES
+- ✅ Part of company cap table
+- ⚠️ Requires company cooperation
+- ⚠️ Requires regulatory approval
+
+**Use Case**: Companies doing blockchain-native IPOs
 
 ---
 
@@ -102,28 +153,29 @@ POST /api/v1/stock/register-market-maker
 
 ## Market Maker APIs
 
-### 1. Deploy Stock Contract
+Market makers can deploy stocks using any of the 3 asset models. Choose based on your use case and capabilities.
 
-**Endpoint**: `POST /api/v1/stock/deploy`
+---
+
+### Model 1: Synthetic Equity Deployment
+
+**Endpoint**: `POST /api/v1/stock/deploy/synthetic`
 
 **Authorization**: Market Makers Only ✅
+
+**Use Case**: Most common - provides price exposure without custody burden
 
 **Request**:
 ```json
 {
   "market_maker_address": "tGXC_mm_address",
-  "asset_type": "SYNTHETIC_EQUITY",
   "ticker": "AAPL",
   "company_name": "Apple Inc.",
   "exchange": "NASDAQ",
   "token_supply": 1000000,
   "price_source": "Bloomberg Terminal",
-  "legal_ownership": false,
-  "settlement_type": "cash_crypto",
-  "voting_rights": false,
   "sector": "Technology",
-  "industry": "Consumer Electronics",
-  "description": "Synthetic token tracking AAPL price"
+  "industry": "Consumer Electronics"
 }
 ```
 
@@ -132,25 +184,276 @@ POST /api/v1/stock/register-market-maker
 {
   "success": true,
   "contract_address": "0xabc123...",
+  "asset_type": "SYNTHETIC_EQUITY",
   "ticker": "AAPL",
-  "total_shares": 1000000,
-  "market_maker_shares": 1000000,
-  "message": "Stock contract deployed successfully"
+  "token_supply": 1000000,
+  "legal_ownership": false,
+  "voting_rights": false,
+  "redemption_rights": false,
+  "settlement_type": "cash_crypto",
+  "disclaimer": "⚠️ SYNTHETIC INSTRUMENT - This token tracks AAPL price but DOES NOT represent legal ownership.",
+  "message": "Synthetic equity contract deployed successfully"
 }
 ```
 
 **Example**:
 ```bash
-curl -X POST https://api.gxc.io/v1/stock/deploy \
+curl -X POST https://api.gxc.io/v1/stock/deploy/synthetic \
   -H "Authorization: Bearer MM_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '{
-    "market_maker_address": "tGXC_mm_123",
+    "market_maker_address": "tGXC_mm_goldman",
     "ticker": "AAPL",
     "company_name": "Apple Inc.",
+    "exchange": "NASDAQ",
+    "token_supply": 1000000,
+    "price_source": "Bloomberg Terminal",
+    "sector": "Technology",
+    "industry": "Consumer Electronics"
+  }'
+```
+
+**Important Notes**:
+- ✅ Token supply is **arbitrary** (does NOT need to match real outstanding shares)
+- ✅ No custody required
+- ✅ Easiest to deploy
+- ❌ Users do NOT get legal ownership
+- ❌ Users do NOT get voting rights
+
+---
+
+### Model 2: Custodial-Backed Deployment
+
+**Endpoint**: `POST /api/v1/stock/deploy/custodial`
+
+**Authorization**: Market Makers Only ✅ + Custodian Verification Required
+
+**Use Case**: Premium tier - for institutional clients who need real ownership
+
+**Request**:
+```json
+{
+  "market_maker_address": "tGXC_mm_address",
+  "ticker": "AAPL",
+  "company_name": "Apple Inc.",
+  "exchange": "NASDAQ",
+  "shares_held": 100000,
+  "custodian": "Goldman Sachs Custody",
+  "custodian_license": "CUST-12345-US",
+  "proof_of_reserves_url": "https://proof.gs.com/aapl",
+  "audit_frequency": "monthly",
+  "voting_rights": false,
+  "dividend_rights": false,
+  "sector": "Technology",
+  "industry": "Consumer Electronics"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "contract_address": "0xdef456...",
+  "asset_type": "CUSTODIAL_BACKED",
+  "ticker": "AAPL",
+  "token_supply": 100000,
+  "legal_ownership": true,
+  "voting_rights": false,
+  "redemption_rights": true,
+  "settlement_type": "physical_redemption",
+  "custodian": "Goldman Sachs Custody",
+  "proof_of_reserves_url": "https://proof.gs.com/aapl",
+  "next_audit_date": "2026-01-22",
+  "disclaimer": "✅ CUSTODIAL-BACKED TOKEN - This token is backed 1:1 by real AAPL shares held in custody.",
+  "message": "Custodial-backed contract deployed successfully"
+}
+```
+
+**Example**:
+```bash
+curl -X POST https://api.gxc.io/v1/stock/deploy/custodial \
+  -H "Authorization: Bearer MM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "market_maker_address": "tGXC_mm_goldman",
+    "ticker": "AAPL",
+    "company_name": "Apple Inc.",
+    "exchange": "NASDAQ",
+    "shares_held": 100000,
+    "custodian": "Goldman Sachs Custody",
+    "custodian_license": "CUST-12345-US",
+    "proof_of_reserves_url": "https://proof.gs.com/aapl",
+    "audit_frequency": "monthly",
+    "voting_rights": false,
+    "dividend_rights": false
+  }'
+```
+
+**Important Notes**:
+- ⚠️ Token supply **MUST equal** shares held in custody
+- ⚠️ Requires licensed custodian
+- ⚠️ Requires monthly proof of reserves
+- ✅ Users get legal ownership
+- ✅ Users can redeem for real shares
+- ✅ Premium pricing justified
+
+---
+
+### Model 3: Issuer-Authorized Deployment
+
+**Endpoint**: `POST /api/v1/stock/deploy/issuer`
+
+**Authorization**: Company Issuer Only ✅ + Regulatory Approval Required
+
+**Use Case**: Companies doing blockchain-native IPOs or direct listings
+
+**Request**:
+```json
+{
+  "issuer_address": "0xAppleInc",
+  "ticker": "AAPL",
+  "company_name": "Apple Inc.",
+  "exchange": "NASDAQ",
+  "shares_issued": 1000000,
+  "cap_table_url": "https://apple.com/investors/cap-table",
+  "shareholder_registry_url": "https://apple.com/investors/registry",
+  "regulatory_approval": "SEC-2025-12345",
+  "sector": "Technology",
+  "industry": "Consumer Electronics"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "contract_address": "0xghi789...",
+  "asset_type": "ISSUER_AUTHORIZED",
+  "ticker": "AAPL",
+  "token_supply": 1000000,
+  "legal_ownership": true,
+  "voting_rights": true,
+  "redemption_rights": false,
+  "settlement_type": "company_registry",
+  "issuer_address": "0xAppleInc",
+  "cap_table_url": "https://apple.com/investors/cap-table",
+  "disclaimer": "✅ ISSUER-AUTHORIZED TOKEN - This token is issued directly by Apple Inc. and represents real shares.",
+  "message": "Issuer-authorized contract deployed successfully"
+}
+```
+
+**Example**:
+```bash
+curl -X POST https://api.gxc.io/v1/stock/deploy/issuer \
+  -H "Authorization: Bearer ISSUER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "issuer_address": "0xAppleInc",
+    "ticker": "AAPL",
+    "company_name": "Apple Inc.",
+    "exchange": "NASDAQ",
+    "shares_issued": 1000000,
+    "cap_table_url": "https://apple.com/investors/cap-table",
+    "shareholder_registry_url": "https://apple.com/investors/registry",
+    "regulatory_approval": "SEC-2025-12345"
+  }'
+```
+
+**Important Notes**:
+- ⚠️ Requires company authorization
+- ⚠️ Requires SEC/regulatory approval
+- ⚠️ Shares are part of company cap table
+- ✅ Users get legal ownership
+- ✅ Users get voting rights
+- ✅ Users get dividend rights
+
+---
+
+### Legacy Deployment (Deprecated)
+
+**Endpoint**: `POST /api/v1/stock/deploy`
+
+**Status**: ⚠️ DEPRECATED - Use model-specific endpoints above
+
+This endpoint defaults to synthetic equity for backward compatibility but will be removed in v4.0.
+
+**Migration**: Use `/deploy/synthetic`, `/deploy/custodial`, or `/deploy/issuer` instead
     "exchange": "NASDAQ",
     "total_shares": 1000000
   }'
 ```
+
+---
+
+### Submit Proof of Reserves (Custodial-Backed Only)
+
+**Endpoint**: `POST /api/v1/stock/proof-of-reserves`
+
+**Authorization**: Custodian + Market Maker ✅
+
+**Use Case**: Required monthly for custodial-backed tokens to prove 1:1 backing
+
+**Request**:
+```json
+{
+  "contract_address": "0xdef456...",
+  "custodian": "Goldman Sachs Custody",
+  "custodian_license": "CUST-12345-US",
+  "shares_held": 100000,
+  "tokens_issued": 100000,
+  "auditor": "Deloitte",
+  "audit_report_url": "https://audit.deloitte.com/gxc-aapl-2025-12",
+  "audit_date": "2025-12-22",
+  "signature": "0xsignature_from_custodian"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "contract_address": "0xdef456...",
+  "ticker": "AAPL",
+  "shares_held": 100000,
+  "tokens_issued": 100000,
+  "match": true,
+  "auditor": "Deloitte",
+  "audit_date": "2025-12-22",
+  "next_audit_due": "2026-01-22",
+  "status": "VERIFIED",
+  "message": "Proof of reserves verified successfully"
+}
+```
+
+**Example**:
+```bash
+curl -X POST https://api.gxc.io/v1/stock/proof-of-reserves \
+  -H "Authorization: Bearer CUSTODIAN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contract_address": "0xdef456...",
+    "custodian": "Goldman Sachs Custody",
+    "shares_held": 100000,
+    "tokens_issued": 100000,
+    "auditor": "Deloitte",
+    "audit_report_url": "https://audit.deloitte.com/gxc-aapl-2025-12",
+    "audit_date": "2025-12-22",
+    "signature": "0xsignature"
+  }'
+```
+
+**Validation**:
+- ✅ Shares held MUST equal tokens issued
+- ✅ Custodian signature must be valid
+- ✅ Auditor must be recognized (Big 4)
+- ✅ Audit report must be publicly accessible
+- ❌ If mismatch detected, trading is halted
+
+**Important Notes**:
+- Required **monthly** for custodial-backed tokens
+- Failure to submit = trading halted
+- Public audit trail maintained on blockchain
+- Users can verify reserves at any time
 
 ---
 
@@ -159,6 +462,8 @@ curl -X POST https://api.gxc.io/v1/stock/deploy \
 **Endpoint**: `POST /api/v1/stock/update-price`
 
 **Authorization**: Market Makers Only (for their stocks) ✅
+
+**Applies To**: All asset types (synthetic, custodial-backed, issuer-authorized)
 
 **Request**:
 ```json
