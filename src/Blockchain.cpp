@@ -851,20 +851,33 @@ bool Blockchain::validateBlockInternal(const Block& block, uint32_t expectedInde
     LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Index OK (" + std::to_string(block.getIndex()) + ")");
     
     LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Checking previous block...");
-    if (!lastBlock) {
-        LOG_BLOCKCHAIN(LogLevel::ERROR, "No previous block (lastBlock is null). Chain size: " + std::to_string(chain.size()));
-        return false;
-    }
     
-    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Checking previous hash...");
-    std::string blockPrevHash = block.getPreviousHash();
-    std::string lastBlockHash = lastBlock->getHash();
-    if (blockPrevHash != lastBlockHash) {
-        LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid previous hash: block has " + blockPrevHash.substr(0, 16) + 
-                      "..., lastBlock has " + lastBlockHash.substr(0, 16) + "...");
-        return false;
+    // Special case: First block (genesis or first mined block)
+    if (block.getIndex() == 0) {
+        LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: First block (index 0), skipping previous block check");
+        // First block should have all-zero previous hash
+        std::string expectedGenesisHash = "0000000000000000000000000000000000000000000000000000000000000000";
+        if (block.getPreviousHash() != expectedGenesisHash) {
+            LOG_BLOCKCHAIN(LogLevel::WARNING, "First block has non-zero previous hash: " + block.getPreviousHash());
+            // Allow it anyway for compatibility
+        }
+    } else {
+        // Not the first block - must have valid previous block
+        if (!lastBlock) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "No previous block (lastBlock is null). Chain size: " + std::to_string(chain.size()));
+            return false;
+        }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Checking previous hash...");
+        std::string blockPrevHash = block.getPreviousHash();
+        std::string lastBlockHash = lastBlock->getHash();
+        if (blockPrevHash != lastBlockHash) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid previous hash: block has " + blockPrevHash.substr(0, 16) + 
+                          "..., lastBlock has " + lastBlockHash.substr(0, 16) + "...");
+            return false;
+        }
+        LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Previous hash OK");
     }
-    LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Previous hash OK");
     
     // Validate consensus (PoW or PoS)
     BlockType blockType = block.getBlockType();
