@@ -3310,15 +3310,57 @@ def index():
             # Fallback to calculated supply if RPC fails
             circulating_supply = height * CURRENT_NETWORK['block_reward']
         
+        # Get network hashrate from node
+        hash_rate = 0.0
+        try:
+            # Try getnetworkhashps first (returns hashrate directly)
+            hashrate_result = rpc_call('getnetworkhashps', [], timeout=5, show_errors=False)
+            if hashrate_result is not None:
+                hash_rate = float(hashrate_result)
+            else:
+                # Fallback to getmininginfo
+                mining_info = rpc_call('getmininginfo', [], timeout=5, show_errors=False)
+                if mining_info:
+                    hash_rate = float(mining_info.get('networkhashps', 0))
+        except Exception:
+            pass
+        
+        # Get difficulty from blockchain info or recent blocks
+        difficulty = 0.0
+        if info:
+            difficulty = float(info.get('difficulty', 0))
+        elif recent_blocks:
+            difficulty = float(recent_blocks[-1].get('difficulty', 0))
+        
+        # Get network info (peer count, connections)
+        peer_count = 0
+        try:
+            network_info = rpc_call('getnetworkinfo', [], timeout=5, show_errors=False)
+            if network_info:
+                peer_count = int(network_info.get('connections', 0))
+        except Exception:
+            pass
+        
+        # Get mempool info (pending transactions)
+        mempool_size = 0
+        try:
+            mempool_info = rpc_call('getmempoolinfo', [], timeout=5, show_errors=False)
+            if mempool_info:
+                mempool_size = int(mempool_info.get('size', 0))
+        except Exception:
+            pass
+        
         network_stats = {
             'total_blocks': height or 0,
             'total_transactions': total_txs or 0,
             'total_addresses': len(unique_addresses) if isinstance(unique_addresses, set) else unique_addresses or 0,
             'total_supply': 31000000,  # Total supply = Max supply (31 million GXC)
             'circulating_supply': circulating_supply or 0,
-            'hash_rate': 0.0,
-            'difficulty': (recent_blocks[-1].get('difficulty') if recent_blocks else 0.0) or 0.0,
-            'avg_block_time': CURRENT_NETWORK['block_time']
+            'hash_rate': hash_rate,
+            'difficulty': difficulty,
+            'avg_block_time': CURRENT_NETWORK['block_time'],
+            'peer_count': peer_count,
+            'mempool_size': mempool_size
         }
     else:
         try:

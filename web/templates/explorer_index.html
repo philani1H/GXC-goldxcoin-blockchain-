@@ -563,8 +563,16 @@
                         <div class="stats-label">
                             <i class="fas fa-tachometer-alt me-2"></i>Hashrate
                         </div>
+                        {% if stats.hash_rate|default(0) >= 1000000 %}
+                        <div class="stats-value">{{ "{:.2f}".format((stats.hash_rate|default(0)) / 1000000) }}</div>
+                        <small class="d-block mt-1 opacity-75">MH/s</small>
+                        {% elif stats.hash_rate|default(0) >= 1000 %}
+                        <div class="stats-value">{{ "{:.2f}".format((stats.hash_rate|default(0)) / 1000) }}</div>
+                        <small class="d-block mt-1 opacity-75">KH/s</small>
+                        {% else %}
                         <div class="stats-value">{{ "{:,.0f}".format(stats.hash_rate|default(0)) }}</div>
                         <small class="d-block mt-1 opacity-75">H/s</small>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -587,6 +595,60 @@
                         </div>
                         <div class="stats-value">{{ "{:.0f}".format(stats.avg_block_time|default(0)) }}</div>
                         <small class="d-block mt-1 opacity-75">seconds</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Third Row Stats -->
+        <div class="row g-4 mt-2">
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-network-wired me-2"></i>Network Peers
+                        </div>
+                        <div class="stats-value">{{ "{:,}".format(stats.peer_count|default(0)) }}</div>
+                        <small class="d-block mt-1 opacity-75">Connected Nodes</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-hourglass-half me-2"></i>Mempool
+                        </div>
+                        <div class="stats-value">{{ "{:,}".format(stats.mempool_size|default(0)) }}</div>
+                        <small class="d-block mt-1 opacity-75">Pending Transactions</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-award me-2"></i>Block Reward
+                        </div>
+                        <div class="stats-value">{{ "{:.0f}".format(network_info.block_reward|default(50)) }}</div>
+                        <small class="d-block mt-1 opacity-75">GXC per block</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-server me-2"></i>Node Status
+                        </div>
+                        <div class="stats-value">
+                            {% if connection_info.connected %}
+                            <span class="text-success">●</span> Online
+                            {% else %}
+                            <span class="text-danger">●</span> Offline
+                            {% endif %}
+                        </div>
+                        <small class="d-block mt-1 opacity-75">{{ connection_info.active_node|upper }}</small>
                     </div>
                 </div>
             </div>
