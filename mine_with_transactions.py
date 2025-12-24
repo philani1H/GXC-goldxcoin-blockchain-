@@ -81,6 +81,12 @@ def mine_block_with_transactions(miner_address):
                 "transactions": transactions  # Include pending transactions!
             }
             
+            # Debug: Print what we're sending
+            if len(transactions) > 0:
+                print(f"  Sending {len(transactions)} transactions:")
+                for tx in transactions:
+                    print(f"    - {tx.get('hash', 'NO_HASH')[:16]}... (type: {tx.get('type', 'UNKNOWN')})")
+            
             # Submit block
             result, error = rpc_call("submitblock", [block_data])
             if error:

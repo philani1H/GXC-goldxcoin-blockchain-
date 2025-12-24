@@ -1752,11 +1752,8 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         // Get transactions from block
         std::vector<Transaction> blockTransactions;
         if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
-            LOG_API(LogLevel::INFO, "submitBlock: Received " + std::to_string(blockData["transactions"].size()) + " transactions in block data");
             // Transactions are already in block (from Python miner)
             // We'll process them below
-        } else {
-            LOG_API(LogLevel::INFO, "submitBlock: No transactions array in block data");
         }
         
         // Calculate block reward with halving
@@ -1806,14 +1803,15 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
             for (const auto& txJson : blockData["transactions"]) {
                 if (txJson.is_object()) {
-                    bool isCoinbase = txJson.value("is_coinbase", txJson.value("coinbase", txJson.value("type", "") == "coinbase"));
+                    bool isCoinbase = txJson.value("is_coinbase", false);
+                    
                     if (isCoinbase) {
                         hasCoinbase = true;
                         // Create transaction from JSON
                         Transaction coinbaseTx = createTransactionFromJson(txJson);
                         newBlock.addTransaction(coinbaseTx);
                     } else {
-                        // Regular transaction
+                        // Regular transaction (including STAKE)
                         Transaction tx = createTransactionFromJson(txJson);
                         newBlock.addTransaction(tx);
                     }
@@ -2048,6 +2046,7 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
             for (const auto& tx : pendingTxs) {
                 JsonValue txJson;
                 txJson["hash"] = tx.getHash();
+                txJson["is_coinbase"] = false;  // CRITICAL: Mark as non-coinbase
                 
                 // Convert transaction type to string
                 std::string txType = "NORMAL";
