@@ -142,12 +142,14 @@ def rpc_call(method, params=None, timeout=10, retry=True, show_errors=True):
         'id': 1
     }
     
-    # Try active node first
-    nodes_to_try = []
-    if ACTIVE_NODE_TYPE == 'railway' or ACTIVE_NODE_URL == RAILWAY_NODE_URL:
-        nodes_to_try = [('railway', RAILWAY_NODE_URL), ('local', LOCAL_NODE_URL)]
-    else:
+    # Try local node first (prefer local for development/testing)
+    nodes_to_try = [('local', LOCAL_NODE_URL), ('railway', RAILWAY_NODE_URL)]
+    
+    # If active node is set and working, try it first
+    if ACTIVE_NODE_TYPE == 'local' and ACTIVE_NODE_URL == LOCAL_NODE_URL:
         nodes_to_try = [('local', LOCAL_NODE_URL), ('railway', RAILWAY_NODE_URL)]
+    elif ACTIVE_NODE_TYPE == 'railway' and ACTIVE_NODE_URL == RAILWAY_NODE_URL:
+        nodes_to_try = [('railway', RAILWAY_NODE_URL), ('local', LOCAL_NODE_URL)]
     
     for node_type, node_url in nodes_to_try:
         try:
@@ -3255,9 +3257,17 @@ def index():
         recent_blocks = []
         recent_transactions = []
         network_stats = {}
+        
+        # Get blockchain info from node
         info = rpc_call('getblockchaininfo', timeout=10, show_errors=False)
         height = (info.get('blocks') or info.get('height') or 0) if info else 0
+        
+        # Count transactions and addresses by scanning blocks
+        total_txs = 0
+        unique_addresses = set()
+        
         if height > 0:
+            # Get recent blocks for display
             start = max(0, height - 9)
             for h in range(start, height + 1):
                 b = explorer.get_block_by_number(h)
@@ -3269,14 +3279,38 @@ def index():
                         txd['block_number'] = b.get('number') or b.get('block_number') or 0
                         txd['confirmations'] = max(0, height - (txd.get('block_number') or 0) + 1) if (txd.get('block_number') or 0) > 0 else 0
                         recent_transactions.append(txd)
+            
+            # Estimate total transactions (each block has at least 1 coinbase tx)
+            total_txs = height  # Minimum estimate
+            
+            # Try to get more accurate count from database if available
+            try:
+                conn = sqlite3.connect(DATABASE_PATH, timeout=5.0)
+                cursor = conn.cursor()
+                cursor.execute('SELECT COUNT(*) FROM transactions')
+                result = cursor.fetchone()
+                db_txs = result[0] if result else 0
+                if db_txs > total_txs:
+                    total_txs = db_txs
+                cursor.execute('SELECT COUNT(DISTINCT address) FROM addresses')
+                result = cursor.fetchone()
+                db_addrs = result[0] if result else 0
+                conn.close()
+                unique_addresses = db_addrs
+            except Exception:
+                pass
+        
+        # Calculate total supply based on block height
+        total_supply = height * CURRENT_NETWORK['block_reward']
+        
         network_stats = {
             'total_blocks': height or 0,
-            'total_transactions': len(recent_transactions),
-            'total_addresses': 0,
-            'total_supply': 31000000,
+            'total_transactions': total_txs or 0,
+            'total_addresses': len(unique_addresses) if isinstance(unique_addresses, set) else unique_addresses or 0,
+            'total_supply': total_supply or 0,
             'hash_rate': 0.0,
             'difficulty': (recent_blocks[-1].get('difficulty') if recent_blocks else 0.0) or 0.0,
-            'avg_block_time': 0.0
+            'avg_block_time': CURRENT_NETWORK['block_time']
         }
     else:
         try:
