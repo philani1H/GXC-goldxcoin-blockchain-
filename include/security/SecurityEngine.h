@@ -52,9 +52,9 @@ constexpr double SURGE_THRESHOLD = 0.12;             // Hashrate surge detection
 constexpr double ATTACK_THRESHOLD = 0.50;            // Attack detection threshold
 
 // Fee parameters
-constexpr double MIN_FEE = 0.0001;                   // Minimum transaction fee
-constexpr double MAX_FEE = 0.001;                    // Maximum transaction fee
-constexpr double FEE_SCALE_FACTOR = 0.000001;        // Fee scaling per mempool tx
+constexpr double MIN_FEE = 0.001;                    // Minimum transaction fee
+constexpr double MAX_FEE = 0.01;                     // Maximum transaction fee
+constexpr double FEE_SCALE_FACTOR = 0.00001;         // Fee scaling per mempool tx
 
 // Difficulty parameters
 constexpr double MIN_DIFFICULTY = 1.0;               // Minimum difficulty
