@@ -311,7 +311,20 @@ class MiningPool:
             'timestamp': template.get('curtime', int(time.time())),
             'difficulty': float(template.get('difficulty', self.difficulty)),
             'height': int(template.get('height', 0)),
-            'transactions': template.get('transactions', [])
+            'transactions': template.get('transactions', []),
+            # Additional fields from node template
+            'bits': template.get('bits', '1d00ffff'),
+            'target': template.get('target', '0' * 64),
+            'version': template.get('version', 1),
+            'block_reward': template.get('block_reward', 50.0),
+            'coinbase_value': template.get('coinbase_value', 50.0),
+            'coinbasevalue': template.get('coinbasevalue', 5000000000),
+            'block_type': template.get('block_type', 'pow'),
+            'consensus_type': template.get('consensus_type', 'pow'),
+            'mintime': template.get('mintime', int(time.time())),
+            'sigoplimit': template.get('sigoplimit', 20000),
+            'sizelimit': template.get('sizelimit', 1000000),
+            'noncerange': template.get('noncerange', '00000000ffffffff')
         }
         
         self.current_job = job
@@ -419,9 +432,12 @@ class MiningPool:
                 "params": [
                     job['job_id'],
                     job['prev_block_hash'],
-                    job['merkle_root'],
-                    job['timestamp'],
-                    hex(int(job['difficulty']))[2:]
+                    "", "",  # coinbase1, coinbase2 (empty for now)
+                    [],  # merkle branches
+                    job.get('version', '1'),
+                    job.get('bits', '1d00ffff'),
+                    hex(job['timestamp'])[2:],
+                    True  # clean_jobs
                 ]
             }
             client_socket.send((json.dumps(job_msg) + "\n").encode())
@@ -491,9 +507,12 @@ class MiningPool:
                     "params": [
                         job['job_id'],
                         job['prev_block_hash'],
-                        job['merkle_root'],
-                        job['timestamp'],
-                        hex(int(job['difficulty']))[2:]
+                        "", "",  # coinbase1, coinbase2
+                        [],  # merkle branches
+                        job.get('version', '1'),
+                        job.get('bits', '1d00ffff'),
+                        hex(job['timestamp'])[2:],
+                        True  # clean_jobs
                     ]
                 }
                 client_socket.send((json.dumps(job_msg) + "\n").encode())
