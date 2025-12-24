@@ -774,19 +774,19 @@ class TestnetMinerGUI:
 
     def add_transaction_to_list(self, tx: Dict):
         """Add a single transaction to the transactions list"""
-        tx_type = tx.get('type', 'unknown')
-        tx_hash = tx.get('hash', '')
+        # Get transaction hash (node uses 'txid', mining uses 'hash')
+        tx_hash = tx.get('txid', tx.get('hash', ''))
         short_hash = tx_hash[:16] + '...' if tx_hash else 'N/A'
 
-        # Determine transaction type display
-        if tx_type == 'coinbase':
+        # Determine transaction type
+        tx_type = tx.get('type', 'unknown')
+        if tx_type == 'coinbase' or tx_type == 'mining_reward':
             type_display = "Mining Reward"
-            amount = tx.get('amount', 0)
         else:
             type_display = "Received"
-            amount = tx.get('amount', 0)
 
-        # Format amount
+        # Get amount
+        amount = tx.get('amount', 0)
         amount_str = f"{amount:.8f}"
 
         # Status and confirmations
@@ -880,21 +880,14 @@ class TestnetMinerGUI:
     def get_address_transactions(self, address: str, limit: int = 100) -> List[Dict]:
         """Get transactions for an address from blockchain"""
         try:
-            methods = [
-                ("gxc_getTransactionsByAddress", [address, limit]),
-                ("getaddresstransactions", [address, limit]),
-                ("listtransactions", [address, limit]),
-                ("gettransactions", [address, limit]),
-            ]
-
-            for method, params in methods:
-                result = self.rpc_call(method, params, show_errors=False)
-                if result:
-                    if isinstance(result, list):
-                        return result
-                    elif isinstance(result, dict):
-                        if 'transactions' in result:
-                            return result['transactions']
+            # Use getaddresstransactions (confirmed working)
+            result = self.rpc_call("getaddresstransactions", [address], show_errors=False)
+            
+            if result and isinstance(result, list):
+                # Sort by block height (newest first) and limit
+                sorted_txs = sorted(result, key=lambda x: x.get('blockHeight', 0), reverse=True)
+                return sorted_txs[:limit]
+            
             return []
         except Exception as e:
             self.log(f"Error getting transactions: {e}", "WARNING")

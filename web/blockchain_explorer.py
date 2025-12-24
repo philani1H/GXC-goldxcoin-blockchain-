@@ -26,9 +26,9 @@ NETWORK_CONFIG = {
         'block_time': 120,  # 2 minutes
         'difficulty': 0.1,
         'block_reward': 50.0,  # Initial reward (halves every 1,051,200 blocks)
-        'rpc_port': 18332,
+        'rpc_port': 8332,
         'railway_url': 'https://gxc-chain112-blockchain-node-production.up.railway.app',
-        'local_url': 'http://localhost:18332',
+        'local_url': 'http://localhost:8332',
     },
     'mainnet': {
         'address_prefix': 'GXC',
