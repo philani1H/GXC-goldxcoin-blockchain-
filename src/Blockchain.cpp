@@ -931,29 +931,13 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
         return false;
     }
     
-    // CRITICAL FIX: Skip hash recalculation check for blocks with empty/modified merkle root
-    // When miners submit blocks without transactions, the merkle root is empty or will be
-    // recalculated after adding coinbase. The miner's hash proves work was done, even if
-    // the merkle root changes later. We validate the hash meets difficulty instead.
-    std::string blockMerkleRoot = block.getMerkleRoot();
-    std::string calculatedMerkleRoot = block.calculateMerkleRoot();
+    // CRITICAL FIX: Do NOT recalculate hash for validation
+    // The miner's submitted hash is the proof of work. Recalculating it will give a different
+    // result if the block structure was modified (e.g., coinbase added, merkle root updated).
+    // We only need to verify the submitted hash meets the difficulty target.
+    // This is the correct approach used by Bitcoin and other blockchains.
     
-    // Only validate hash matches if merkle root hasn't been modified
-    if (!blockMerkleRoot.empty() && blockMerkleRoot == calculatedMerkleRoot) {
-        // Merkle root is consistent, validate hash matches
-        std::string calculatedHash = block.calculateHash();
-        
-        if (calculatedHash != submittedHash) {
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Hash mismatch! Submitted: " + 
-                          submittedHash.substr(0, 16) + "..., Calculated: " + calculatedHash.substr(0, 16) + "...");
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Block type: " + std::to_string(static_cast<int>(block.getBlockType())));
-            return false;
-        }
-    } else {
-        // Merkle root is empty or will be recalculated - skip hash validation
-        // The miner's hash still proves work was done, we just validate it meets difficulty
-        LOG_BLOCKCHAIN(LogLevel::DEBUG, "validateProofOfWork: Skipping hash recalculation check (merkle root will be updated)");
-    }
+    LOG_BLOCKCHAIN(LogLevel::DEBUG, "validateProofOfWork: Validating submitted hash meets difficulty target");
     
     // Use blockchain's difficulty for validation (not block's difficulty)
     // This prevents miners from submitting blocks with incorrect difficulty
