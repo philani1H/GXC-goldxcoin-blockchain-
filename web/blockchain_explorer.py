@@ -4247,20 +4247,41 @@ def stocks_page():
                 'last_price_update': row[8]
             })
         
-        # If no stocks in database, return default list
+        # If no stocks in database, populate with initial data from blockchain
         if not stocks:
-            stocks = [
-                {'ticker': 'AAPL', 'company_name': 'Apple Inc.', 'exchange': 'NASDAQ', 'current_price': 175.50, 'market_cap': 2750000000000, 'total_shares': 15600000000, 'dividend_yield': 0.005, 'sector': 'Technology'},
-                {'ticker': 'MSFT', 'company_name': 'Microsoft Corporation', 'exchange': 'NASDAQ', 'current_price': 378.85, 'market_cap': 2810000000000, 'total_shares': 7400000000, 'dividend_yield': 0.007, 'sector': 'Technology'},
-                {'ticker': 'GOOGL', 'company_name': 'Alphabet Inc.', 'exchange': 'NASDAQ', 'current_price': 142.30, 'market_cap': 1780000000000, 'total_shares': 12500000000, 'dividend_yield': 0.0, 'sector': 'Technology'},
-                {'ticker': 'AMZN', 'company_name': 'Amazon.com Inc.', 'exchange': 'NASDAQ', 'current_price': 151.20, 'market_cap': 1560000000000, 'total_shares': 10300000000, 'dividend_yield': 0.0, 'sector': 'Consumer Discretionary'},
-                {'ticker': 'TSLA', 'company_name': 'Tesla Inc.', 'exchange': 'NASDAQ', 'current_price': 248.50, 'market_cap': 789000000000, 'total_shares': 3200000000, 'dividend_yield': 0.0, 'sector': 'Consumer Discretionary'},
-                {'ticker': 'NVDA', 'company_name': 'NVIDIA Corporation', 'exchange': 'NASDAQ', 'current_price': 485.20, 'market_cap': 1190000000000, 'total_shares': 2500000000, 'dividend_yield': 0.001, 'sector': 'Technology'},
-                {'ticker': 'META', 'company_name': 'Meta Platforms Inc.', 'exchange': 'NASDAQ', 'current_price': 325.40, 'market_cap': 832000000000, 'total_shares': 2600000000, 'dividend_yield': 0.0, 'sector': 'Technology'},
-                {'ticker': 'BRK-B', 'company_name': 'Berkshire Hathaway Inc.', 'exchange': 'NYSE', 'current_price': 362.75, 'market_cap': 798000000000, 'total_shares': 2200000000, 'dividend_yield': 0.0, 'sector': 'Financial Services'},
-                {'ticker': 'JPM', 'company_name': 'JPMorgan Chase & Co.', 'exchange': 'NYSE', 'current_price': 158.90, 'market_cap': 460000000000, 'total_shares': 2900000000, 'dividend_yield': 0.024, 'sector': 'Financial Services'},
-                {'ticker': 'JNJ', 'company_name': 'Johnson & Johnson', 'exchange': 'NYSE', 'current_price': 162.45, 'market_cap': 430000000000, 'total_shares': 2600000000, 'dividend_yield': 0.031, 'sector': 'Healthcare'}
-            ]
+            # Try to get stock contracts from blockchain node
+            try:
+                stock_contracts = rpc_call('liststockcontracts', [], timeout=10, show_errors=False)
+                if stock_contracts and isinstance(stock_contracts, list):
+                    # Store in database and return
+                    for contract in stock_contracts:
+                        try:
+                            cursor.execute('''
+                                INSERT OR REPLACE INTO stock_contracts 
+                                (ticker, company_name, exchange, current_price, market_cap, total_shares, 
+                                 dividend_yield, sector, is_active, last_price_update)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                            ''', (
+                                contract.get('ticker'),
+                                contract.get('company_name'),
+                                contract.get('exchange'),
+                                contract.get('current_price', 0.0),
+                                contract.get('market_cap', 0.0),
+                                contract.get('total_shares', 0),
+                                contract.get('dividend_yield', 0.0),
+                                contract.get('sector'),
+                                int(time.time())
+                            ))
+                            stocks.append(contract)
+                        except Exception:
+                            pass
+                    conn.commit()
+            except Exception:
+                pass
+            
+            # If still no stocks, show message that no contracts are deployed
+            if not stocks:
+                stocks = []
         
         return render_template('stocks.html', stocks=stocks, forum_url=FORUM_URL)
         
