@@ -85,6 +85,7 @@ class TestnetMinerGUI:
         self.setup_ui()
         self.log(f"GXC {NETWORK.upper()} Miner initialized", "INFO")
         self.log(f"Network: {NETWORK.upper()}", "INFO")
+        self.log(f"Mining Address: {MINER_ADDRESS}", "INFO")
         self.log(f"Address prefix: {CURRENT_NETWORK['address_prefix']}", "INFO")
         self.log(f"Block reward: Will fetch from blockchain...", "INFO")
 
@@ -606,17 +607,22 @@ class TestnetMinerGUI:
         if not address:
             return False
 
-        self.log(f"Mining block to: {address[:20]}...", "INFO")
+        self.log(f"Mining block to: {address}", "INFO")
 
-        # Get block template
-        template = self.rpc_call("getblocktemplate", [{"algorithm": "sha256"}], show_errors=False)
+        # Get block template from node (no params needed)
+        template = self.rpc_call("getblocktemplate", [], show_errors=False)
 
         if not template:
             self.log("Failed to get block template", "ERROR")
             return False
 
+        # Extract all fields from template
         height = template.get('height', 1)
         prev_hash = template.get('previousblockhash', '0' * 64)
+        bits = template.get('bits', '1d00ffff')
+        curtime = template.get('curtime', int(time.time()))
+        version = template.get('version', 1)
+        transactions = template.get('transactions', [])
 
         self.log(f"Height: {height}, Previous: {prev_hash[:16]}...", "INFO")
 
@@ -676,18 +682,22 @@ class TestnetMinerGUI:
                     'to': address
                 }
 
-                # Prepare block data
+                # Prepare block data with all template fields
                 block_data = {
                     'hash': block_hash,
                     'previousblockhash': prev_hash,
                     'height': height,
+                    'version': version,
+                    'bits': bits,
                     'nonce': nonce,
+                    'timestamp': curtime,
                     'miner': address,
                     'miner_address': address,
-                    'timestamp': int(time.time()),
                     'difficulty': template.get('difficulty', 0.1),
-                    'transactions': [coinbase_tx],
-                    'transaction_count': 1
+                    'target': template.get('target', '0' * 64),
+                    'transactions': transactions + [coinbase_tx],
+                    'transaction_count': len(transactions) + 1,
+                    'block_reward': block_reward
                 }
 
                 self.log(f"Found valid hash: {block_hash[:16]}...", "SUCCESS")
@@ -903,24 +913,27 @@ class TestnetMinerGUI:
 
         def fetch():
             try:
-                # Get balance
+                # Get balance using working method
                 balance = 0.0
-                balance_methods = [
-                    ("gxc_getBalance", [address]),
-                    ("getbalance", [address]),
-                    ("getaddressbalance", [address]),
-                ]
-
-                for method, params in balance_methods:
-                    result = self.rpc_call(method, params, show_errors=False)
-                    if result is not None:
-                        if isinstance(result, (int, float)):
-                            balance = float(result)
-                            break
-                        elif isinstance(result, dict):
-                            balance = float(result.get('balance', result.get('amount', 0.0)))
-                            if balance > 0:
-                                break
+                
+                # Method 1: Try getbalance (confirmed working)
+                result = self.rpc_call("getbalance", [address], show_errors=False)
+                if result is not None and isinstance(result, (int, float)):
+                    balance = float(result)
+                
+                # Method 2: If still 0, try getstakinginfo (also confirmed working)
+                if balance == 0:
+                    staking_info = self.rpc_call("getstakinginfo", [address], show_errors=False)
+                    if staking_info and isinstance(staking_info, dict):
+                        balance = float(staking_info.get('spendable_balance', 0))
+                        
+                        # Also get total earned from staking info
+                        total_earned_mining = float(staking_info.get('total_earned_mining', 0))
+                        total_earned_staking = float(staking_info.get('total_earned_staking', 0))
+                        total_earned = total_earned_mining + total_earned_staking
+                        
+                        self.root.after(0, lambda te=total_earned: self.update_earnings_display(te))
+                        self.root.after(0, lambda te=total_earned: self.log(f"Total earned: {te:.8f} GXC", "INFO"))
 
                 self.root.after(0, lambda b=balance: self.update_balance_display(b))
                 self.root.after(0, lambda b=balance: self.log(f"Balance: {b:.8f} GXC", "INFO"))
@@ -965,7 +978,7 @@ class TestnetMinerGUI:
         self.stop_btn.config(state="normal")
         self.start_time = time.time()
         self.log("Mining started!", "SUCCESS")
-        self.log(f"Mining to: {self.wallet_address.get()[:30]}...", "INFO")
+        self.log(f"Mining to: {self.wallet_address.get()}", "INFO")
 
         def mine_loop():
             while self.mining and not self.shutdown:
