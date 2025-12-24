@@ -186,6 +186,7 @@ set(NETWORK_SOURCES
     src/PeerManager.cpp
     src/MessageHandler.cpp
     src/Stratum.cpp
+    src/P2PNetwork.cpp
 )
 
 # Mining sources
@@ -197,6 +198,7 @@ set(MINING_SOURCES
     src/mining/PoolManager.cpp
     src/mining/HardwareDetector.cpp
     src/mining/MiningOptimizer.cpp
+    src/CPUMiner.cpp
 )
 
 # Governance and tokenization
