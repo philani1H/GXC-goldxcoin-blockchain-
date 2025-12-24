@@ -1826,9 +1826,6 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
             newBlock.addTransaction(coinbase);
             // Recalculate merkle root after adding coinbase
             newBlock.calculateMerkleRoot();
-            // Note: The hash provided by miner is based on block without coinbase
-            // We keep the miner's hash for validation, but the merkle root will be different
-            // This is acceptable as the miner's hash proves work was done
         } else {
             // Merkle root should already be calculated, but recalculate to ensure it's correct
             newBlock.calculateMerkleRoot();
