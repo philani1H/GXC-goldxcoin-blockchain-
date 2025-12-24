@@ -2020,48 +2020,7 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         
         result["version"] = 1;
         result["previousblockhash"] = latestBlock.getHash();
-        
-        // Include pending transactions from mempool
-        JsonValue transactions(JsonValue::array());
-        auto pendingTxs = blockchain->getPendingTransactions(1000);
-        
-        for (const auto& tx : pendingTxs) {
-            JsonValue txJson;
-            txJson["hash"] = tx.getHash();
-            txJson["is_coinbase"] = false;
-            
-            // Set transaction type
-            std::string txType = "NORMAL";
-            if (tx.getType() == TransactionType::STAKE) txType = "STAKE";
-            else if (tx.getType() == TransactionType::UNSTAKE) txType = "UNSTAKE";
-            txJson["type"] = txType;
-            txJson["fee"] = tx.getFee();
-            
-            // Add inputs
-            JsonValue inputs(JsonValue::array());
-            for (const auto& input : tx.getInputs()) {
-                JsonValue inputJson;
-                inputJson["txHash"] = input.txHash;
-                inputJson["outputIndex"] = input.outputIndex;
-                inputJson["amount"] = input.amount;
-                inputs.push_back(inputJson);
-            }
-            txJson["inputs"] = inputs;
-            
-            // Add outputs
-            JsonValue outputs(JsonValue::array());
-            for (const auto& output : tx.getOutputs()) {
-                JsonValue outputJson;
-                outputJson["address"] = output.address;
-                outputJson["amount"] = output.amount;
-                outputs.push_back(outputJson);
-            }
-            txJson["outputs"] = outputs;
-            
-            transactions.push_back(txJson);
-        }
-        
-        result["transactions"] = transactions;
+        result["transactions"] = JsonValue(JsonValue::array());
         result["coinbaseaux"] = JsonValue(JsonValue::object());
         result["coinbasevalue"] = static_cast<uint64_t>(blockReward * 100000000); // Convert to satoshis
         result["coinbase_value"] = blockReward; // Also provide as GXC
