@@ -78,8 +78,8 @@ bool GoldToken::isFullyBacked() const { return getReserveRatio() >= 1.0; }
 std::vector<GoldTokenTransfer> GoldToken::getTransferHistory(const std::string& address) const { std::vector<GoldTokenTransfer> result; for (const auto& t : transferHistory) if (t.from == address || t.to == address) result.push_back(t); return result; }
 std::vector<GoldTokenTransfer> GoldToken::getAllTransfers() const { return transferHistory; }
 GoldTokenTransfer GoldToken::getTransfer(const std::string& txHash) const { for (const auto& t : transferHistory) if (t.txHash == txHash) return t; return {}; }
-std::string GoldToken::requestRedemption(const std::string& holder, double, const std::string&) { return "redemptionId"; }
-bool GoldToken::processRedemption(const std::string&, const std::string&) { return true; }
+std::string GoldToken::requestRedemption(const std::string& /* holder */, double /* amount */, const std::string& /* vault */) { return "redemptionId"; }
+bool GoldToken::processRedemption(const std::string& /* redemptionId */, const std::string& /* proof */) { return true; }
 std::vector<std::string> GoldToken::getPendingRedemptions() const { return {}; }
 bool GoldToken::verifyReserves() const { return isFullyBacked(); }
 std::string GoldToken::generateReserveProof() const { return "reserve_proof"; }

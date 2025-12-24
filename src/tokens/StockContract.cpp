@@ -309,11 +309,11 @@ StockContract::StockContract()
       votingRights(false),
       dividendRights(false),
       redemptionRights(false),
+      lastAuditDate(0),
       totalShares(0),
       tradingHalted(false),
-      dividendYield(0.0),
       marketCap(0),
-      lastAuditDate(0) {
+      dividendYield(0.0) {
 }
 
 bool StockContract::updatePrice(double newPrice, std::time_t timestamp, const std::string& popHash, const std::string& source) {
