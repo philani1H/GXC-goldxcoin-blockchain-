@@ -1649,12 +1649,22 @@ JsonValue RPCAPI::getMiningInfo(const JsonValue& params) {
     result["currentblocksize"] = 1000;
     result["currentblocktx"] = 1;
     result["difficulty"] = blockchain->getDifficulty();
-    result["networkhashps"] = 1000000.0; // Example hashrate
+    
+    // Calculate real network hashrate from recent blocks
+    double avgBlockTime = blockchain->getAverageBlockTime(10);
+    double difficulty = blockchain->getDifficulty();
+    double networkHashrate = 0.0;
+    if (avgBlockTime > 0) {
+        // Hashrate = (difficulty * 2^32) / block_time
+        networkHashrate = (difficulty * pow(2, 32)) / avgBlockTime;
+    }
+    result["networkhashps"] = networkHashrate;
+    
     result["pooledtx"] = 0;
-    result["testnet"] = false;
-    result["generate"] = false; // Would check if mining is enabled
+    result["testnet"] = Config::isTestnet();
+    result["generate"] = false; // Built-in mining not yet implemented
     result["genproclimit"] = 1;
-    result["hashespersec"] = 0;
+    result["hashespersec"] = 0; // Built-in mining not yet implemented
     
     return result;
 }
@@ -1663,8 +1673,17 @@ JsonValue RPCAPI::getNetworkHashPS(const JsonValue& params) {
     int blocks = params.size() > 0 ? params[0].get<int>() : 120;
     int height = params.size() > 1 ? params[1].get<int>() : -1;
     
-    // In a real implementation, would calculate actual network hashrate
-    return 1000000.0; // Example hashrate in hashes per second
+    // Calculate real network hashrate from recent blocks
+    double avgBlockTime = blockchain->getAverageBlockTime(blocks);
+    double difficulty = blockchain->getDifficulty();
+    double networkHashrate = 0.0;
+    
+    if (avgBlockTime > 0) {
+        // Hashrate = (difficulty * 2^32) / block_time
+        networkHashrate = (difficulty * pow(2, 32)) / avgBlockTime;
+    }
+    
+    return networkHashrate;
 }
 
 JsonValue RPCAPI::submitBlock(const JsonValue& params) {
@@ -2179,30 +2198,9 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
 JsonValue RPCAPI::getPeerInfo(const JsonValue& params) {
     JsonValue result(JsonValue::array());
     
-    // In a real implementation, would get actual peer information
-    for (int i = 0; i < 3; ++i) {
-        JsonValue peer;
-        peer["id"] = i;
-        peer["addr"] = "192.168.1." + std::to_string(100 + i) + ":8333";
-        peer["services"] = "0000000000000001";
-        peer["relaytxes"] = true;
-        peer["lastsend"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-        peer["lastrecv"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
-        peer["bytessent"] = 1000 * (i + 1);
-        peer["bytesrecv"] = 800 * (i + 1);
-        peer["conntime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp() - 3600);
-        peer["timeoffset"] = 0;
-        peer["pingtime"] = 0.1;
-        peer["version"] = 70015;
-        peer["subver"] = "/GXC:2.0.0/";
-        peer["inbound"] = i % 2 == 0;
-        peer["startingheight"] = static_cast<uint64_t>(blockchain->getHeight());
-        peer["banscore"] = 0;
-        peer["synced_headers"] = static_cast<uint64_t>(blockchain->getHeight());
-        peer["synced_blocks"] = static_cast<uint64_t>(blockchain->getHeight());
-        
-        result.push_back(peer);
-    }
+    // Return empty array - P2P networking not yet implemented
+    // TODO: Implement real P2P networking and return actual peer connections
+    // For now, return empty to show no fake peers
     
     return result;
 }
@@ -2222,7 +2220,7 @@ JsonValue RPCAPI::getNetworkInfo(const JsonValue& params) {
     result["localrelay"] = true;
     result["timeoffset"] = 0;
     result["networkactive"] = true;
-    result["connections"] = 3;
+    result["connections"] = 0; // P2P not yet implemented
     result["networks"] = JsonValue(JsonValue::array());
     
     // IPv4 network
