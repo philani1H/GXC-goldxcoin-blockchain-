@@ -745,7 +745,7 @@ JsonValue RPCAPI::getBlockchainInfo(const JsonValue& params) {
     result["mediantime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
     result["verificationprogress"] = 1.0;
     result["initialblockdownload"] = false;
-    result["chainwork"] = "0000000000000000000000000000000000000000000000000000000000000000";
+    result["chainwork"] = latestBlock.getChainWork(); // Cumulative work from all blocks
     result["size_on_disk"] = 0; // Would calculate actual size
     result["pruned"] = false;
     result["block_reward"] = blockReward; // Current block reward

@@ -36,6 +36,10 @@ private:
     double feeBurnRate;
     std::string popReference; // Reference to latest PoP oracle data
     
+    // Chainwork (cumulative difficulty)
+    std::string chainWork;  // Hex string representation of cumulative work
+    uint32_t nBits;         // Compact difficulty target
+    
 public:
     // Constructors
     Block(); // Default constructor
@@ -71,6 +75,8 @@ public:
     double getBlockReward() const { return blockReward; }
     double getFeeBurnRate() const { return feeBurnRate; }
     std::string getPopReference() const { return popReference; }
+    std::string getChainWork() const { return chainWork; }
+    uint32_t getNBits() const { return nBits; }
     
     // Setters
     void setIndex(uint32_t idx) { index = idx; }
@@ -86,6 +92,8 @@ public:
     void setBlockReward(double reward) { blockReward = reward; }
     void setFeeBurnRate(double rate) { feeBurnRate = rate; }
     void setPopReference(const std::string& popRef) { popReference = popRef; }
+    void setChainWork(const std::string& work) { chainWork = work; }
+    void setNBits(uint32_t bits) { nBits = bits; }
     
     // Serialization
     std::string serialize() const;

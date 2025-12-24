@@ -3,13 +3,15 @@
 #include <sstream>
 
 Block::Block() 
-    : index(0), previousHash(""), blockType(BlockType::POW_SHA256), nonce(0), difficulty(0) {
+    : index(0), previousHash(""), blockType(BlockType::POW_SHA256), nonce(0), difficulty(0), 
+      chainWork("0000000000000000000000000000000000000000000000000000000000000000"), nBits(0x1d00ffff) {
     timestamp = std::time(nullptr);
     hash = calculateHash();
 }
 
 Block::Block(uint32_t indexIn, const std::string& previousHashIn, BlockType type) 
-    : index(indexIn), previousHash(previousHashIn), blockType(type), nonce(0), difficulty(0) {
+    : index(indexIn), previousHash(previousHashIn), blockType(type), nonce(0), difficulty(0),
+      chainWork("0000000000000000000000000000000000000000000000000000000000000000"), nBits(0x1d00ffff) {
     timestamp = std::time(nullptr);
     hash = calculateHash();
 }

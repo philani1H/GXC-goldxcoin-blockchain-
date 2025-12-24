@@ -4,6 +4,7 @@
 #include "../include/Utils.h"
 #include "../include/HashUtils.h"
 #include "../include/Config.h"
+#include "../include/arith_uint256.h"
 #include <algorithm>
 #include <numeric>
 #include <sstream>
@@ -302,6 +303,27 @@ bool Blockchain::addBlock(const Block& block) {
             return false;
         }
         
+        // CRITICAL: Calculate and accumulate chainwork
+        // This is essential for fork choice and reorg safety
+        // Works for all algorithms: SHA256, Ethash, GXHash, PoS
+        arith_uint256 blockWork = GetBlockProof(blockPtr->getDifficulty());
+        arith_uint256 totalChainWork;
+        
+        if (!chain.empty() && lastBlock) {
+            // Accumulate: new_chainwork = prev_chainwork + block_work
+            arith_uint256 prevChainWork(lastBlock->getChainWork());
+            totalChainWork = prevChainWork + blockWork;
+        } else {
+            // Genesis block: chainwork = block_work
+            totalChainWork = blockWork;
+        }
+        
+        blockPtr->setChainWork(totalChainWork.GetHex());
+        blockPtr->setNBits(0x1d00ffff); // Standard difficulty bits
+        
+        LOG_BLOCKCHAIN(LogLevel::DEBUG, "addBlock: Block work: " + blockWork.GetHex().substr(0, 16) + 
+                      "..., Total chainwork: " + totalChainWork.GetHex().substr(0, 16) + "...");
+        
         chain.push_back(blockPtr);
         lastBlock = blockPtr;
         
@@ -531,15 +553,22 @@ bool Blockchain::loadBlocksFromDatabase() {
         chain.clear();
         utxoSet.clear();
         
-        // Load blocks into chain (in order)
+        // Load blocks into chain (in order) and recalculate chainwork
+        arith_uint256 cumulativeWork(0);
         for (const auto& block : blocks) {
             std::shared_ptr<Block> blockPtr = std::make_shared<Block>(block);
+            
+            // Recalculate chainwork for this block
+            arith_uint256 blockWork = GetBlockProof(blockPtr->getDifficulty());
+            cumulativeWork += blockWork;
+            blockPtr->setChainWork(cumulativeWork.GetHex());
+            
             chain.push_back(blockPtr);
             lastBlock = blockPtr;
         }
         
         LOG_BLOCKCHAIN(LogLevel::INFO, "Successfully loaded " + std::to_string(chain.size()) + 
-                      " blocks from database");
+                      " blocks from database (chainwork: " + cumulativeWork.GetHex().substr(0, 16) + "...)");
         
         return true;
         

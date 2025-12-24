@@ -174,6 +174,7 @@ set(CORE_SOURCES
     src/Blake2b.cpp
     src/Argon2id.cpp
     src/EthashAlgorithm.cpp
+    src/arith_uint256.cpp
 )
 
 # Network and API sources
