@@ -11,10 +11,11 @@ import json
 
 MINER_ADDRESS = "tGXC9fab7317231b966af85ac453e168c0932"
 # Use Railway URL from environment, fallback to localhost for local development
-RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', 'http://localhost:18332'))
+# FIXED: Changed port from 18332 to 8332 (correct RPC port)
+RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', 'http://localhost:8332'))
 
-def rpc_call(method, params=None):
-    """Make RPC call to blockchain node"""
+def rpc_call(method, params=None, retries=3):
+    """Make RPC call to blockchain node with retry logic"""
     if params is None:
         params = []
     
@@ -25,13 +26,31 @@ def rpc_call(method, params=None):
         "id": 1
     }
     
-    try:
-        response = requests.post(RPC_URL, json=payload, timeout=5)
-        result = response.json()
-        return result.get('result')
-    except Exception as e:
-        print(f"RPC Error: {e}")
-        return None
+    for attempt in range(retries):
+        try:
+            response = requests.post(RPC_URL, json=payload, timeout=10)
+            result = response.json()
+            
+            # Check for RPC errors
+            if 'error' in result and result['error']:
+                print(f"RPC Error: {result['error']}")
+                return None
+            
+            return result.get('result')
+        except requests.Timeout:
+            if attempt < retries - 1:
+                print(f"⏱️  Timeout, retrying... ({attempt + 1}/{retries})")
+                time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+            print(f"❌ RPC Timeout after {retries} attempts")
+            return None
+        except Exception as e:
+            if attempt < retries - 1:
+                print(f"⚠️  Error: {e}, retrying... ({attempt + 1}/{retries})")
+                time.sleep(1)
+                continue
+            print(f"❌ RPC Error: {e}")
+            return None
 
 def mine_block():
     """Mine a single block"""
@@ -181,14 +200,31 @@ def mine_block():
             print(f"   ⏱️  Timeout after 60 seconds, getting new template...")
             return False
 
+def show_traceability_info():
+    """Display traceability information"""
+    print("\n" + "="*70)
+    print("📊 TRACEABILITY FORMULA")
+    print("="*70)
+    print("\nAll mined blocks maintain the mathematical breadcrumb trail:")
+    print()
+    print("  Formula 1: Ti.Inputs[0].txHash == Ti.PrevTxHash")
+    print("  Formula 2: Ti.Inputs[0].amount == Ti.ReferencedAmount")
+    print()
+    print("This ensures complete transaction traceability from genesis")
+    print("to current block, enabling full audit trail for all coins.")
+    print("="*70 + "\n")
+
 def main():
     print("\n" + "="*70)
-    print("🪙 GXC TESTNET MINER")
+    print("🪙 GXC TESTNET MINER v2.0")
     print("="*70)
     print(f"\nMining to: {MINER_ADDRESS}")
     print(f"RPC: {RPC_URL}")
     print(f"\nPress Ctrl+C to stop\n")
     print("="*70 + "\n")
+    
+    # Show traceability information
+    show_traceability_info()
     
     # Check connection
     print("Checking blockchain connection...")
@@ -199,7 +235,8 @@ def main():
     else:
         print("❌ Cannot connect to blockchain node")
         print(f"\nMake sure testnet node is running:")
-        print(f"./packages/gxc-miners-cli-linux/gxc-node --testnet --rpc-port=18332")
+        print(f"./gxc-node --testnet")
+        print(f"\nOr set BLOCKCHAIN_RPC_URL environment variable to remote node")
         return
     
     # Start mining
