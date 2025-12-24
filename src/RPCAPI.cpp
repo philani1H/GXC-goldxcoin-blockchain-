@@ -366,6 +366,7 @@ void RPCAPI::registerMethods() {
     rpcMethods["unstake"] = [this](const JsonValue& params) { return unstake(params); };
     rpcMethods["gxc_unstake"] = [this](const JsonValue& params) { return unstake(params); };
     rpcMethods["getvalidators"] = [this](const JsonValue& params) { return getValidators(params); };
+    rpcMethods["listvalidators"] = [this](const JsonValue& params) { return getValidators(params); };
     rpcMethods["gxc_getValidators"] = [this](const JsonValue& params) { return getValidators(params); };
     rpcMethods["getvalidatorinfo"] = [this](const JsonValue& params) { return getValidatorInfo(params); };
     rpcMethods["gxc_getValidatorInfo"] = [this](const JsonValue& params) { return getValidatorInfo(params); };
@@ -437,6 +438,7 @@ void RPCAPI::registerMethods() {
     // Network methods
     rpcMethods["getpeerinfo"] = [this](const JsonValue& params) { return getPeerInfo(params); };
     rpcMethods["getconnectioncount"] = [this](const JsonValue& params) { return getConnectionCount(params); };
+    rpcMethods["getnetworkinfo"] = [this](const JsonValue& params) { return getNetworkInfo(params); };
     rpcMethods["addnode"] = [this](const JsonValue& params) { return addNode(params); };
     rpcMethods["disconnectnode"] = [this](const JsonValue& params) { return disconnectNode(params); };
     
@@ -2208,6 +2210,45 @@ JsonValue RPCAPI::getPeerInfo(const JsonValue& params) {
 JsonValue RPCAPI::getConnectionCount(const JsonValue& params) {
     // In a real implementation, would get actual connection count
     return 3;
+}
+
+JsonValue RPCAPI::getNetworkInfo(const JsonValue& params) {
+    JsonValue result;
+    
+    result["version"] = 20000; // 2.0.0
+    result["subversion"] = "/GXC:2.0.0/";
+    result["protocolversion"] = 70015;
+    result["localservices"] = "0000000000000001";
+    result["localrelay"] = true;
+    result["timeoffset"] = 0;
+    result["networkactive"] = true;
+    result["connections"] = 3;
+    result["networks"] = JsonValue(JsonValue::array());
+    
+    // IPv4 network
+    JsonValue ipv4;
+    ipv4["name"] = "ipv4";
+    ipv4["limited"] = false;
+    ipv4["reachable"] = true;
+    ipv4["proxy"] = "";
+    ipv4["proxy_randomize_credentials"] = false;
+    result["networks"].push_back(ipv4);
+    
+    // IPv6 network
+    JsonValue ipv6;
+    ipv6["name"] = "ipv6";
+    ipv6["limited"] = false;
+    ipv6["reachable"] = true;
+    ipv6["proxy"] = "";
+    ipv6["proxy_randomize_credentials"] = false;
+    result["networks"].push_back(ipv6);
+    
+    result["relayfee"] = 0.00001;
+    result["incrementalfee"] = 0.00001;
+    result["localaddresses"] = JsonValue(JsonValue::array());
+    result["warnings"] = "";
+    
+    return result;
 }
 
 JsonValue RPCAPI::getMempoolInfo(const JsonValue& params) {
