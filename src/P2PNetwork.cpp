@@ -1,7 +1,10 @@
 #include "p2p_network.h"
 #include "blockchain.h"
-#include "block.h"
-#include "logger.h"
+#include "Block.h"
+#include "Logger.h"
+
+// Define LOG_P2P macro for P2P logging
+#define LOG_P2P(level, msg) LOG_NETWORK(level, "[P2P] " + std::string(msg))
 #include <iostream>
 #include <cstring>
 #include <fcntl.h>
@@ -180,7 +183,7 @@ void P2PNetwork::handlePeer(std::shared_ptr<Peer> peer) {
             int fromHeight = std::stoi(message.substr(10));
             // Send blocks to peer
             for (int i = fromHeight; i <= blockchain->getHeight() && i < fromHeight + 500; i++) {
-                Block block = blockchain->getBlockByHeight(i);
+                Block block = blockchain->getBlock(static_cast<size_t>(i));
                 // Serialize and send block (simplified)
                 sendMessage(peer->socket, "BLOCK:" + block.getHash());
             }

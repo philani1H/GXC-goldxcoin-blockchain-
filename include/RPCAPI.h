@@ -363,10 +363,15 @@ private:
 };
 
 // RPC API class (simplified interface for node_main)
+class P2PNetwork;
+class CPUMiner;
+
 class RPCAPI {
 private:
     Blockchain* blockchain;
     Network* network;
+    P2PNetwork* p2pNetwork;
+    CPUMiner* cpuMiner;
     std::unique_ptr<Wallet> wallet; // Node wallet
     uint16_t serverPort;
     std::atomic<bool> isRunning;
@@ -444,6 +449,9 @@ public:
     RPCAPI(Blockchain* blockchain, uint16_t port);
     RPCAPI(Blockchain* blockchain, Network* network, uint16_t port);
     ~RPCAPI();
+    
+    void setP2PNetwork(P2PNetwork* p2p) { p2pNetwork = p2p; }
+    void setCPUMiner(CPUMiner* miner) { cpuMiner = miner; }
     
     bool start();
     bool start(uint16_t port);

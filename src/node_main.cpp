@@ -6,6 +6,8 @@
 #include "../include/RPCAPI.h"
 #include "../include/RESTServer.h"
 #include "../include/Utils.h"
+#include "../include/p2p_network.h"
+#include "../include/cpu_miner.h"
 #include <iostream>
 #include <signal.h>
 #include <thread>
@@ -165,13 +167,17 @@ int main(int argc, char* argv[]) {
         std::cout << "Using Railway PORT: " << nodeConfig.rpcPort << std::endl;
     }
     
-    // Adjust ports for testnet
+    // Adjust ports for testnet (only if not set via command line)
     if (nodeConfig.testnet) {
-        nodeConfig.networkPort = 19333;
-        if (!portSetViaEnv) {
+        if (!nodeConfig.networkPortSetViaCommandLine) {
+            nodeConfig.networkPort = 19333;
+        }
+        if (!portSetViaEnv && !nodeConfig.rpcPortSetViaCommandLine) {
             nodeConfig.rpcPort = 18332;
         }
-        nodeConfig.restPort = 18080;
+        if (!nodeConfig.restPortSetViaCommandLine) {
+            nodeConfig.restPort = 18080;
+        }
         std::cout << "Testnet mode enabled" << std::endl;
     }
     
@@ -202,6 +208,7 @@ int main(int argc, char* argv[]) {
         
         if (nodeConfig.networkPortSetViaCommandLine) {
             Config::set("network_port", std::to_string(nodeConfig.networkPort));
+            Config::set("port", std::to_string(nodeConfig.networkPort)); // Also set "port" for P2P
         } else {
             nodeConfig.networkPort = std::stoi(Config::get("network_port", std::to_string(nodeConfig.networkPort)));
         }
@@ -290,6 +297,44 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         
+        // Initialize P2P Network
+        int p2pPort = Config::getInt("port", 8333);
+        P2PNetwork p2pNetwork(&blockchain, p2pPort);
+        p2pNetwork.start();
+        LOG_CORE(LogLevel::INFO, "P2P Network started on port " + std::to_string(p2pPort));
+        
+        // Connect to seed nodes if configured
+        std::string seedNode = Config::get("connect", "");
+        if (!seedNode.empty()) {
+            size_t colonPos = seedNode.find(':');
+            if (colonPos != std::string::npos) {
+                std::string ip = seedNode.substr(0, colonPos);
+                int port = std::stoi(seedNode.substr(colonPos + 1));
+                p2pNetwork.addSeedNode(ip, port);
+                p2pNetwork.connectToSeeds();
+                LOG_CORE(LogLevel::INFO, "Connecting to seed node: " + seedNode);
+            }
+        }
+        
+        // Initialize CPU Miner (if enabled)
+        CPUMiner cpuMiner(&blockchain);
+        bool miningEnabled = Config::getBool("gen", false);
+        if (miningEnabled) {
+            std::string minerAddress = Config::get("mineraddress", "");
+            if (!minerAddress.empty()) {
+                int threads = Config::getInt("genproclimit", 1);
+                cpuMiner.startMining(minerAddress, threads);
+                LOG_CORE(LogLevel::INFO, "CPU Mining started with " + std::to_string(threads) + " thread(s)");
+                LOG_CORE(LogLevel::INFO, "Mining to address: " + minerAddress);
+            } else {
+                LOG_CORE(LogLevel::WARNING, "Mining enabled but no mineraddress configured");
+            }
+        }
+        
+        // Connect RPC server to P2P and miner
+        rpcServer.setP2PNetwork(&p2pNetwork);
+        rpcServer.setCPUMiner(&cpuMiner);
+        
         LOG_CORE(LogLevel::INFO, "GXC node initialized successfully");
         LOG_CORE(LogLevel::INFO, "Blockchain height: " + std::to_string(blockchain.getHeight()));
         LOG_CORE(LogLevel::INFO, "Network listening on port: " + std::to_string(nodeConfig.networkPort));
@@ -304,6 +349,12 @@ int main(int argc, char* argv[]) {
         std::cout << "Network Port: " << nodeConfig.networkPort << std::endl;
         std::cout << "RPC Port: " << nodeConfig.rpcPort << std::endl;
         std::cout << "REST Port: " << nodeConfig.restPort << std::endl;
+        std::cout << "P2P Port: " << p2pPort << std::endl;
+        std::cout << "P2P Peers: " << p2pNetwork.getPeerCount() << std::endl;
+        std::cout << "Mining: " << (cpuMiner.isMiningActive() ? "ACTIVE" : "INACTIVE") << std::endl;
+        if (cpuMiner.isMiningActive()) {
+            std::cout << "Hashrate: " << cpuMiner.getHashrate() << " H/s" << std::endl;
+        }
         std::cout << "Traceability: " << (blockchain.validateTraceability() ? "VALID" : "INVALID") << std::endl;
         std::cout << "========================" << std::endl;
         
@@ -366,6 +417,16 @@ int main(int argc, char* argv[]) {
         
         // Shutdown sequence
         LOG_CORE(LogLevel::INFO, "Starting shutdown sequence");
+        
+        // Stop mining first
+        if (cpuMiner.isMiningActive()) {
+            LOG_CORE(LogLevel::INFO, "Stopping CPU miner...");
+            cpuMiner.stopMining();
+        }
+        
+        // Stop P2P network
+        LOG_CORE(LogLevel::INFO, "Stopping P2P network...");
+        p2pNetwork.stop();
         
         restServer.stop();
         rpcServer.stop();

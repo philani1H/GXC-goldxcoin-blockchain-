@@ -21,7 +21,7 @@
 #include <filesystem>
 
 RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
-    : blockchain(blockchain), network(nullptr), serverPort(port), isRunning(false) {
+    : blockchain(blockchain), network(nullptr), p2pNetwork(nullptr), cpuMiner(nullptr), serverPort(port), isRunning(false) {
 
     // Initialize node wallet
     wallet = std::make_unique<Wallet>();
@@ -46,7 +46,7 @@ RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
 }
 
 RPCAPI::RPCAPI(Blockchain* blockchain, Network* network, uint16_t port)
-    : blockchain(blockchain), network(network), serverPort(port), isRunning(false) {
+    : blockchain(blockchain), network(network), p2pNetwork(nullptr), cpuMiner(nullptr), serverPort(port), isRunning(false) {
     
     // Initialize node wallet
     wallet = std::make_unique<Wallet>();
@@ -1651,7 +1651,19 @@ JsonValue RPCAPI::getMiningInfo(const JsonValue& params) {
     result["difficulty"] = blockchain->getDifficulty();
     
     // Calculate real network hashrate from recent blocks
-    double avgBlockTime = blockchain->getAverageBlockTime(10);
+    double avgBlockTime = 0.0;
+    int numBlocks = 10;
+    int height = blockchain->getHeight();
+    if (height >= numBlocks) {
+        uint64_t totalTime = 0;
+        for (int i = 0; i < numBlocks - 1; i++) {
+            Block current = blockchain->getBlock(height - i);
+            Block previous = blockchain->getBlock(height - i - 1);
+            totalTime += (current.getTimestamp() - previous.getTimestamp());
+        }
+        avgBlockTime = static_cast<double>(totalTime) / (numBlocks - 1);
+    }
+    
     double difficulty = blockchain->getDifficulty();
     double networkHashrate = 0.0;
     if (avgBlockTime > 0) {
@@ -1671,10 +1683,22 @@ JsonValue RPCAPI::getMiningInfo(const JsonValue& params) {
 
 JsonValue RPCAPI::getNetworkHashPS(const JsonValue& params) {
     int blocks = params.size() > 0 ? params[0].get<int>() : 120;
-    int height = params.size() > 1 ? params[1].get<int>() : -1;
     
     // Calculate real network hashrate from recent blocks
-    double avgBlockTime = blockchain->getAverageBlockTime(blocks);
+    double avgBlockTime = 0.0;
+    int chainHeight = blockchain->getHeight();
+    int numBlocks = std::min(blocks, chainHeight);
+    
+    if (numBlocks >= 2) {
+        uint64_t totalTime = 0;
+        for (int i = 0; i < numBlocks - 1; i++) {
+            Block current = blockchain->getBlock(chainHeight - i);
+            Block previous = blockchain->getBlock(chainHeight - i - 1);
+            totalTime += (current.getTimestamp() - previous.getTimestamp());
+        }
+        avgBlockTime = static_cast<double>(totalTime) / (numBlocks - 1);
+    }
+    
     double difficulty = blockchain->getDifficulty();
     double networkHashrate = 0.0;
     
@@ -2274,8 +2298,13 @@ JsonValue RPCAPI::getRawMempool(const JsonValue& params) {
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Blockchain not initialized");
     }
     
-    // Return empty array for now (would list pending transaction hashes)
+    // Get pending transactions from blockchain
+    std::vector<Transaction> pendingTxs = blockchain->getPendingTransactions(1000);
+    
     JsonValue result = JsonValue::array();
+    for (const auto& tx : pendingTxs) {
+        result.push_back(tx.getHash());
+    }
     
     return result;
 }

@@ -274,7 +274,7 @@ add_executable(gxc-node
     src/node_main.cpp
 )
 
-target_link_libraries(gxc-node gxc_core)
+target_link_libraries(gxc-node gxc_core gxc_mining)
 
 # Mining library
 add_library(gxc_mining STATIC
