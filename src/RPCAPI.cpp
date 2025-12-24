@@ -1752,8 +1752,11 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         // Get transactions from block
         std::vector<Transaction> blockTransactions;
         if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
+            LOG_API(LogLevel::INFO, "submitBlock: Received " + std::to_string(blockData["transactions"].size()) + " transactions in block data");
             // Transactions are already in block (from Python miner)
             // We'll process them below
+        } else {
+            LOG_API(LogLevel::INFO, "submitBlock: No transactions array in block data");
         }
         
         // Calculate block reward with halving
@@ -1932,14 +1935,16 @@ Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
     tx.setHash(txHash);
     tx.setCoinbaseTransaction(isCoinbase);
     
-    // Parse transaction type
-    std::string txType = txJson.value("type", "NORMAL");
-    if (txType == "STAKE") {
-        tx.setType(TransactionType::STAKE);
-    } else if (txType == "UNSTAKE") {
-        tx.setType(TransactionType::UNSTAKE);
-    } else {
-        tx.setType(TransactionType::NORMAL);
+    // Parse transaction type if provided
+    if (txJson.contains("type")) {
+        std::string txType = txJson.value("type", "NORMAL");
+        if (txType == "STAKE") {
+            tx.setType(TransactionType::STAKE);
+        } else if (txType == "UNSTAKE") {
+            tx.setType(TransactionType::UNSTAKE);
+        } else {
+            tx.setType(TransactionType::NORMAL);
+        }
     }
     
     // Parse prevTxHash for traceability
@@ -2032,45 +2037,56 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         result["previousblockhash"] = latestBlock.getHash();
         
         // CRITICAL FIX: Include pending transactions from mempool
+        // NOTE: getPendingTransactions might cause deadlock if it locks chainMutex
+        // We need to ensure we don't hold any locks when calling it
         JsonValue transactions(JsonValue::array());
-        auto pendingTxs = blockchain->getPendingTransactions(1000); // Get up to 1000 pending txs
-        for (const auto& tx : pendingTxs) {
-            JsonValue txJson;
-            txJson["hash"] = tx.getHash();
-            // Convert transaction type to string
-            std::string txType = "NORMAL";
-            if (tx.getType() == TransactionType::STAKE) txType = "STAKE";
-            else if (tx.getType() == TransactionType::UNSTAKE) txType = "UNSTAKE";
-            txJson["type"] = txType;
-            txJson["fee"] = tx.getFee();
+        
+        try {
+            // Get pending transactions WITHOUT holding any locks
+            auto pendingTxs = blockchain->getPendingTransactions(1000);
             
-            // Add inputs
-            JsonValue inputs(JsonValue::array());
-            for (const auto& input : tx.getInputs()) {
-                JsonValue inputJson;
-                inputJson["txHash"] = input.txHash;
-                inputJson["outputIndex"] = input.outputIndex;
-                inputJson["amount"] = input.amount;
-                inputs.push_back(inputJson);
+            for (const auto& tx : pendingTxs) {
+                JsonValue txJson;
+                txJson["hash"] = tx.getHash();
+                
+                // Convert transaction type to string
+                std::string txType = "NORMAL";
+                if (tx.getType() == TransactionType::STAKE) txType = "STAKE";
+                else if (tx.getType() == TransactionType::UNSTAKE) txType = "UNSTAKE";
+                txJson["type"] = txType;
+                txJson["fee"] = tx.getFee();
+                
+                // Add inputs
+                JsonValue inputs(JsonValue::array());
+                for (const auto& input : tx.getInputs()) {
+                    JsonValue inputJson;
+                    inputJson["txHash"] = input.txHash;
+                    inputJson["outputIndex"] = input.outputIndex;
+                    inputJson["amount"] = input.amount;
+                    inputs.push_back(inputJson);
+                }
+                txJson["inputs"] = inputs;
+                
+                // Add outputs
+                JsonValue outputs(JsonValue::array());
+                for (const auto& output : tx.getOutputs()) {
+                    JsonValue outputJson;
+                    outputJson["address"] = output.address;
+                    outputJson["amount"] = output.amount;
+                    outputs.push_back(outputJson);
+                }
+                txJson["outputs"] = outputs;
+                
+                transactions.push_back(txJson);
             }
-            txJson["inputs"] = inputs;
             
-            // Add outputs
-            JsonValue outputs(JsonValue::array());
-            for (const auto& output : tx.getOutputs()) {
-                JsonValue outputJson;
-                outputJson["address"] = output.address;
-                outputJson["amount"] = output.amount;
-                outputs.push_back(outputJson);
-            }
-            txJson["outputs"] = outputs;
-            
-            transactions.push_back(txJson);
+            LOG_API(LogLevel::INFO, "getBlockTemplate: Including " + std::to_string(pendingTxs.size()) + " pending transactions");
+        } catch (const std::exception& e) {
+            LOG_API(LogLevel::ERROR, "Error getting pending transactions: " + std::string(e.what()));
+            // Continue with empty transactions array
         }
+        
         result["transactions"] = transactions;
-        
-        LOG_API(LogLevel::INFO, "getBlockTemplate: Including " + std::to_string(pendingTxs.size()) + " pending transactions");
-        
         result["coinbaseaux"] = JsonValue(JsonValue::object());
         result["coinbasevalue"] = static_cast<uint64_t>(blockReward * 100000000); // Convert to satoshis
         result["coinbase_value"] = blockReward; // Also provide as GXC
