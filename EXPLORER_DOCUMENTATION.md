@@ -9,12 +9,13 @@ The GXC Blockchain Explorer is a comprehensive web application for visualizing a
 ## Table of Contents
 
 1. [Features](#features)
-2. [Architecture](#architecture)
-3. [Installation](#installation)
-4. [Configuration](#configuration)
-5. [API Reference](#api-reference)
-6. [Developer Guide](#developer-guide)
-7. [Deployment](#deployment)
+2. [All Pages & Routes](#all-pages--routes)
+3. [Architecture](#architecture)
+4. [Installation](#installation)
+5. [Configuration](#configuration)
+6. [API Reference](#api-reference)
+7. [Developer Guide](#developer-guide)
+8. [Deployment](#deployment)
 
 ---
 
@@ -295,15 +296,185 @@ The GXC Blockchain Explorer is a comprehensive web application for visualizing a
 
 ---
 
+## All Pages & Routes
+
+### Complete Route List
+
+#### Main Pages (26 pages)
+
+1. **`/`** - Homepage with stats and recent blocks/transactions
+2. **`/blocks`** - Block list with pagination
+3. **`/block/<block_number>`** - Individual block details
+4. **`/transactions`** - Transaction list with filtering
+5. **`/tx/<tx_hash>`** - Individual transaction details with traceability
+6. **`/address/<address>`** - Address details, balance, and transaction history
+7. **`/addresses`** - Top addresses by balance
+8. **`/search`** - Universal search (blocks, transactions, addresses)
+9. **`/mining`** - Mining dashboard with hashrate and difficulty
+10. **`/mining/guide`** - Mining guide for beginners
+11. **`/staking`** - Staking dashboard with validators
+12. **`/validators`** - Validator list
+13. **`/gold`** - Gold-backed token explorer
+14. **`/stocks`** - Stock contracts dashboard
+15. **`/stocks/<ticker>`** - Individual stock contract details
+16. **`/stocks/guide`** - Stock contracts guide
+17. **`/governance`** - Governance proposals and voting
+18. **`/bridge`** - Cross-chain bridge explorer
+19. **`/charts`** - Network charts and visualizations
+20. **`/analytics`** - Network analytics dashboard
+21. **`/graph`** - Transaction graph visualization
+22. **`/gas`** - Gas tracker
+23. **`/price`** - Price tracker
+24. **`/portfolio`** - Portfolio tracker
+25. **`/pending`** - Pending transactions (mempool)
+26. **`/decoder`** - Transaction decoder
+27. **`/simulator`** - Transaction simulator
+28. **`/alerts`** - Price alerts
+29. **`/wallet`** - Web wallet interface
+30. **`/webhooks`** - Webhook management
+31. **`/downloads`** - Miner downloads
+32. **`/forum`** - Forum redirect
+33. **`/health`** - Network health dashboard
+34. **`/api`** - API documentation
+
+#### API Endpoints (47 endpoints)
+
+**Statistics & Info:**
+1. **`GET /api/stats`** - Network statistics
+2. **`GET /api/v1/stats`** - Network statistics (v1)
+3. **`GET /api/network-info`** - Network information
+4. **`GET /api/connection-status`** - Node connection status
+5. **`GET /api/health`** - Health check with details
+6. **`GET /healthz`** - Simple health check
+7. **`GET /healthcheck`** - Health check alias
+
+**Blocks & Transactions:**
+8. **`GET /api/blocks`** - Block list API
+9. **`GET /api/transactions`** - Transaction list API
+10. **`GET /api/pending`** - Pending transactions API
+11. **`GET /api/filter/transactions`** - Filter transactions
+
+**Charts & Analytics:**
+12. **`GET /api/charts`** - Chart data
+13. **`GET /api/analytics`** - Analytics data
+14. **`GET /api/hashrate`** - Hashrate data
+
+**Mining & Staking:**
+15. **`GET /api/staking/validators`** - Validator list
+16. **`GET /api/staking/validator/<address>`** - Validator details
+17. **`GET /api/staking/stats`** - Staking statistics
+
+**Gold-Backed Tokens:**
+18. **`GET /api/gold/stats`** - Gold token statistics
+19. **`GET /api/gold/reserves`** - Gold reserves
+20. **`GET /api/gold/transfers`** - Gold token transfers
+21. **`GET /api/gold/address/<address>`** - Address gold holdings
+
+**Governance:**
+22. **`GET /api/governance/proposals`** - Proposal list
+23. **`GET /api/governance/proposal/<id>`** - Proposal details
+24. **`GET /api/governance/proposal/<id>/votes`** - Proposal votes
+
+**Bridge:**
+25. **`GET /api/bridge/transfers`** - Bridge transfers
+26. **`GET /api/bridge/validators`** - Bridge validators
+27. **`GET /api/bridge/stats`** - Bridge statistics
+
+**Transaction Graph:**
+28. **`GET /api/graph/address/<address>`** - Address transaction graph
+29. **`GET /api/graph/transaction/<tx_hash>`** - Transaction graph
+
+**Tools:**
+30. **`GET /api/gas`** - Gas prices
+31. **`GET /api/price`** - Price data
+32. **`GET /api/portfolio`** - Portfolio data
+33. **`GET /api/alerts`** - Price alerts
+34. **`GET /api/wallet`** - Wallet API
+35. **`POST /api/decode`** - Decode transaction
+36. **`POST /api/simulator/estimate`** - Estimate transaction
+
+**Data Export:**
+37. **`GET /api/export/transactions`** - Export transactions (CSV/JSON)
+38. **`GET /api/export/blocks`** - Export blocks
+39. **`GET /api/export/utxo`** - Export UTXO set
+40. **`GET /api/export/all`** - Export all data
+
+**API Keys:**
+41. **`GET /api/keys`** - API keys page
+42. **`POST /api/keys/generate`** - Generate API key
+43. **`POST /api/keys/validate`** - Validate API key
+
+**Webhooks:**
+44. **`GET /api/webhooks`** - List webhooks
+45. **`POST /api/webhooks`** - Create webhook
+46. **`DELETE /api/webhooks/<id>`** - Delete webhook
+
+**Downloads:**
+47. **`GET /api/downloads/<platform>/<algorithm>`** - Download miner
+
+### Transaction Traceability
+
+**Feature:** Every transaction includes traceability validation
+
+**How it works:**
+1. Each transaction is validated for traceability when stored
+2. Transaction details page shows traceability status
+3. Database stores `traceability_valid` boolean flag
+4. API returns traceability status in transaction objects
+
+**Transaction Object Fields:**
+```json
+{
+  "hash": "tx_hash",
+  "from": "sender_address",
+  "to": "recipient_address",
+  "amount": 50.0,
+  "fee": 0.001,
+  "timestamp": 1234567890,
+  "block_number": 100,
+  "confirmations": 6,
+  "traceability_valid": true,
+  "is_coinbase": false,
+  "memo": "optional memo",
+  "inputs": [...],
+  "outputs": [...]
+}
+```
+
+**Traceability Validation:**
+- ✅ Valid: Transaction inputs can be traced to previous outputs
+- ❌ Invalid: Transaction has invalid or missing input references
+- Coinbase transactions are always valid (no inputs required)
+
+**Where to see it:**
+- Transaction details page: `/tx/<tx_hash>`
+- API response: `GET /api/transactions`
+- Database: `transactions.traceability_valid` column
+
+---
+
 ## Architecture
 
 ### Technology Stack
 
 - **Backend:** Python 3.12, Flask
 - **Database:** SQLite (with PostgreSQL support)
-- **Real-time:** Flask-SocketIO
-- **Frontend:** HTML5, CSS3, JavaScript
-- **Deployment:** Vercel (serverless)
+- **Real-time:** Flask-SocketIO (WebSocket)
+- **Frontend:** HTML5, CSS3, JavaScript, Bootstrap 5
+- **Charts:** Chart.js
+- **Icons:** Font Awesome 6
+- **Deployment:** Vercel (serverless), Railway
+
+### Key Features
+
+1. **Real-time Updates** - WebSocket for live block and transaction updates
+2. **Transaction Traceability** - Full UTXO tracking and validation
+3. **Multi-Network Support** - Testnet and Mainnet with separate databases
+4. **Advanced Search** - Search blocks, transactions, and addresses
+5. **Data Export** - Export data in CSV and JSON formats
+6. **API Access** - Complete REST API with rate limiting
+7. **Webhook Support** - Event notifications for integrations
+8. **Mobile Responsive** - Works on all devices
 
 ### Database Schema
 
@@ -737,14 +908,35 @@ MIT License - See LICENSE file for details
 
 ### v1.0.0 (2024-12-24)
 
-- Initial release
-- Complete blockchain explorer
+**Initial Release:**
+- Complete blockchain explorer with 34 pages
+- 47 API endpoints
 - Real-time updates via WebSocket
+- Transaction traceability validation
 - Advanced analytics and charts
 - Gold-backed tokens support
 - Stock contracts integration
 - Governance dashboard
 - Bridge explorer
 - Staking dashboard
-- Developer API
-- Fixed address balance display issue (port configuration)
+- Developer API with webhooks
+- Data export (CSV/JSON)
+- Mobile responsive design
+
+**Bug Fixes:**
+- Fixed address balance display (port 8332 configuration)
+- Fixed explorer stats to show real blockchain data
+- Fixed total supply display (31M GXC max cap)
+- Added circulating supply (2,500 GXC current)
+- Fixed GUI miner transaction display
+- Fixed node priority (local first)
+
+**Features:**
+- Transaction traceability on all transactions
+- UTXO tracking and validation
+- Multi-network support (testnet/mainnet)
+- Real-time circulating supply from blockchain
+- Percentage of max supply display
+- Complete API documentation
+- Webhook event notifications
+- API key management
