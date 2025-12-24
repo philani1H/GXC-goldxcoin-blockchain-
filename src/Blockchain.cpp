@@ -1237,7 +1237,8 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         }
         
         if (!stakerAddress.empty()) {
-            std::lock_guard<std::mutex> lock(chainMutex);
+            // NOTE: chainMutex should already be held by caller (addBlock or addTransaction)
+            // Do NOT acquire lock here to avoid deadlock
             auto it = validatorMap.find(stakerAddress);
             if (it == validatorMap.end()) {
                 LOG_BLOCKCHAIN(LogLevel::ERROR, "STAKE transaction rejected: Validator not registered for address " + 
@@ -1270,7 +1271,8 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
 
         double unstakeAmount = tx.getTotalOutputAmount();
 
-        std::lock_guard<std::mutex> lock(chainMutex);
+        // NOTE: chainMutex should already be held by caller (addBlock or addTransaction)
+        // Do NOT acquire lock here to avoid deadlock
         auto it = validatorMap.find(stakerAddress);
         if (it == validatorMap.end()) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "UNSTAKE failed: Validator not found for " + stakerAddress);

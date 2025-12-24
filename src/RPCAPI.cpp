@@ -1801,31 +1801,42 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         // Check if coinbase transaction exists in submitted block
         bool hasCoinbase = false;
         if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
+            LOG_API(LogLevel::INFO, "submitBlock: Processing " + std::to_string(blockData["transactions"].size()) + " transactions from submitted block");
             for (const auto& txJson : blockData["transactions"]) {
                 if (txJson.is_object()) {
+                    std::string txHash = txJson.value("hash", txJson.value("txid", "NO_HASH"));
                     bool isCoinbase = txJson.value("is_coinbase", txJson.value("coinbase", txJson.value("type", "") == "coinbase"));
+                    LOG_API(LogLevel::INFO, "  Processing TX: " + txHash.substr(0, 16) + "..., is_coinbase=" + (isCoinbase ? "true" : "false"));
+                    
                     if (isCoinbase) {
                         hasCoinbase = true;
                         // Create transaction from JSON
                         Transaction coinbaseTx = createTransactionFromJson(txJson);
-                        newBlock.addTransaction(coinbaseTx);
+                        newBlock.addTransactionUnchecked(coinbaseTx);
+                        LOG_API(LogLevel::INFO, "    Added coinbase transaction to block");
                     } else {
-                        // Regular transaction
+                        // Regular transaction - create from JSON (already has all fields from template)
                         Transaction tx = createTransactionFromJson(txJson);
-                        newBlock.addTransaction(tx);
+                        newBlock.addTransactionUnchecked(tx);
+                        LOG_API(LogLevel::INFO, "    Added regular transaction to block");
                     }
                 }
             }
+        } else {
+            LOG_API(LogLevel::INFO, "submitBlock: No transactions array in submitted block data");
         }
         
         // If no coinbase transaction, create one automatically
         if (!hasCoinbase && !minerAddress.empty()) {
             LOG_API(LogLevel::INFO, "Creating coinbase transaction for miner: " + minerAddress + 
                     ", Reward: " + std::to_string(blockReward) + " GXC");
+            LOG_API(LogLevel::INFO, "  Transactions before adding coinbase: " + std::to_string(newBlock.getTransactions().size()));
             Transaction coinbase(minerAddress, blockReward);
-            newBlock.addTransaction(coinbase);
+            newBlock.addTransactionUnchecked(coinbase);
+            LOG_API(LogLevel::INFO, "  Transactions after adding coinbase: " + std::to_string(newBlock.getTransactions().size()));
             // Recalculate merkle root after adding coinbase
             newBlock.calculateMerkleRoot();
+            LOG_API(LogLevel::INFO, "  Transactions after calculateMerkleRoot: " + std::to_string(newBlock.getTransactions().size()));
         } else {
             // Merkle root should already be calculated, but recalculate to ensure it's correct
             newBlock.calculateMerkleRoot();
@@ -1959,9 +1970,11 @@ Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
     if (txJson.contains("inputs") && txJson["inputs"].is_array()) {
         for (const auto& inputJson : txJson["inputs"]) {
             TransactionInput input;
-            input.txHash = inputJson.value("txHash", inputJson.value("prev_tx_hash", ""));
-            input.outputIndex = inputJson.value("outputIndex", inputJson.value("output_index", 0));
+            input.txHash = inputJson.value("txHash", inputJson.value("txid", inputJson.value("prev_tx_hash", "")));
+            input.outputIndex = inputJson.value("outputIndex", inputJson.value("vout", inputJson.value("output_index", 0)));
             input.amount = inputJson.value("amount", 0.0);
+            input.signature = inputJson.value("signature", "");
+            input.publicKey = inputJson.value("publicKey", "");
             tx.addInput(input);
         }
         
@@ -1982,6 +1995,7 @@ Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
             TransactionOutput output;
             output.address = outputJson.value("address", "");
             output.amount = outputJson.value("amount", outputJson.value("value", 0.0));
+            output.script = outputJson.value("script", "");
             tx.addOutput(output);
         }
     } else if (txJson.contains("to") && txJson.contains("value")) {
@@ -1990,6 +2004,34 @@ Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
         output.address = txJson["to"].get<std::string>();
         output.amount = txJson["value"].get<double>();
         tx.addOutput(output);
+    }
+    
+    // Parse additional fields
+    if (txJson.contains("fee")) {
+        tx.setFee(txJson["fee"].get<double>());
+    }
+    
+    if (txJson.contains("timestamp")) {
+        tx.setTimestamp(txJson["timestamp"].get<uint64_t>());
+    }
+    
+    if (txJson.contains("type")) {
+        std::string typeStr = txJson["type"].get<std::string>();
+        if (typeStr == "STAKE") {
+            tx.setType(TransactionType::STAKE);
+        } else if (typeStr == "UNSTAKE") {
+            tx.setType(TransactionType::UNSTAKE);
+        } else {
+            tx.setType(TransactionType::NORMAL);
+        }
+    }
+    
+    if (txJson.contains("memo")) {
+        tx.setMemo(txJson["memo"].get<std::string>());
+    }
+    
+    if (txJson.contains("nonce")) {
+        tx.setNonce(txJson["nonce"].get<uint32_t>());
     }
     
     return tx;
@@ -2020,7 +2062,66 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         
         result["version"] = 1;
         result["previousblockhash"] = latestBlock.getHash();
-        result["transactions"] = JsonValue(JsonValue::array());
+        
+        // CRITICAL FIX: Include pending transactions from mempool
+        // Without this, transactions are never included in mined blocks!
+        std::vector<Transaction> pendingTxs = blockchain->getPendingTransactions(1000);
+        JsonValue txArray(JsonValue::array());
+        
+        LOG_API(LogLevel::INFO, "getBlockTemplate: " + std::to_string(pendingTxs.size()) + " pending transactions in mempool");
+        
+        for (const auto& tx : pendingTxs) {
+            JsonValue txJson;
+            txJson["hash"] = tx.getHash();
+            txJson["txid"] = tx.getHash();
+            
+            // Transaction type
+            std::string txType = "NORMAL";
+            if (tx.getType() == TransactionType::STAKE) {
+                txType = "STAKE";
+            } else if (tx.getType() == TransactionType::UNSTAKE) {
+                txType = "UNSTAKE";
+            }
+            txJson["type"] = txType;
+            
+            txJson["from"] = tx.getSenderAddress();
+            txJson["to"] = tx.getReceiverAddress();
+            txJson["amount"] = tx.getReferencedAmount();
+            txJson["fee"] = tx.getFee();
+            txJson["timestamp"] = static_cast<uint64_t>(tx.getTimestamp());
+            txJson["is_coinbase"] = tx.isCoinbaseTransaction();
+            txJson["coinbase"] = tx.isCoinbaseTransaction();
+            
+            // Add inputs
+            JsonValue inputsArray(JsonValue::array());
+            for (const auto& input : tx.getInputs()) {
+                JsonValue inputJson;
+                inputJson["txid"] = input.txHash;
+                inputJson["txHash"] = input.txHash;
+                inputJson["vout"] = static_cast<int>(input.outputIndex);
+                inputJson["outputIndex"] = static_cast<int>(input.outputIndex);
+                inputJson["amount"] = input.amount;
+                inputJson["signature"] = input.signature;
+                inputJson["publicKey"] = input.publicKey;
+                inputsArray.push_back(inputJson);
+            }
+            txJson["inputs"] = inputsArray;
+            
+            // Add outputs
+            JsonValue outputsArray(JsonValue::array());
+            for (const auto& output : tx.getOutputs()) {
+                JsonValue outputJson;
+                outputJson["address"] = output.address;
+                outputJson["amount"] = output.amount;
+                outputJson["script"] = output.script;
+                outputsArray.push_back(outputJson);
+            }
+            txJson["outputs"] = outputsArray;
+            
+            txArray.push_back(txJson);
+        }
+        
+        result["transactions"] = txArray;
         result["coinbaseaux"] = JsonValue(JsonValue::object());
         result["coinbasevalue"] = static_cast<uint64_t>(blockReward * 100000000); // Convert to satoshis
         result["coinbase_value"] = blockReward; // Also provide as GXC

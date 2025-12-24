@@ -93,3 +93,8 @@ bool Block::addTransaction(const Transaction& transaction) {
     
     return true;
 }
+
+void Block::addTransactionUnchecked(const Transaction& transaction) {
+    // Add transaction without verification (used when submitting pre-validated blocks)
+    transactions.push_back(transaction);
+}

@@ -47,6 +47,7 @@ public:
     
     // Transaction management
     bool addTransaction(const Transaction& transaction);
+    void addTransactionUnchecked(const Transaction& transaction); // Add without verification (for block submission)
     void calculateMerkleRoot();
     std::string calculateMerkleRoot() const; // Const version for validation
     
