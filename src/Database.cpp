@@ -107,6 +107,11 @@ bool Database::open(const std::string& dbPath) {
         options.filter_policy = leveldb::NewBloomFilterPolicy(10);  // Bloom filter
         options.compression = leveldb::kSnappyCompression;
         
+        // Configure write options for better performance
+        // sync=false means writes are buffered and flushed asynchronously
+        // This is safe because we can rebuild from the blockchain if needed
+        writeOptions.sync = false;  // Don't force fsync on every write (much faster)
+        
         // Create directory if it doesn't exist
         std::filesystem::create_directories(pathObj.parent_path());
         
@@ -391,6 +396,7 @@ bool Database::saveBlock(const Block& block) {
     if (!db) return false;
     
     try {
+        // Use a single WriteBatch for all operations to avoid multiple writes
         leveldb::WriteBatch batch;
         
         // Store block by hash
@@ -404,21 +410,70 @@ bool Database::saveBlock(const Block& block) {
         batch.Put(makeKey(PREFIX_CONFIG, "latest_block_height"), std::to_string(block.getIndex()));
         batch.Put(makeKey(PREFIX_CONFIG, "latest_block_hash"), block.getHash());
         
-        // Store transactions
+        // Store all transactions in the same batch
         for (const auto& tx : block.getTransactions()) {
-            if (!saveTransaction(tx, block.getHash(), block.getIndex())) {
-                LOG_DATABASE(LogLevel::ERROR, "Failed to save transaction in block: " + tx.getHash());
-                return false;
+            // Store transaction by hash
+            std::string txData = serializeTransaction(tx);
+            batch.Put(makeKey(PREFIX_TX, tx.getHash()), txData);
+            
+            // Store tx hash -> block hash mapping
+            json mapping;
+            mapping["block_hash"] = block.getHash();
+            mapping["block_height"] = block.getIndex();
+            batch.Put(makeKey(PREFIX_TX_BLOCK, tx.getHash()), mapping.dump());
+            
+            // Update UTXO set in the same batch
+            // Remove spent UTXOs
+            for (const auto& input : tx.getInputs()) {
+                std::string utxoKey = makeKey(PREFIX_UTXO, input.txHash + ":" + std::to_string(input.outputIndex));
+                batch.Delete(utxoKey);
+            }
+            
+            // Add new UTXOs
+            const auto& outputs = tx.getOutputs();
+            for (size_t i = 0; i < outputs.size(); i++) {
+                const auto& output = outputs[i];
+                
+                json utxo;
+                utxo["tx_hash"] = tx.getHash();
+                utxo["output_index"] = i;
+                utxo["address"] = output.address;
+                utxo["amount"] = output.amount;
+                utxo["script"] = output.script;
+                utxo["block_height"] = block.getIndex();
+                
+                std::string utxoKey = makeKey(PREFIX_UTXO, tx.getHash() + ":" + std::to_string(i));
+                batch.Put(utxoKey, utxo.dump());
+                
+                // Also index by address for balance lookups
+                std::string addrKey = makeKey(PREFIX_ADDRESS, output.address + ":" + tx.getHash() + ":" + std::to_string(i));
+                batch.Put(addrKey, utxo.dump());
+            }
+            
+            // Save traceability record in the same batch
+            if (!tx.isCoinbaseTransaction()) {
+                json trace;
+                trace["tx_hash"] = tx.getHash();
+                trace["prev_tx_hash"] = tx.getPrevTxHash();
+                trace["referenced_amount"] = tx.getReferencedAmount();
+                trace["sender"] = tx.getSenderAddress();
+                trace["receiver"] = tx.getReceiverAddress();
+                trace["block_height"] = block.getIndex();
+                trace["timestamp"] = tx.getTimestamp();
+                
+                batch.Put(makeKey(PREFIX_TRACE, tx.getHash()), trace.dump());
             }
         }
         
+        // Single atomic write for everything
         leveldb::Status status = db->Write(writeOptions, &batch);
         if (!status.ok()) {
             LOG_DATABASE(LogLevel::ERROR, "Failed to save block: " + status.ToString());
             return false;
         }
         
-        LOG_DATABASE(LogLevel::DEBUG, "Saved block: " + block.getHash().substr(0, 16) + "...");
+        LOG_DATABASE(LogLevel::DEBUG, "Saved block: " + block.getHash().substr(0, 16) + "... with " + 
+                    std::to_string(block.getTransactions().size()) + " transactions");
         return true;
         
     } catch (const std::exception& e) {

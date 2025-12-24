@@ -1856,7 +1856,8 @@ bool Blockchain::verifyTransactionLineage(const std::string& txHash) const {
 }
 
 Transaction Blockchain::getTransactionByHash(const std::string& hash) const {
-    std::lock_guard<std::mutex> lock(chainMutex);
+    // NOTE: This function is called from addBlock which already holds chainMutex
+    // Do NOT acquire lock here to avoid deadlock
     
     // Search all blocks for transaction
     for (const auto& block : chain) {
