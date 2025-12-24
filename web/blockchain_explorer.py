@@ -3300,23 +3300,22 @@ def index():
             except Exception:
                 pass
         
-        # Get actual total supply from blockchain (sum of all UTXOs)
-        total_supply = 0.0
+        # Get actual circulating supply from blockchain (sum of all UTXOs)
+        circulating_supply = 0.0
         try:
             utxos = rpc_call('listunspent', [], timeout=10, show_errors=False)
             if utxos and isinstance(utxos, list):
-                total_supply = sum(utxo.get('amount', 0) for utxo in utxos)
+                circulating_supply = sum(utxo.get('amount', 0) for utxo in utxos)
         except Exception:
             # Fallback to calculated supply if RPC fails
-            total_supply = height * CURRENT_NETWORK['block_reward']
+            circulating_supply = height * CURRENT_NETWORK['block_reward']
         
         network_stats = {
             'total_blocks': height or 0,
             'total_transactions': total_txs or 0,
             'total_addresses': len(unique_addresses) if isinstance(unique_addresses, set) else unique_addresses or 0,
-            'total_supply': total_supply or 0,
-            'max_supply': 31000000,  # 31 million GXC max supply
-            'circulating_supply': total_supply or 0,
+            'total_supply': 31000000,  # Total supply = Max supply (31 million GXC)
+            'circulating_supply': circulating_supply or 0,
             'hash_rate': 0.0,
             'difficulty': (recent_blocks[-1].get('difficulty') if recent_blocks else 0.0) or 0.0,
             'avg_block_time': CURRENT_NETWORK['block_time']

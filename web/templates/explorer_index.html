@@ -535,10 +535,58 @@
                 <div class="card stats-card card-hover">
                     <div class="card-body text-center py-4">
                         <div class="stats-label">
-                            <i class="fas fa-coins me-2"></i>Circulating Supply
+                            <i class="fas fa-coins me-2"></i>Total Supply
                         </div>
                         <div class="stats-value">{{ "{:,.0f}".format(stats.total_supply|default(0)) }}</div>
-                        <small class="d-block mt-1 opacity-75">GXC / 31,000,000 Max</small>
+                        <small class="d-block mt-1 opacity-75">GXC (Max Cap)</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Second Row Stats -->
+        <div class="row g-4 mt-2">
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-chart-line me-2"></i>Circulating Supply
+                        </div>
+                        <div class="stats-value">{{ "{:,.0f}".format(stats.circulating_supply|default(0)) }}</div>
+                        <small class="d-block mt-1 opacity-75">GXC ({{ "{:.2f}".format((stats.circulating_supply|default(0) / stats.total_supply|default(1)) * 100) }}%)</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-tachometer-alt me-2"></i>Hashrate
+                        </div>
+                        <div class="stats-value">{{ "{:,.0f}".format(stats.hash_rate|default(0)) }}</div>
+                        <small class="d-block mt-1 opacity-75">H/s</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-puzzle-piece me-2"></i>Difficulty
+                        </div>
+                        <div class="stats-value">{{ "{:.2f}".format(stats.difficulty|default(0)) }}</div>
+                        <small class="d-block mt-1 opacity-75">Network Difficulty</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="card stats-card card-hover">
+                    <div class="card-body text-center py-4">
+                        <div class="stats-label">
+                            <i class="fas fa-clock me-2"></i>Block Time
+                        </div>
+                        <div class="stats-value">{{ "{:.0f}".format(stats.avg_block_time|default(0)) }}</div>
+                        <small class="d-block mt-1 opacity-75">seconds</small>
                     </div>
                 </div>
             </div>
