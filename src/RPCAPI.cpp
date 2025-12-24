@@ -1803,15 +1803,14 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
             for (const auto& txJson : blockData["transactions"]) {
                 if (txJson.is_object()) {
-                    bool isCoinbase = txJson.value("is_coinbase", false);
-                    
+                    bool isCoinbase = txJson.value("is_coinbase", txJson.value("coinbase", txJson.value("type", "") == "coinbase"));
                     if (isCoinbase) {
                         hasCoinbase = true;
                         // Create transaction from JSON
                         Transaction coinbaseTx = createTransactionFromJson(txJson);
                         newBlock.addTransaction(coinbaseTx);
                     } else {
-                        // Regular transaction (including STAKE)
+                        // Regular transaction
                         Transaction tx = createTransactionFromJson(txJson);
                         newBlock.addTransaction(tx);
                     }
@@ -1933,18 +1932,6 @@ Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
     tx.setHash(txHash);
     tx.setCoinbaseTransaction(isCoinbase);
     
-    // Parse transaction type if provided
-    if (txJson.contains("type")) {
-        std::string txType = txJson.value("type", "NORMAL");
-        if (txType == "STAKE") {
-            tx.setType(TransactionType::STAKE);
-        } else if (txType == "UNSTAKE") {
-            tx.setType(TransactionType::UNSTAKE);
-        } else {
-            tx.setType(TransactionType::NORMAL);
-        }
-    }
-    
     // Parse prevTxHash for traceability
     std::string prevTxHash = txJson.value("prevTxHash", txJson.value("prev_tx_hash", txJson.value("previousTxHash", "")));
     if (!prevTxHash.empty()) {
@@ -2034,55 +2021,44 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         result["version"] = 1;
         result["previousblockhash"] = latestBlock.getHash();
         
-        // CRITICAL FIX: Include pending transactions from mempool
-        // NOTE: getPendingTransactions might cause deadlock if it locks chainMutex
-        // We need to ensure we don't hold any locks when calling it
+        // Include pending transactions from mempool
         JsonValue transactions(JsonValue::array());
+        auto pendingTxs = blockchain->getPendingTransactions(1000);
         
-        try {
-            // Get pending transactions WITHOUT holding any locks
-            auto pendingTxs = blockchain->getPendingTransactions(1000);
+        for (const auto& tx : pendingTxs) {
+            JsonValue txJson;
+            txJson["hash"] = tx.getHash();
+            txJson["is_coinbase"] = false;
             
-            for (const auto& tx : pendingTxs) {
-                JsonValue txJson;
-                txJson["hash"] = tx.getHash();
-                txJson["is_coinbase"] = false;  // CRITICAL: Mark as non-coinbase
-                
-                // Convert transaction type to string
-                std::string txType = "NORMAL";
-                if (tx.getType() == TransactionType::STAKE) txType = "STAKE";
-                else if (tx.getType() == TransactionType::UNSTAKE) txType = "UNSTAKE";
-                txJson["type"] = txType;
-                txJson["fee"] = tx.getFee();
-                
-                // Add inputs
-                JsonValue inputs(JsonValue::array());
-                for (const auto& input : tx.getInputs()) {
-                    JsonValue inputJson;
-                    inputJson["txHash"] = input.txHash;
-                    inputJson["outputIndex"] = input.outputIndex;
-                    inputJson["amount"] = input.amount;
-                    inputs.push_back(inputJson);
-                }
-                txJson["inputs"] = inputs;
-                
-                // Add outputs
-                JsonValue outputs(JsonValue::array());
-                for (const auto& output : tx.getOutputs()) {
-                    JsonValue outputJson;
-                    outputJson["address"] = output.address;
-                    outputJson["amount"] = output.amount;
-                    outputs.push_back(outputJson);
-                }
-                txJson["outputs"] = outputs;
-                
-                transactions.push_back(txJson);
+            // Set transaction type
+            std::string txType = "NORMAL";
+            if (tx.getType() == TransactionType::STAKE) txType = "STAKE";
+            else if (tx.getType() == TransactionType::UNSTAKE) txType = "UNSTAKE";
+            txJson["type"] = txType;
+            txJson["fee"] = tx.getFee();
+            
+            // Add inputs
+            JsonValue inputs(JsonValue::array());
+            for (const auto& input : tx.getInputs()) {
+                JsonValue inputJson;
+                inputJson["txHash"] = input.txHash;
+                inputJson["outputIndex"] = input.outputIndex;
+                inputJson["amount"] = input.amount;
+                inputs.push_back(inputJson);
             }
+            txJson["inputs"] = inputs;
             
-            LOG_API(LogLevel::INFO, "getBlockTemplate: Including " + std::to_string(pendingTxs.size()) + " pending transactions");
-        } catch (const std::exception& e) {
-            LOG_API(LogLevel::ERROR, "Error getting pending transactions: " + std::string(e.what()));
-            // Continue with empty transactions array
+            // Add outputs
+            JsonValue outputs(JsonValue::array());
+            for (const auto& output : tx.getOutputs()) {
+                JsonValue outputJson;
+                outputJson["address"] = output.address;
+                outputJson["amount"] = output.amount;
+                outputs.push_back(outputJson);
+            }
+            txJson["outputs"] = outputs;
+            
+            transactions.push_back(txJson);
         }
         
         result["transactions"] = transactions;
@@ -2391,21 +2367,7 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
                 ", Outputs: " + std::to_string(stakeTx.getOutputs().size()) +
                 ", Type: STAKE, Address: " + address);
         
-        // CRITICAL FIX: Register validator BEFORE adding transaction
-        // The transaction validation checks if validator exists, so we must register first
-        // Create validator record with the requested stake amount
-        // Mark as pending until the STAKE transaction is confirmed on-chain
-        Validator validator(address, stakeAmount, stakingDays);
-        validator.setPublicKey(pubKeyForValidator);
-        validator.setPending(true);
-        validator.setIsActive(false); // Not active until stake tx is confirmed
-        
-        // Register validator in blockchain BEFORE adding transaction
-        blockchain->registerValidator(validator);
-        
-        LOG_API(LogLevel::INFO, "Validator pre-registered (pending): " + address);
-        
-        // Now add to transaction pool (validation will pass because validator exists)
+        // Add to transaction pool
         if (blockchain->addTransaction(stakeTx)) {
             stakeTxHash = stakeTx.getHash();
             
@@ -2426,19 +2388,27 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
             "Failed to create staking transaction: " + std::string(e.what()));
     }
     
+    // Create validator record with the requested stake amount
+    // Mark as pending until the STAKE transaction is confirmed on-chain
+    // This shows users their funds are being staked, but validator won't be active until confirmed
+    Validator validator(address, stakeAmount, stakingDays);
+    validator.setPublicKey(pubKeyForValidator);
+    validator.setPending(true);
+    validator.setIsActive(false); // Not active until stake tx is confirmed
+    
+    // Register validator in blockchain
+    blockchain->registerValidator(validator);
+    
     LOG_API(LogLevel::INFO, "✅ Validator registered: " + address + ", Stake: " + 
             std::to_string(stakeAmount) + " GXC (pending confirmation), Days: " + std::to_string(stakingDays) +
             ", TX: " + stakeTxHash);
-    
-    // Calculate weighted stake (stake * days)
-    double weightedStake = stakeAmount * stakingDays;
     
     JsonValue result;
     result["success"] = true;
     result["address"] = address;
     result["stake_amount"] = stakeAmount;
     result["staking_days"] = stakingDays;
-    result["weighted_stake"] = weightedStake;
+    result["weighted_stake"] = validator.getWeightedStake();
     result["stake_tx"] = stakeTxHash;
     result["status"] = "pending";
     result["message"] = "Validator registered successfully. Stake of " + std::to_string(stakeAmount) + 
