@@ -51,7 +51,8 @@ class GXCPoolServer:
     
     def get_block_template(self, algorithm="sha256"):
         """Get block template from node"""
-        return self.rpc_call("getblocktemplate", [{"algorithm": algorithm}])
+        # Node accepts empty params or algorithm in params
+        return self.rpc_call("getblocktemplate", [])
     
     def create_job(self, template, algorithm="sha256"):
         """Create mining job from template"""
@@ -63,9 +64,11 @@ class GXCPoolServer:
             "height": template.get("height", 1),
             "difficulty": template.get("difficulty", 0.1),
             "target": template.get("target", "0" * 64),
+            "bits": template.get("bits", "1d00ffff"),
             "transactions": template.get("transactions", []),
-            "timestamp": int(time.time()),
-            "block_reward": template.get("coinbasevalue", 5000000000) / 100000000.0
+            "timestamp": template.get("curtime", int(time.time())),
+            "block_reward": template.get("block_reward", 50.0),
+            "coinbasevalue": template.get("coinbasevalue", 5000000000)
         }
         self.current_job = job
         print(f"✓ Created job {job['job_id']} for height {job['height']}")
