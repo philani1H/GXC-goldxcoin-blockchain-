@@ -1897,20 +1897,61 @@ double Blockchain::getBalance(const std::string& address) const {
         }
     }
 
-    // Sum all unspent UTXOs for this address (excluding those spent in mempool)
+    // CONSENSUS RULE: Only count confirmed, mature UTXOs in spendable balance
+    // Coinbase outputs must wait 100 blocks before being spendable
+    const uint32_t COINBASE_MATURITY = 100;
+    uint32_t currentHeight = chain.size();
+    
+    // Sum all unspent UTXOs for this address (excluding those spent in mempool and immature coinbase)
     for (const auto& [utxoKey, output] : utxoSet) {
         // Use exact match for address comparison
         if (output.address == address) {
             // Check if this UTXO is being spent in the mempool
-            if (spentInMempool.find(utxoKey) == spentInMempool.end()) {
-                balance += output.amount;
-                utxoCount++;
-                LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " = " + std::to_string(output.amount) +
-                              " GXC to " + output.address.substr(0, 20) + "...");
-            } else {
+            if (spentInMempool.find(utxoKey) != spentInMempool.end()) {
                 LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " [SPENT IN MEMPOOL] = " + std::to_string(output.amount) +
                               " GXC to " + output.address.substr(0, 20) + "...");
+                continue;
             }
+            
+            // Check if UTXO is from a coinbase transaction and if it's mature
+            // Extract txHash from utxoKey (format: txHash_outputIndex)
+            size_t sepPos = utxoKey.find('_');
+            if (sepPos != std::string::npos) {
+                std::string txHash = utxoKey.substr(0, sepPos);
+                
+                // Find the transaction in the blockchain to check if it's coinbase
+                bool isCoinbase = false;
+                uint32_t txHeight = 0;
+                bool found = false;
+                
+                for (const auto& block : chain) {
+                    for (const auto& tx : block->getTransactions()) {
+                        if (tx.getHash() == txHash) {
+                            isCoinbase = tx.isCoinbaseTransaction();
+                            txHeight = block->getIndex();
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found) break;
+                }
+                
+                // If it's a coinbase, check maturity
+                if (found && isCoinbase) {
+                    uint32_t confirmations = currentHeight - txHeight;
+                    if (confirmations < COINBASE_MATURITY) {
+                        LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " [IMMATURE COINBASE] = " + std::to_string(output.amount) +
+                                      " GXC, Confirmations: " + std::to_string(confirmations) + "/" + std::to_string(COINBASE_MATURITY));
+                        continue; // Skip immature coinbase
+                    }
+                }
+            }
+            
+            // This UTXO is spendable
+            balance += output.amount;
+            utxoCount++;
+            LOG_BLOCKCHAIN(LogLevel::DEBUG, "  UTXO: " + utxoKey + " = " + std::to_string(output.amount) +
+                          " GXC to " + output.address.substr(0, 20) + "...");
         }
     }
 

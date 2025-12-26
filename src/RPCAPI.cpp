@@ -3687,7 +3687,8 @@ JsonValue RPCAPI::getSigningMessage(const JsonValue& params) {
 }
 
 JsonValue RPCAPI::listUnspent(const JsonValue& params) {
-    // List all unspent transaction outputs (UTXOs) for an address
+    // List all SPENDABLE unspent transaction outputs (UTXOs) for an address
+    // Only returns mature coinbase outputs (100+ confirmations)
     
     std::string address = "";
     if (params.size() > 0) {
@@ -3695,6 +3696,9 @@ JsonValue RPCAPI::listUnspent(const JsonValue& params) {
     }
     
     const auto& utxoSet = blockchain->getUtxoSet();
+    uint32_t currentHeight = blockchain->getHeight();
+    const uint32_t COINBASE_MATURITY = 100;
+    
     JsonValue result = JsonValue::array();
     
     for (const auto& [utxoKey, utxo] : utxoSet) {
@@ -3708,12 +3712,47 @@ JsonValue RPCAPI::listUnspent(const JsonValue& params) {
             std::string txHash = utxoKey.substr(0, sepPos);
             uint32_t outputIndex = std::stoul(utxoKey.substr(sepPos + 1));
             
+            // Check if UTXO is from a coinbase and if it's mature
+            // We need to iterate through blocks to find the transaction
+            bool isCoinbase = false;
+            uint32_t txHeight = 0;
+            bool found = false;
+            
+            // Iterate through blocks to find this transaction
+            for (uint32_t h = 0; h < currentHeight; h++) {
+                try {
+                    Block block = blockchain->getBlock(h);
+                    for (const auto& tx : block.getTransactions()) {
+                        if (tx.getHash() == txHash) {
+                            isCoinbase = tx.isCoinbaseTransaction();
+                            txHeight = h;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found) break;
+                } catch (...) {
+                    // Block not found, continue
+                    continue;
+                }
+            }
+            
+            // Skip immature coinbase outputs
+            if (found && isCoinbase) {
+                uint32_t confirmations = currentHeight - txHeight;
+                if (confirmations < COINBASE_MATURITY) {
+                    continue; // Skip immature coinbase
+                }
+            }
+            
             JsonValue utxoObj;
             utxoObj["txHash"] = txHash;
             utxoObj["outputIndex"] = outputIndex;
             utxoObj["address"] = utxo.address;
             utxoObj["amount"] = utxo.amount;
             utxoObj["script"] = utxo.script;
+            utxoObj["confirmations"] = found ? (currentHeight - txHeight) : 0;
+            utxoObj["spendable"] = true; // All returned UTXOs are spendable
             
             result.push_back(utxoObj);
         }
