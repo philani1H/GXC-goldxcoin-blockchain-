@@ -1,0 +1,18 @@
+==========================================
+GXC Quick Stress Test
+==========================================
+
+[0;36mStarting node...[0m
+[1;33mWaiting for node...[0m
+
+[0;36mRunning quick tests...[0m
+
+[0;36mTest 1: 100 concurrent miners[0m
+[96m======================================================================[0m
+[96mGXC Multi-Miner Support Test[0m
+[96m======================================================================[0m
+[94mRPC URL: http://localhost:8332[0m
+[94mNumber of Miners: 100[0m
+[91m❌ Cannot connect to node: HTTPConnectionPool(host='localhost', port=8332): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f2ac315be90>: Failed to establish a new connection: [Errno 111] Connection refused'))[0m
+
+[1;33mCleaning up...[0m
