@@ -2,20 +2,62 @@
 
 ## Table of Contents
 1. [Overview](#overview)
-2. [Features](#features)
-3. [Installation](#installation)
-4. [Configuration](#configuration)
-5. [User Guide](#user-guide)
-6. [API Reference](#api-reference)
-7. [Architecture](#architecture)
-8. [Troubleshooting](#troubleshooting)
-9. [Development](#development)
+2. [What the Blockchain Provides](#what-the-blockchain-provides)
+3. [Explorer Features](#explorer-features)
+4. [Installation](#installation)
+5. [Configuration](#configuration)
+6. [User Guide](#user-guide)
+7. [API Reference](#api-reference)
+8. [Architecture](#architecture)
+9. [Troubleshooting](#troubleshooting)
+10. [Development](#development)
 
 ---
 
 ## Overview
 
-The GXC Blockchain Explorer is a comprehensive web application for visualizing and interacting with the GXC blockchain. It provides real-time data, transaction tracking, address monitoring, validator information, and much more.
+The GXC Blockchain Explorer is a web application that connects to the GXC blockchain node via RPC and displays blockchain data in a user-friendly interface.
+
+**What it does:**
+- Connects to GXC node RPC API (116 methods available)
+- Fetches blockchain data (blocks, transactions, addresses)
+- Displays data in web interface
+- Provides real-time updates via WebSocket
+- Offers search and filtering capabilities
+
+---
+
+## What the Blockchain Provides
+
+The GXC blockchain node exposes 116 RPC methods that the explorer uses:
+
+### Core Blockchain Data
+- **Blocks:** Height, hash, timestamp, miner, difficulty, nonce, merkle root
+- **Transactions:** Hash, inputs, outputs, amount, fee, type, confirmations
+- **Addresses:** Balance, transaction history, UTXO set
+- **Network:** Difficulty, hashrate, block time, consensus type
+
+### Consensus System
+- **Hybrid PoW/PoS:** Alternating block types
+- **Mining Algorithms:** SHA256, GXHASH, ETHASH
+- **Validators:** Stake-weighted selection, performance tracking
+- **Block Types:** Even blocks PoW, odd blocks PoS
+
+### Transaction Types
+1. **NORMAL** - Regular transfers
+2. **STAKE** - Lock coins for staking
+3. **UNSTAKE** - Unlock staked coins
+4. **COINBASE** - Mining rewards
+5. **REWARD** - Staking rewards
+
+### Advanced Features
+- **Complete Traceability:** Every transaction links to previous
+- **UTXO Model:** Unspent transaction outputs
+- **Security Engine:** AI-powered attack detection
+- **Stock Contracts:** Synthetic stock tokens
+- **Cross-Chain Bridge:** Multi-chain support
+- **Governance:** Proposal and voting system
+- **Gold Tokens:** Gold-backed GXC-G tokens
 
 ### Key Features
 - 🔍 **Real-time blockchain data**
