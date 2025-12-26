@@ -2275,10 +2275,18 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         uint32_t currentHeight = blockchain->getHeight();
         Block latestBlock = blockchain->getLatestBlock();
         
-        // Check if we have a valid latest block
-        if (latestBlock.getHash().empty()) {
-            LOG_API(LogLevel::ERROR, "getBlockTemplate: Latest block has empty hash. Chain height: " + std::to_string(currentHeight));
-            throw RPCException(RPCException::RPC_INTERNAL_ERROR, "No valid blocks in chain");
+        // FIXED: Handle genesis block case (empty chain)
+        // When chain is empty, we need to create a genesis block template
+        bool isGenesisBlock = false;
+        std::string previousHash;
+        
+        if (latestBlock.getHash().empty() || currentHeight == 0) {
+            LOG_API(LogLevel::INFO, "getBlockTemplate: Chain is empty, creating genesis block template");
+            isGenesisBlock = true;
+            previousHash = "0000000000000000000000000000000000000000000000000000000000000000";
+            currentHeight = 0;
+        } else {
+            previousHash = latestBlock.getHash();
         }
         
         // Determine next block type (PoW or PoS)
@@ -2289,10 +2297,11 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         LOG_API(LogLevel::DEBUG, "getBlockTemplate: currentHeight=" + std::to_string(currentHeight) + 
                 ", nextBlockHeight=" + std::to_string(nextBlockHeight) +
                 ", blockType=" + (nextBlockType == BlockType::POS ? "PoS" : "PoW") +
-                ", reward=" + std::to_string(blockReward) + ", prevHash=" + latestBlock.getHash().substr(0, 16) + "...");
+                ", reward=" + std::to_string(blockReward) + 
+                ", prevHash=" + (isGenesisBlock ? "GENESIS" : previousHash.substr(0, 16) + "..."));
         
         result["version"] = 1;
-        result["previousblockhash"] = latestBlock.getHash();
+        result["previousblockhash"] = previousHash;
         
         // Extract miner address from params
         std::string minerAddress = "";

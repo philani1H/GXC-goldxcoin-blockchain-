@@ -88,10 +88,12 @@ bool Blockchain::initialize() {
             LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to load blocks from database, starting fresh");
         }
         
-        // Create genesis block if blockchain is still empty after loading from database
+        // FIXED: Do NOT auto-create genesis block
+        // Genesis block should only be created by the first miner through mining
+        // This prevents every node from creating its own genesis block
         if (chain.empty()) {
-            LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain is empty. Creating genesis block now.");
-            createGenesisBlock();
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain is empty. Waiting for genesis block to be mined.");
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block must be created by mining, not automatically.");
         } else {
             LOG_BLOCKCHAIN(LogLevel::INFO, "Loaded " + std::to_string(chain.size()) + 
                           " blocks from database, rebuilding UTXO set...");
