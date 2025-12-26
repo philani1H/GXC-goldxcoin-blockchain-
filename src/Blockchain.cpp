@@ -255,7 +255,16 @@ void Blockchain::createGenesisBlock() {
     chain.push_back(std::make_shared<Block>(genesis));
     lastBlock = chain.back();
     
-    LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block created with hash: " + genesis.getHash());
+    LOG_BLOCKCHAIN(LogLevel::INFO, "");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "╔════════════════════════════════════════════════════════════════╗");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "║              🎉 GENESIS BLOCK CREATED                          ║");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "╠════════════════════════════════════════════════════════════════╣");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "║ Hash:          " + genesis.getHash().substr(0, 40) + "...                 ║");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "║ Difficulty:    " + std::to_string(genesis.getDifficulty()) + std::string(47 - std::to_string(genesis.getDifficulty()).length(), ' ') + "║");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "║ Reward:        50.0 GXC                                        ║");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "║ Network:       " + std::string(isTestnet ? "Testnet" : "Mainnet") + std::string(47 - std::string(isTestnet ? "Testnet" : "Mainnet").length(), ' ') + "║");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "╚════════════════════════════════════════════════════════════════╝");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "");
 }
 
 bool Blockchain::addBlock(const Block& block) {

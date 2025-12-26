@@ -2090,11 +2090,19 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         
         if (addResult) {
             // THIS IS WHERE MINER ACTUALLY GETS PAID!
-            LOG_API(LogLevel::INFO, "✅ BLOCK ACCEPTED - MINER PAID! Height: " + std::to_string(height) + 
-                    ", Hash: " + hash.substr(0, 16) + "...");
-            LOG_API(LogLevel::INFO, "💰 PAYMENT CONFIRMED: " + std::to_string(blockReward) + 
-                    " GXC sent to " + minerAddress);
-            LOG_API(LogLevel::INFO, "🎉 Miner can now spend their reward after confirmations");
+            LOG_API(LogLevel::INFO, "");
+            LOG_API(LogLevel::INFO, "╔════════════════════════════════════════════════════════════════╗");
+            LOG_API(LogLevel::INFO, "║                  ✅ BLOCK ACCEPTED                             ║");
+            LOG_API(LogLevel::INFO, "╠════════════════════════════════════════════════════════════════╣");
+            LOG_API(LogLevel::INFO, "║ Height:        " + std::to_string(height) + std::string(47 - std::to_string(height).length(), ' ') + "║");
+            LOG_API(LogLevel::INFO, "║ Hash:          " + hash.substr(0, 40) + "...                 ║");
+            LOG_API(LogLevel::INFO, "║ Miner:         " + minerAddress.substr(0, 40) + "...                 ║");
+            LOG_API(LogLevel::INFO, "╠════════════════════════════════════════════════════════════════╣");
+            LOG_API(LogLevel::INFO, "║              💰 MINER PAYMENT CONFIRMED                        ║");
+            LOG_API(LogLevel::INFO, "║ Amount:        " + std::to_string(blockReward) + " GXC" + std::string(39 - std::to_string(blockReward).length(), ' ') + "║");
+            LOG_API(LogLevel::INFO, "║ Status:        Confirmed - Can spend after 6 confirmations     ║");
+            LOG_API(LogLevel::INFO, "╚════════════════════════════════════════════════════════════════╝");
+            LOG_API(LogLevel::INFO, "");
             return JsonValue(); // Success returns null
         } else {
             LOG_API(LogLevel::ERROR, "❌ Block validation failed. Height: " + std::to_string(height) + 
@@ -2303,14 +2311,20 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
             minerAddress = wallet->getAddress();
         }
         
-        LOG_API(LogLevel::INFO, "getBlockTemplate: Miner address: " + minerAddress);
+        LOG_API(LogLevel::INFO, "");
+        LOG_API(LogLevel::INFO, "╔════════════════════════════════════════════════════════════════╗");
+        LOG_API(LogLevel::INFO, "║           BLOCK TEMPLATE REQUEST                               ║");
+        LOG_API(LogLevel::INFO, "╠════════════════════════════════════════════════════════════════╣");
+        LOG_API(LogLevel::INFO, "║ Miner Address: " + minerAddress.substr(0, 40) + (minerAddress.length() > 40 ? "..." : "   ") + " ║");
+        LOG_API(LogLevel::INFO, "║ Block Height:  " + std::to_string(nextBlockHeight) + std::string(47 - std::to_string(nextBlockHeight).length(), ' ') + "║");
+        LOG_API(LogLevel::INFO, "║ Block Reward:  " + std::to_string(blockReward) + " GXC" + std::string(39 - std::to_string(blockReward).length(), ' ') + "║");
+        LOG_API(LogLevel::INFO, "╚════════════════════════════════════════════════════════════════╝");
         
         // CRITICAL: Create coinbase transaction TEMPLATE for the block template
         // This is NOT a payment - miner must find valid block and submit it to get paid
         Transaction coinbaseTx(minerAddress, blockReward);
         
-        LOG_API(LogLevel::DEBUG, "📝 Created coinbase TEMPLATE (NOT PAID): " + coinbaseTx.getHash().substr(0, 16) + 
-                "..., Potential reward: " + std::to_string(blockReward) + " GXC to " + minerAddress.substr(0, 20) + "...");
+        LOG_API(LogLevel::DEBUG, "📝 Coinbase TEMPLATE created (NOT PAID YET): " + coinbaseTx.getHash().substr(0, 16) + "...");
         
         // CRITICAL FIX: Include pending transactions from mempool
         // Without this, transactions are never included in mined blocks!
@@ -2346,7 +2360,8 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         
         txArray.push_back(coinbaseJson);
         
-        LOG_API(LogLevel::INFO, "getBlockTemplate: " + std::to_string(pendingTxs.size()) + " pending transactions in mempool");
+        LOG_API(LogLevel::INFO, "");
+        LOG_API(LogLevel::INFO, "📦 Mempool: " + std::to_string(pendingTxs.size()) + " pending transaction(s)");
         
         // Add pending transactions AFTER coinbase
         for (const auto& tx : pendingTxs) {
