@@ -157,11 +157,15 @@ void Blockchain::createGenesisBlock() {
     
     genesis.setNonce(0);
     
+    // Set miner public key for work receipt (genesis uses a fixed key)
+    genesis.setMinerPublicKey("genesis_miner_pubkey");
+    
     // Create coinbase transaction for genesis
     Transaction coinbase;
     coinbase.setHash("genesis_coinbase_tx");
     coinbase.setCoinbaseTransaction(true);
     coinbase.setTimestamp(genesis.getTimestamp());
+    coinbase.setBlockHeight(0);
     
     // Add coinbase output to genesis address
     TransactionOutput output;
@@ -194,6 +198,19 @@ void Blockchain::createGenesisBlock() {
     } while (true);
     
     LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block mined after " + std::to_string(attempts) + " attempts");
+    
+    // Compute and set work receipt for genesis block
+    std::string workReceipt = genesis.computeWorkReceipt();
+    genesis.setWorkReceiptHash(workReceipt);
+    
+    // Update coinbase transaction with work receipt
+    auto transactions = genesis.getTransactions();
+    if (!transactions.empty()) {
+        transactions[0].setWorkReceiptHash(workReceipt);
+        // Note: Can't modify const reference, so genesis block coinbase already has blockHeight set
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis work receipt: " + workReceipt.substr(0, 16) + "...");
     
     // Add to chain
     std::lock_guard<std::mutex> lock(chainMutex);

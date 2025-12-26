@@ -950,6 +950,30 @@ src/SalectValidator.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/SalectValidator.cpp.s
 .PHONY : src/SalectValidator.cpp.s
 
+src/StakingPool.o: src/StakingPool.cpp.o
+.PHONY : src/StakingPool.o
+
+# target to build an object file
+src/StakingPool.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/StakingPool.cpp.o
+.PHONY : src/StakingPool.cpp.o
+
+src/StakingPool.i: src/StakingPool.cpp.i
+.PHONY : src/StakingPool.i
+
+# target to preprocess a source file
+src/StakingPool.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/StakingPool.cpp.i
+.PHONY : src/StakingPool.cpp.i
+
+src/StakingPool.s: src/StakingPool.cpp.s
+.PHONY : src/StakingPool.s
+
+# target to generate assembly for a file
+src/StakingPool.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/StakingPool.cpp.s
+.PHONY : src/StakingPool.cpp.s
+
 src/Stratum.o: src/Stratum.cpp.o
 .PHONY : src/Stratum.o
 
@@ -1868,6 +1892,9 @@ help:
 	@echo "... src/SalectValidator.o"
 	@echo "... src/SalectValidator.i"
 	@echo "... src/SalectValidator.s"
+	@echo "... src/StakingPool.o"
+	@echo "... src/StakingPool.i"
+	@echo "... src/StakingPool.s"
 	@echo "... src/Stratum.o"
 	@echo "... src/Stratum.i"
 	@echo "... src/Stratum.s"
