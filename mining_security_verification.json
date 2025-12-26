@@ -1,0 +1,24 @@
+{
+  "timestamp": "2025-12-26T04:27:49.413108",
+  "mining_rewards": {
+    "verified": true,
+    "issues": []
+  },
+  "security_engine": {
+    "verified": true,
+    "issues": []
+  },
+  "pow_validation": {
+    "verified": true,
+    "issues": []
+  },
+  "staking_rewards": {
+    "verified": true,
+    "issues": []
+  },
+  "block_validation": {
+    "verified": true,
+    "issues": []
+  },
+  "overall_score": 5
+}
