@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GXC Transaction - Blockchain Explorer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            background: #f5f5f5;
+            padding: 15px 20px;
+            font-weight: bold;
+            font-size: 1.2em;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .section-content {
+            padding: 20px;
+        }
+        
+        .info-row {
+            display: flex;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #666;
+            min-width: 180px;
+        }
+        
+        .info-value {
+            flex: 1;
+            color: #333;
+            word-break: break-all;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        
+        .status-confirmed {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .status-valid {
+            background: #2196f3;
+            color: white;
+        }
+        
+        .address {
+            font-family: 'Courier New', monospace;
+            background: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        .hash {
+            font-family: 'Courier New', monospace;
+            background: #fff3cd;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            word-break: break-all;
+        }
+        
+        .amount {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .flow-diagram {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            line-height: 1.8;
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        
+        .output-box {
+            background: #f5f5f5;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .input-box {
+            background: #f5f5f5;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .checkmark {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        
+        .footer {
+            background: #f5f5f5;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔗 GXC Blockchain Explorer</h1>
+            <p>Transaction Details - Testnet</p>
+        </div>
+        
+        <div class="content">
+            <!-- Transaction Overview -->
+            <div class="section">
+                <div class="section-header">Transaction Overview</div>
+                <div class="section-content">
+                    <div class="info-row">
+                        <div class="info-label">Status:</div>
+                        <div class="info-value">
+                            <span class="status-badge status-confirmed">✅ CONFIRMED</span>
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Transaction Hash:</div>
+                        <div class="info-value">
+                            <div class="hash">49b23d8b401c563447344558c13ab2c1df5435b06bfe79d2048fc0efca67efdc</div>
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Block Height:</div>
+                        <div class="info-value">12</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Confirmations:</div>
+                        <div class="info-value">5</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Timestamp:</div>
+                        <div class="info-value">2025-12-26 04:07:11 UTC</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Network:</div>
+                        <div class="info-value">TESTNET</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Amount -->
+            <div class="section">
+                <div class="section-header">Transaction Amount</div>
+                <div class="section-content">
+                    <div class="info-row">
+                        <div class="info-label">Amount:</div>
+                        <div class="info-value">
+                            <span class="amount">10.0 GXC</span>
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Fee:</div>
+                        <div class="info-value">0.0001 GXC</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Total:</div>
+                        <div class="info-value">10.0001 GXC</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Addresses -->
+            <div class="section">
+                <div class="section-header">From / To</div>
+                <div class="section-content">
+                    <div class="info-row">
+                        <div class="info-label">From (Sender):</div>
+                        <div class="info-value">
+                            <div class="address">tGXCf7100e1540f3785bb5d03aa93c1ee0c8f9</div>
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">To (Recipient):</div>
+                        <div class="info-value">
+                            <div class="address highlight">tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf</div>
+                            <small style="color: #4caf50; font-weight: bold;">← YOUR ADDRESS</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Inputs -->
+            <div class="section">
+                <div class="section-header">Inputs (1)</div>
+                <div class="section-content">
+                    <div class="input-box">
+                        <div class="info-row">
+                            <div class="info-label">Previous TX:</div>
+                            <div class="info-value">
+                                <div class="hash">62649008ae4f64566c5850b39569a1c7bb4b3e8a058c781d...</div>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Output Index:</div>
+                            <div class="info-value">0</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Amount:</div>
+                            <div class="info-value">50.0 GXC</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Address:</div>
+                            <div class="info-value">
+                                <div class="address">tGXCf7100e1540f3785bb5d03aa93c1ee0c8f9</div>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Signature:</div>
+                            <div class="info-value">
+                                <span class="status-badge status-valid">✅ VALID</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Outputs -->
+            <div class="section">
+                <div class="section-header">Outputs (2)</div>
+                <div class="section-content">
+                    <div class="output-box">
+                        <strong>Output #1 - Recipient</strong>
+                        <div class="info-row">
+                            <div class="info-label">Address:</div>
+                            <div class="info-value">
+                                <div class="address highlight">tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf</div>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Amount:</div>
+                            <div class="info-value">
+                                <span class="amount">10.0 GXC</span>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Status:</div>
+                            <div class="info-value">
+                                <span class="status-badge status-valid">✅ UNSPENT</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="output-box">
+                        <strong>Output #2 - Change</strong>
+                        <div class="info-row">
+                            <div class="info-label">Address:</div>
+                            <div class="info-value">
+                                <div class="address">tGXCf7100e1540f3785bb5d03aa93c1ee0c8f9</div>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Amount:</div>
+                            <div class="info-value">39.9999 GXC</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">Status:</div>
+                            <div class="info-value">
+                                <span class="status-badge status-valid">✅ UNSPENT</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Transaction Flow -->
+            <div class="section">
+                <div class="section-header">Transaction Flow</div>
+                <div class="section-content">
+                    <div class="flow-diagram">
+Mining Reward (Block 1)
+        ↓
+50.0 GXC → tGXCf7100e1540f3785bb5d03aa93c1ee0c8f9
+        ↓
+[Transaction]
+        ↓
+├─→ <span class="highlight">10.0 GXC → tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf</span> <span class="checkmark">✅ YOUR ADDRESS</span>
+└─→ 39.9999 GXC → tGXCf7100e1540f3785bb5d03aa93c1ee0c8f9 (Change)
+        ↓
+Fee: 0.0001 GXC → Miner
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Traceability -->
+            <div class="section">
+                <div class="section-header">Traceability Verification</div>
+                <div class="section-content">
+                    <div class="info-row">
+                        <div class="info-label">Formula 1:</div>
+                        <div class="info-value">
+                            Ti.Inputs[0].txHash == Ti.PrevTxHash
+                            <span class="status-badge status-valid">✅ VALID</span>
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Formula 2:</div>
+                        <div class="info-value">
+                            Ti.Inputs[0].amount == Ti.ReferencedAmount
+                            <span class="status-badge status-valid">✅ VALID</span>
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Audit Trail:</div>
+                        <div class="info-value">
+                            Genesis → Block 1 → ... → Block 12 → This TX
+                            <span class="status-badge status-valid">✅ COMPLETE</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>GXC Blockchain Explorer - Testnet</p>
+            <p>Transaction confirmed in block 12 with 5 confirmations</p>
+        </div>
+    </div>
+</body>
+</html>
