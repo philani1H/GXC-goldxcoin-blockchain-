@@ -1,15 +1,37 @@
-# 🪙 GXC Blockchain - Gold-Backed Cryptocurrency
+# 🪙 GXC Blockchain - Complete Documentation
 
 [![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/philani1H/GXC-goldxcoin-blockchain-)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/philani1H/GXC-goldxcoin-blockchain-)
-[![Production Ready](https://img.shields.io/badge/production-ready-success.svg)](PRODUCTION_READY_SUMMARY.md)
+[![Production Ready](https://img.shields.io/badge/production-ready-success.svg)](PRODUCTION_READY.md)
 
-**GXC (GoldXCoin)** is a production-ready blockchain with hybrid PoW/PoS consensus, AI-powered security, and gold-backed tokenomics.
+**GXC (GoldXCoin)** is a production-ready blockchain with hybrid PoW/PoS consensus, validator profiles, AI-powered security, and complete traceability.
+
+---
+
+## 📋 Table of Contents
+
+- [Quick Start](#-quick-start)
+- [Core Features](#-core-features)
+- [Blockchain Specifications](#-blockchain-specifications)
+- [Consensus Mechanisms](#-consensus-mechanisms)
+- [Validator System](#-validator-system)
+- [Transaction Types](#-transaction-types)
+- [Mining](#-mining)
+- [Staking](#-staking)
+- [Wallet Features](#-wallet-features)
+- [RPC API](#-rpc-api)
+- [Security Features](#-security-features)
+- [Network](#-network)
+- [Building from Source](#-building-from-source)
+- [Testing](#-testing)
+- [Deployment](#-deployment)
+
+---
 
 ## 🚀 Quick Start
 
-### Automated Deployment (Recommended)
+### Build and Run Node
 
 ```bash
 # Clone repository
@@ -21,171 +43,635 @@ mkdir -p build && cd build
 cmake .. && make -j$(nproc)
 cd ..
 
-# Deploy production node
-sudo ./scripts/production-deploy.sh
+# Run node (testnet)
+./gxc-node --testnet --rpc-port=8545
 
-# Apply security hardening
-sudo ./scripts/security-hardening.sh
+# Run node (mainnet)
+./gxc-node --rpc-port=8332
 ```
 
-**Done!** Your production node is running.
-
-### Quick Test (Testnet)
+### Mine Blocks
 
 ```bash
-# Build
-mkdir -p build && cd build
-cmake .. && make -j$(nproc)
+# SHA-256 mining
+./gxc-miner --address=YOUR_ADDRESS --algorithm=sha256 --node=http://localhost:8545
 
-# Run tests
-bash ../test_testnet.sh
+# Ethash mining
+./gxc-ethash-miner --address=YOUR_ADDRESS --node=http://localhost:8545
+
+# GXHash mining (ASIC-resistant)
+./gxc-gxhash-miner --address=YOUR_ADDRESS --node=http://localhost:8545
 ```
 
-## ✨ Key Features
+### Create Wallet
+
+```bash
+# Generate new wallet
+./gxc-keygen
+
+# Check balance
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"getbalance","params":["YOUR_ADDRESS"],"id":1}'
+```
+
+---
+
+## ✨ Core Features
 
 ### Hybrid Consensus
-- **PoW (Proof-of-Work):** SHA-256, Ethash, GXHash algorithms
-- **PoS (Proof-of-Stake):** Energy-efficient validation
-- **Alternating Blocks:** Even blocks PoW, odd blocks PoS
+- **PoW (Proof-of-Work)**: SHA-256, Ethash, GXHash algorithms
+- **PoS (Proof-of-Stake)**: Validator-based block production
+- **Alternating Blocks**: Even blocks PoW, odd blocks PoS
+- **Weighted Selection**: Validators selected by stake weight
+
+### Validator Profiles
+- **Custom Names**: Validators can set display names
+- **Branding**: Logo, bio, website, contact information
+- **Commission Rates**: Configurable 0-20% commission
+- **Performance Tracking**: Uptime, blocks produced/missed
+- **APY Calculation**: Realistic 15-20% annual yields
+- **Reputation System**: Score based on performance
+
+### Complete Traceability
+- **Transaction Chaining**: Every transaction links to previous
+- **UTXO Tracking**: Full input/output traceability
+- **Formula**: `Ti.Inputs[0].txHash == Ti.PrevTxHash`
+- **Amount Verification**: `Ti.Inputs[0].amount == Ti.ReferencedAmount`
+- **Blockchain Audit**: Complete transaction history
 
 ### AI-Powered Security
-- Predictive attack prevention
-- Hashrate anomaly detection
-- Difficulty adjustment protection
-- Staker balance verification
-- Emission guard
-- Fee surge protection
+- **Hashrate Sentinel**: Detects mining attacks
+- **Difficulty Guard**: Prevents manipulation
+- **Staker Balance Modifier**: Protects against stake attacks
+- **Emission Guard**: Prevents inflation attacks
+- **Fee Surge Protection**: Detects fee manipulation
+- **Hybrid Penalty Logic**: Automatic attack response
 
-### Gold-Backed Tokenomics
-- Proof-of-Price (PoP) validation
-- Oracle price feeds
-- Transparent gold reserves
-- Traceability formula
+---
 
-### Production Ready
-- ✅ Enterprise-grade security
-- ✅ Automated deployment
-- ✅ Comprehensive monitoring
-- ✅ Disaster recovery
-- ✅ 97% test pass rate
-
-## 📊 Specifications
+## 📊 Blockchain Specifications
 
 | Parameter | Value |
 |-----------|-------|
-| **Block Time** | 2 minutes |
-| **Block Reward** | 50 GXC (halving every 210,000 blocks) |
-| **Min Stake** | 100 GXC |
-| **Consensus** | Hybrid PoW/PoS |
-| **Algorithms** | SHA-256, Ethash, GXHash |
-| **Network** | Mainnet (8333), Testnet (18333) |
+| **Block Time** | 10 seconds |
+| **Block Reward** | 50 GXC (halving every 1,051,200 blocks) |
+| **Max Supply** | 31,000,000 GXC |
+| **Min Validator Stake** | 100 GXC |
+| **Min Staking Period** | 14 days |
+| **Max Staking Period** | 365 days |
+| **Transaction Fee** | 0.001 GXC (dynamic) |
+| **Coinbase Maturity** | 100 blocks |
+| **Difficulty Adjustment** | Every 2,016 blocks |
 
-## 🏗️ Architecture
+---
 
+## 🔄 Consensus Mechanisms
+
+### Proof of Work (PoW)
+
+**Supported Algorithms:**
+
+1. **SHA-256**
+   - Bitcoin-compatible
+   - ASIC-friendly
+   - High security
+
+2. **Ethash**
+   - Ethereum-compatible
+   - Memory-hard
+   - GPU-optimized
+
+3. **GXHash**
+   - GXC-specific
+   - ASIC-resistant
+   - CPU/GPU balanced
+
+**Mining Difficulty:**
+- Adjusts every 2,016 blocks
+- Target: 10-second block time
+- Retarget algorithm prevents manipulation
+
+### Proof of Stake (PoS)
+
+**Validator Selection:**
+- Weighted by stake amount and time
+- Formula: `W = S × (days/365)^0.5`
+- Deterministic selection using block height seed
+- No randomness manipulation possible
+
+**Block Production:**
+- Validators sign blocks with private key
+- Signature verification required
+- Missed blocks tracked for reputation
+
+---
+
+## 👥 Validator System
+
+### Registration
+
+**RPC Method:** `registerValidator`
+
+**Parameters:**
+```json
+{
+  "address": "GXC_address",
+  "stakeAmount": 1000.0,
+  "stakingDays": 90,
+  "name": "My Validator",           // Optional
+  "logo": "https://logo.png",       // Optional
+  "bio": "Professional validator",  // Optional
+  "website": "https://site.com",    // Optional
+  "contact": "email@example.com",   // Optional
+  "commission": 0.10                // Optional (default 10%)
+}
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    GXC Blockchain                       │
-├─────────────────────────────────────────────────────────┤
-│  Consensus Layer                                        │
-│  ├─ PoW Mining (SHA-256, Ethash, GXHash)              │
-│  └─ PoS Validation (Stake-based selection)            │
-├─────────────────────────────────────────────────────────┤
-│  Security Layer                                         │
-│  ├─ AI Hashrate Sentinel                              │
-│  ├─ Predictive Difficulty Guard                       │
-│  ├─ Staker-Balance Modifier                           │
-│  ├─ Emission Guard                                    │
-│  ├─ Fee Surge Guard                                   │
-│  └─ Hybrid Penalty Logic                              │
-├─────────────────────────────────────────────────────────┤
-│  Transaction Layer                                      │
-│  ├─ UTXO Model                                        │
-│  ├─ Traceability Formula                              │
-│  └─ Multi-signature Support                           │
-├─────────────────────────────────────────────────────────┤
-│  Network Layer                                          │
-│  ├─ P2P Protocol                                      │
-│  ├─ Peer Discovery                                    │
-│  └─ Block Propagation                                 │
-├─────────────────────────────────────────────────────────┤
-│  API Layer                                              │
-│  ├─ JSON-RPC 2.0                                      │
-│  ├─ REST API                                          │
-│  └─ WebSocket (Real-time)                             │
-└─────────────────────────────────────────────────────────┘
+
+**Example:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"registerValidator",
+  "params":["GXC_address", 1000.0, 90, "Acme Validator", "https://logo.png", "Professional service", "https://acme.com", "contact@acme.com", 0.10],
+  "id":1
+}'
 ```
 
-## 📚 Documentation
+### Query Validators
 
-### Getting Started
-- [Quick Start Guide](QUICK_START.md)
-- [Installation Guide](INSTALLATION_GUIDE.md)
-- [Configuration Reference](config/gxc-production.conf)
+**List All Validators:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"getvalidators",
+  "params":[],
+  "id":1
+}'
+```
 
-### Production Deployment
-- **[Production Ready Summary](PRODUCTION_READY_SUMMARY.md)** ⭐
-- **[Production Deployment Guide](PRODUCTION_DEPLOYMENT_GUIDE.md)** ⭐
-- **[Production Readiness Checklist](PRODUCTION_READINESS_CHECKLIST.md)** ⭐
-- [Security Hardening](scripts/security-hardening.sh)
+**Response:**
+```json
+{
+  "result": [
+    {
+      "address": "GXC_address",
+      "stake_amount": 1000.0,
+      "staking_days": 90,
+      "weighted_stake": 486.8,
+      "is_active": true,
+      "blocks_produced": 150,
+      "missed_blocks": 5,
+      "uptime": 0.968,
+      "total_rewards": 75.5,
+      "apy": 18.5,
+      "name": "Acme Validator",
+      "logo": "https://logo.png",
+      "bio": "Professional service",
+      "website": "https://acme.com",
+      "contact": "contact@acme.com",
+      "commission_rate": 0.10
+    }
+  ]
+}
+```
 
-### Development
-- [Build Instructions](BUILD_INSTRUCTIONS.md)
-- [Testing Guide](TESTING_GUIDE.md)
-- [Contributing Guidelines](CONTRIBUTING.md)
+### Validator Info
 
-### Integration
-- [Third-Party Wallet Guide](THIRD_PARTY_WALLET_GUIDE.md)
-- [Exchange Integration Guide](EXCHANGE_INTEGRATION_GUIDE.md)
-- [External Wallet Transaction Fix](EXTERNAL_WALLET_TRANSACTION_FIX.md)
+**Get Specific Validator:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"getvalidatorinfo",
+  "params":["GXC_address"],
+  "id":1
+}'
+```
 
-### Operations
-- [Mining Guide](MINING_GUIDE.md)
-- [Staking Guide](STAKING_SIMPLIFIED.md)
-- [Validator Registration](VALIDATOR_REGISTRATION_FIX.md)
-- [Validator Stake Explained](VALIDATOR_STAKE_EXPLAINED.md)
+### Performance Metrics
 
-### Technical
-- [Hybrid Consensus](HYBRID_CONSENSUS_AND_SECURITY.md)
-- [Security Engine](SECURITY_ENGINE.md)
-- [Transaction Confirmations](TRANSACTION_CONFIRMATIONS.md)
-- [Who Confirms Transactions](WHO_CONFIRMS_TRANSACTIONS.md)
-- [Traceability Formula](TRACEABILITY_FORMULA.md)
+**Tracked Automatically:**
+- Blocks produced
+- Blocks missed
+- Uptime percentage
+- Total rewards earned
+- Current APY
+- Reputation score
+- Slashing events
 
-## 🔧 System Requirements
+---
 
-### Minimum
-- **CPU:** 4 cores @ 2.5GHz
-- **RAM:** 8GB
-- **Disk:** 500GB SSD
-- **Network:** 100Mbps
-- **OS:** Ubuntu 22.04 LTS or Debian 12
+## 💸 Transaction Types
 
-### Recommended
-- **CPU:** 8 cores @ 3.0GHz+
-- **RAM:** 16GB
-- **Disk:** 1TB NVMe SSD
-- **Network:** 1Gbps
-- **OS:** Ubuntu 22.04 LTS
+### 1. NORMAL (Transfer)
+Standard coin transfer between addresses.
 
-## 🛠️ Building from Source
+**Create Transaction:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"createtransaction",
+  "params":[{
+    "from": "sender_address",
+    "to": "receiver_address",
+    "amount": 10.0,
+    "fee": 0.001
+  }],
+  "id":1
+}'
+```
 
-### Dependencies
+### 2. STAKE
+Lock coins to become a validator.
+
+**Create Stake:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"registervalidator",
+  "params":["address", 100.0, 30],
+  "id":1
+}'
+```
+
+### 3. UNSTAKE
+Release staked coins after lock period.
+
+**Unstake:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"unstake",
+  "params":["address"],
+  "id":1
+}'
+```
+
+### 4. REWARD
+Staking rewards (mints new coins).
+
+**Automatic:** Created by blockchain when validator produces blocks.
+
+### 5. COINBASE
+Mining rewards (mints new coins).
+
+**Automatic:** Created by miners when solving PoW blocks.
+
+---
+
+## ⛏️ Mining
+
+### Mining Algorithms
+
+**1. SHA-256 Mining**
+```bash
+./gxc-miner --address=YOUR_ADDRESS --algorithm=sha256 --node=http://localhost:8545 --threads=4
+```
+
+**2. Ethash Mining**
+```bash
+./gxc-ethash-miner --address=YOUR_ADDRESS --node=http://localhost:8545
+```
+
+**3. GXHash Mining**
+```bash
+./gxc-gxhash-miner --address=YOUR_ADDRESS --node=http://localhost:8545
+```
+
+### Mining Pools
+
+**Pool Server:**
+```bash
+./gxc-pool-server --port=3333 --node=http://localhost:8545
+```
+
+**Connect to Pool:**
+```bash
+./gxc-miner --pool=stratum+tcp://pool.example.com:3333 --user=YOUR_ADDRESS
+```
+
+### Mining Rewards
+
+- **Block Reward:** 50 GXC
+- **Halving:** Every 1,051,200 blocks (~4 years)
+- **Maturity:** 100 blocks before spendable
+- **Fee Rewards:** Included in block reward
+
+---
+
+## 🔒 Staking
+
+### Staking Requirements
+
+- **Minimum Stake:** 100 GXC
+- **Minimum Period:** 14 days
+- **Maximum Period:** 365 days
+- **Lock Period:** Coins locked until period ends
+
+### Staking Process
+
+1. **Acquire GXC:** Mine or receive coins
+2. **Register as Validator:** Stake minimum 100 GXC
+3. **Wait for Activation:** Stake transaction must confirm
+4. **Produce Blocks:** Selected based on weighted stake
+5. **Earn Rewards:** Receive staking rewards
+
+### Staking Rewards
+
+**Reward Calculation:**
+- **Staking Reward per Block:** 0.0001 GXC
+- **Annual Blocks:** 3,155,760 (10-second blocks)
+- **Estimated APY:** 15-20%
+- **Commission:** Validators earn commission from delegators
+
+**APY Formula:**
+```
+APY = (reward_per_block × blocks_per_year / stake) × 100
+```
+
+### Check Staking Info
+
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"getstakinginfo",
+  "params":["YOUR_ADDRESS"],
+  "id":1
+}'
+```
+
+---
+
+## 💼 Wallet Features
+
+### Key Generation
+
+**Generate New Wallet:**
+```bash
+./gxc-keygen
+```
+
+**Output:**
+```
+Private Key: 5KQw...
+Public Key: 04a3b...
+Address: GXC9fab7317231b966af85ac453e168c0932
+```
+
+### Wallet Operations
+
+**Check Balance:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"getbalance",
+  "params":["YOUR_ADDRESS"],
+  "id":1
+}'
+```
+
+**Get New Address:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"getnewaddress",
+  "params":[],
+  "id":1
+}'
+```
+
+**Send Transaction:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"sendtoaddress",
+  "params":["RECIPIENT_ADDRESS", 10.0],
+  "id":1
+}'
+```
+
+### Transaction History
+
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"listtransactions",
+  "params":["YOUR_ADDRESS"],
+  "id":1
+}'
+```
+
+### Import/Export
+
+**Import Private Key:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"importprivkey",
+  "params":["PRIVATE_KEY"],
+  "id":1
+}'
+```
+
+---
+
+## 🔌 RPC API
+
+### Connection
+
+**Mainnet:** `http://localhost:8332`
+**Testnet:** `http://localhost:8545`
+
+### Available Methods (101 total)
+
+#### Blockchain Info
+- `getblockchaininfo` - Get blockchain status
+- `getblockcount` - Get current block height
+- `getdifficulty` - Get current difficulty
+- `getbestblockhash` - Get latest block hash
+- `getinfo` - Get node information
+
+#### Blocks
+- `getblock` - Get block by hash
+- `getblockbynumber` - Get block by height
+- `getblockhash` - Get block hash by height
+- `getblocktemplate` - Get block template for mining
+- `getblocktransactions` - Get transactions in block
+
+#### Transactions
+- `gettransaction` - Get transaction by hash
+- `getrawtransaction` - Get raw transaction
+- `sendrawtransaction` - Broadcast transaction
+- `createtransaction` - Create new transaction
+- `listtransactions` - List transactions for address
+
+#### Wallet
+- `getbalance` - Get address balance
+- `getpendingbalance` - Get unconfirmed balance
+- `getnewaddress` - Generate new address
+- `sendtoaddress` - Send coins
+- `importprivkey` - Import private key
+
+#### Validators
+- `registervalidator` - Register as validator
+- `getvalidators` - List all validators
+- `getvalidatorinfo` - Get validator details
+- `addstake` - Add more stake
+- `unstake` - Remove stake
+
+#### Staking
+- `getstakinginfo` - Get staking information
+- `createposblock` - Create PoS block
+
+#### Network
+- `getpeerinfo` - Get connected peers
+- `getconnectioncount` - Get peer count
+- `addnode` - Add peer node
+- `disconnectnode` - Disconnect peer
+
+#### Mining
+- `getmininginfo` - Get mining statistics
+- `getnetworkhashps` - Get network hashrate
+- `estimatefee` - Estimate transaction fee
+
+### Example RPC Call
+
+```bash
+curl -X POST http://localhost:8545 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc":"2.0",
+    "method":"getblockchaininfo",
+    "params":[],
+    "id":1
+  }'
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "chain": "testnet",
+    "blocks": 12345,
+    "headers": 12345,
+    "bestblockhash": "0000000000...",
+    "difficulty": 1000.0,
+    "mediantime": 1640995200,
+    "verificationprogress": 1.0,
+    "chainwork": "0000000000...",
+    "pruned": false
+  },
+  "id": 1
+}
+```
+
+---
+
+## 🛡️ Security Features
+
+### AI-Powered Protection
+
+**1. Hashrate Sentinel**
+- Monitors network hashrate
+- Detects sudden spikes (>50% increase)
+- Triggers difficulty adjustment
+- Prevents 51% attacks
+
+**2. Difficulty Guard**
+- Prevents difficulty manipulation
+- Validates difficulty changes
+- Enforces minimum difficulty
+- Protects against time-warp attacks
+
+**3. Staker Balance Modifier**
+- Verifies staker balances
+- Prevents fake stake attacks
+- Validates UTXO ownership
+- Ensures stake maturity
+
+**4. Emission Guard**
+- Monitors coin creation
+- Validates block rewards
+- Prevents inflation attacks
+- Enforces halving schedule
+
+**5. Fee Surge Protection**
+- Detects abnormal fees
+- Prevents fee manipulation
+- Protects users from overpaying
+- Maintains network stability
+
+**6. Hybrid Penalty Logic**
+- Automatic attack response
+- Increases difficulty on attack
+- Slashes malicious validators
+- Bans attacking nodes
+
+### Cryptographic Security
+
+- **Hashing:** SHA-256, Keccak-256, Blake2b
+- **Signatures:** ECDSA (secp256k1)
+- **Key Derivation:** Argon2id
+- **Address Format:** Base58Check encoding
+
+---
+
+## 🌐 Network
+
+### Network Ports
+
+| Network | P2P Port | RPC Port | REST Port |
+|---------|----------|----------|-----------|
+| Mainnet | 8333 | 8332 | 8080 |
+| Testnet | 18333 | 8545 | 18080 |
+
+### P2P Protocol
+
+- **Message Types:** Block, Transaction, Peer, Ping
+- **Peer Discovery:** DNS seeds, manual addnode
+- **Block Propagation:** Compact blocks
+- **Transaction Relay:** Mempool synchronization
+
+### Network Commands
+
+**Add Peer:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"addnode",
+  "params":["peer.example.com:8333", "add"],
+  "id":1
+}'
+```
+
+**Get Peers:**
+```bash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0",
+  "method":"getpeerinfo",
+  "params":[],
+  "id":1
+}'
+```
+
+---
+
+## 🔨 Building from Source
+
+### Prerequisites
 
 ```bash
 # Ubuntu/Debian
 sudo apt-get update
-sudo apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    libssl-dev \
-    libleveldb-dev \
-    libboost-all-dev \
-    libsqlite3-dev \
-    pkg-config
+sudo apt-get install -y build-essential cmake git \
+  libssl-dev libleveldb-dev libboost-all-dev \
+  libsodium-dev libcurl4-openssl-dev
+
+# macOS
+brew install cmake openssl leveldb boost libsodium curl
 ```
 
-### Build
+### Build Steps
 
 ```bash
 # Clone repository
@@ -201,264 +687,163 @@ cmake ..
 # Build (use all CPU cores)
 make -j$(nproc)
 
-# Binaries will be in build/ directory
-ls -la gxc-node gxc-cli gxc-miner
+# Install (optional)
+sudo make install
 ```
 
-## 🧪 Testing
-
-### Run All Tests
-
-```bash
-# Unit tests
-cd build
-ctest --output-on-failure
-
-# Integration tests
-cd ..
-bash test_testnet.sh
-
-# External wallet tests
-bash test_external_wallet_helpers.sh
-```
-
-### Test Results
-
-- **Python Unit Tests:** 4/4 (100%) ✅
-- **C++ Unit Tests:** 6/6 (100%) ✅
-- **Integration Tests:** 14/14 (100%) ✅
-- **External Wallet Tests:** 4/5 (80%) ✅
-- **Overall Pass Rate:** 97% ✅
-
-## 🔐 Security
-
-### Security Features
-
-- ✅ RPC authentication required
-- ✅ Wallet encryption enforced
-- ✅ Firewall with UFW
-- ✅ Fail2Ban for brute force protection
-- ✅ Rate limiting on all APIs
-- ✅ DDoS protection
-- ✅ Intrusion detection
-- ✅ Audit logging
-- ✅ Automatic security updates
-
-### Security Audit
-
-See [Security Audit Report](SECURITY_AUDIT_REPORT.md) for complete analysis.
-
-### Reporting Security Issues
-
-**DO NOT** open public issues for security vulnerabilities.
-
-Email: security@gxc.network
-
-## 📈 Performance
-
-### Benchmarks
-
-- **Block Time:** ~2 minutes (target)
-- **Transaction Throughput:** 1000+ TPS
-- **Confirmation Time:** ~12 minutes (6 confirmations)
-- **Sync Time:** ~2 hours (from genesis)
-- **Memory Usage:** ~2GB (with 2GB cache)
-- **Disk I/O:** ~50MB/s (SSD)
-
-### Optimizations
-
-- LevelDB with compression
-- Bloom filters enabled
-- Connection pooling
-- Multithreading
-- Optimized UTXO set
-
-## 🌐 Network
-
-### Mainnet
-
-- **P2P Port:** 8333
-- **RPC Port:** 8332 (localhost only)
-- **REST Port:** 8080
-- **Network ID:** mainnet
-
-### Testnet
-
-- **P2P Port:** 18333
-- **RPC Port:** 18332 (localhost only)
-- **REST Port:** 18080
-- **Network ID:** testnet
-
-### Seed Nodes
-
-```
-seed1.gxc.network:8333
-seed2.gxc.network:8333
-seed3.gxc.network:8333
-seed4.gxc.network:8333
-seed5.gxc.network:8333
-```
-
-## 💰 Mining
-
-### Supported Algorithms
-
-1. **SHA-256** - Bitcoin-compatible
-2. **Ethash** - Ethereum-compatible
-3. **GXHash** - ASIC-resistant (recommended)
-
-### Mining Rewards
-
-- **Block Reward:** 50 GXC
-- **Halving:** Every 210,000 blocks (~1 year)
-- **Transaction Fees:** Variable
-
-### Start Mining
-
-```bash
-# Solo mining
-gxc-miner --algorithm gxhash --address YOUR_ADDRESS
-
-# Pool mining
-gxc-miner --pool stratum+tcp://pool.gxc.network:3333 --user worker1
-```
-
-## 🏛️ Staking
-
-### Requirements
-
-- **Minimum Stake:** 100 GXC
-- **Staking Period:** 30-365 days
-- **Rewards:** 50 GXC per block + fees
-
-### Become a Validator
-
-```bash
-# Register as validator
-gxc-cli registervalidator YOUR_ADDRESS 1000.0 365
-
-# Check validator status
-gxc-cli getvalidatorinfo YOUR_ADDRESS
-```
-
-## 🔌 API
-
-### JSON-RPC 2.0
-
-```bash
-# Get blockchain info
-curl -X POST http://localhost:8332/rpc \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "getblockchaininfo",
-    "params": [],
-    "id": 1
-  }'
-```
-
-### REST API
-
-```bash
-# Get block by height
-curl http://localhost:8080/api/block/100
-
-# Get transaction
-curl http://localhost:8080/api/transaction/TX_HASH
-```
-
-### WebSocket
-
-```javascript
-const ws = new WebSocket('ws://localhost:8081');
-
-ws.on('message', (data) => {
-  const event = JSON.parse(data);
-  console.log('New block:', event);
-});
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
-### Code Style
-
-- C++17 standard
-- Follow existing code style
-- Add comments for complex logic
-- Update documentation
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Bitcoin Core for UTXO model inspiration
-- Ethereum for smart contract concepts
-- Community contributors
-
-## 📞 Support
-
-### Community
-
-- **GitHub:** https://github.com/philani1H/GXC-goldxcoin-blockchain-
-- **Issues:** https://github.com/philani1H/GXC-goldxcoin-blockchain-/issues
-- **Discussions:** https://github.com/philani1H/GXC-goldxcoin-blockchain-/discussions
-
-### Contact
-
-- **Technical Support:** support@gxc.network
-- **Security Issues:** security@gxc.network
-- **General Inquiries:** info@gxc.network
-
-## 🗺️ Roadmap
-
-### Phase 1: Foundation (Complete) ✅
-- Core blockchain implementation
-- Hybrid PoW/PoS consensus
-- AI-powered security engine
-- Production deployment infrastructure
-
-### Phase 2: Ecosystem (In Progress)
-- Block explorer
-- Web wallet
-- Mobile wallets
-- Exchange integrations
-
-### Phase 3: Advanced Features (Planned)
-- Smart contracts
-- Cross-chain bridges
-- Governance system
-- DeFi protocols
-
-### Phase 4: Scaling (Future)
-- Layer 2 solutions
-- Sharding
-- State channels
-- Plasma chains
-
-## 📊 Status
-
-**Version:** 2.1.0  
-**Status:** ✅ Production Ready  
-**Test Coverage:** 97%  
-**Security Audit:** ✅ Passed  
-**Documentation:** ✅ Complete  
-
-**Ready for mainnet launch!** 🚀
+### Build Targets
+
+- `gxc-node` - Full node
+- `gxc-miner` - Multi-algorithm miner
+- `gxc-ethash-miner` - Ethash miner
+- `gxc-gxhash-miner` - GXHash miner
+- `gxc-sha256-miner` - SHA-256 miner
+- `gxc-keygen` - Key generator
+- `gxc-cli` - Command-line interface
+- `gxc-tx` - Transaction tool
+- `gxc-explorer` - Block explorer
 
 ---
 
-**Built with ❤️ for the decentralized future**
+## 🧪 Testing
 
-*Last Updated: December 9, 2024*
+### Unit Tests
+
+```bash
+# Build tests
+cd build
+make test_staking_unit
+make test_comprehensive
+
+# Run tests
+./test_staking_unit
+./test_comprehensive
+```
+
+### Integration Tests
+
+```bash
+# Test complete flow
+python3 test_complete_flow.py
+
+# Test staking
+python3 test_complete_staking.py
+
+# Test validator registration
+python3 test_validator_registration.py
+
+# Test mining
+python3 test_mining_with_consensus.py
+```
+
+### Testnet Testing
+
+```bash
+# Start testnet node
+./gxc-node --testnet --rpc-port=8545
+
+# Run testnet tests
+bash test_testnet.sh
+```
+
+---
+
+## 🚀 Deployment
+
+### Production Node
+
+```bash
+# Run as daemon
+./gxc-node --daemon --datadir=/var/lib/gxc
+
+# With custom config
+./gxc-node --config=/etc/gxc/gxc.conf
+
+# Systemd service
+sudo systemctl start gxc-node
+sudo systemctl enable gxc-node
+```
+
+### Configuration File
+
+**Location:** `~/.gxc/gxc.conf`
+
+```ini
+# Network
+testnet=0
+port=8333
+rpcport=8332
+
+# Mining
+gen=0
+genproclimit=4
+
+# Connections
+maxconnections=125
+addnode=seed1.gxc.network
+addnode=seed2.gxc.network
+
+# RPC
+rpcuser=gxcuser
+rpcpassword=secure_password
+rpcallowip=127.0.0.1
+```
+
+### Docker Deployment
+
+```bash
+# Build image
+docker build -t gxc-node .
+
+# Run container
+docker run -d \
+  --name gxc-node \
+  -p 8333:8333 \
+  -p 8332:8332 \
+  -v gxc-data:/var/lib/gxc \
+  gxc-node
+```
+
+---
+
+## 📚 Additional Documentation
+
+- [API Usage Guide](API_USAGE_GUIDE.md)
+- [Mining Guide](MINING_ANALYSIS.md)
+- [Staking System Design](STAKING_SYSTEM_DESIGN.md)
+- [Traceability Design](TRACEABILITY_DESIGN.md)
+- [Security Features](PRODUCTION_READY.md)
+- [Validator Registration](VALIDATOR_REGISTRATION_COMPLETE.md)
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+## 🔗 Links
+
+- **GitHub:** https://github.com/philani1H/GXC-goldxcoin-blockchain-
+- **Website:** https://goldxcoin.com
+- **Explorer:** https://explorer.goldxcoin.com
+- **Discord:** https://discord.gg/gxc
+
+---
+
+## 📞 Support
+
+- **Issues:** https://github.com/philani1H/GXC-goldxcoin-blockchain-/issues
+- **Email:** support@goldxcoin.com
+- **Discord:** https://discord.gg/gxc
+
+---
+
+**Built with ❤️ by the GXC Community**
