@@ -1541,19 +1541,69 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
             "), Available at " + sendingFrom.substr(0, 20) + "...: " + std::to_string(balance) + " GXC");
     }
     
-    // Get UTXOs
-    const auto& utxoSet = blockchain->getUtxoSet();
+    // Get UTXOs and filter for mature coinbase only
+    const auto& fullUtxoSet = blockchain->getUtxoSet();
+    uint32_t currentHeight = blockchain->getHeight();
+    const uint32_t COINBASE_MATURITY = 100;
+    
+    // Filter UTXOs to only include mature coinbase outputs
+    std::unordered_map<std::string, TransactionOutput> spendableUtxoSet;
+    
+    for (const auto& [utxoKey, utxo] : fullUtxoSet) {
+        // Extract txHash from utxoKey
+        size_t sepPos = utxoKey.find('_');
+        if (sepPos != std::string::npos) {
+            std::string txHash = utxoKey.substr(0, sepPos);
+            
+            // Check if this UTXO is from a coinbase transaction
+            bool isCoinbase = false;
+            uint32_t txHeight = 0;
+            bool found = false;
+            
+            // Search for the transaction in the blockchain
+            for (uint32_t h = 0; h < currentHeight && !found; h++) {
+                try {
+                    Block block = blockchain->getBlock(h);
+                    for (const auto& tx : block.getTransactions()) {
+                        if (tx.getHash() == txHash) {
+                            isCoinbase = tx.isCoinbaseTransaction();
+                            txHeight = h;
+                            found = true;
+                            break;
+                        }
+                    }
+                } catch (...) {
+                    continue;
+                }
+            }
+            
+            // If it's a coinbase, check maturity
+            if (found && isCoinbase) {
+                uint32_t confirmations = currentHeight - txHeight;
+                if (confirmations < COINBASE_MATURITY) {
+                    // Skip immature coinbase
+                    continue;
+                }
+            }
+            
+            // This UTXO is spendable
+            spendableUtxoSet[utxoKey] = utxo;
+        }
+    }
+    
+    LOG_API(LogLevel::INFO, "Filtered UTXOs: " + std::to_string(spendableUtxoSet.size()) + 
+            " spendable out of " + std::to_string(fullUtxoSet.size()) + " total");
     
     try {
         Transaction tx;
         
-        // Create transaction from the appropriate address
+        // Create transaction from the appropriate address using only spendable UTXOs
         if (fromAddress.empty() || fromAddress == wallet->getAddress()) {
             // Use main wallet
-            tx = wallet->createTransaction(toAddress, amount, utxoSet, fee);
+            tx = wallet->createTransaction(toAddress, amount, spendableUtxoSet, fee);
         } else {
             // Use imported address (third-party wallet support)
-            tx = wallet->createTransactionFrom(fromAddress, toAddress, amount, utxoSet, fee);
+            tx = wallet->createTransactionFrom(fromAddress, toAddress, amount, spendableUtxoSet, fee);
         }
 
         // Add to blockchain
