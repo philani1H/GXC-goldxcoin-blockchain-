@@ -1175,15 +1175,28 @@ JsonValue RPCAPI::sendRawTransaction(const JsonValue& params) {
             
             tx.setSenderAddress(txJson.value("senderAddress", std::string("")));
             tx.setReceiverAddress(txJson.value("receiverAddress", std::string("")));
-            tx.setPrevTxHash(txJson.value("prevTxHash", std::string("")));
             
+            // Handle prevTxHash - auto-derive from first input if not provided (third-party wallet support)
+            std::string prevTxHash = txJson.value("prevTxHash", std::string(""));
+            if (prevTxHash.empty() && !tx.getInputs().empty()) {
+                prevTxHash = tx.getInputs()[0].txHash;
+                LOG_API(LogLevel::INFO, "Auto-derived prevTxHash from first input: " + prevTxHash);
+            }
+            tx.setPrevTxHash(prevTxHash);
+            
+            // Handle referencedAmount - auto-derive from first input if not provided (third-party wallet support)
+            double referencedAmount = 0.0;
             if (txJson.contains("referencedAmount")) {
                 if (txJson["referencedAmount"].is_number()) {
-                    tx.setReferencedAmount(txJson["referencedAmount"].get<double>());
+                    referencedAmount = txJson["referencedAmount"].get<double>();
                 } else if (txJson["referencedAmount"].is_string()) {
-                    tx.setReferencedAmount(std::stod(txJson["referencedAmount"].get<std::string>()));
+                    referencedAmount = std::stod(txJson["referencedAmount"].get<std::string>());
                 }
+            } else if (!tx.getInputs().empty()) {
+                referencedAmount = tx.getInputs()[0].amount;
+                LOG_API(LogLevel::INFO, "Auto-derived referencedAmount from first input: " + std::to_string(referencedAmount));
             }
+            tx.setReferencedAmount(referencedAmount);
             
             // Handle transaction type
             if (txJson.contains("type")) {

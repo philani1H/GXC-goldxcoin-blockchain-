@@ -113,13 +113,25 @@ bool Transaction::verifyTraceabilityFormula() const {
         return false;
     }
     
+    // For third-party wallets: if prevTxHash is not set, automatically use inputs[0].txHash
+    std::string effectivePrevTxHash = prevTxHash;
+    if (effectivePrevTxHash.empty() || effectivePrevTxHash == "0") {
+        effectivePrevTxHash = inputs[0].txHash;
+    }
+    
     // Implement the formula: Ti.Inputs[0].txHash == Ti.PrevTxHash
-    if (inputs[0].txHash != prevTxHash) {
+    if (inputs[0].txHash != effectivePrevTxHash) {
         return false;
     }
     
+    // For third-party wallets: if referencedAmount is not set, use inputs[0].amount
+    double effectiveReferencedAmount = referencedAmount;
+    if (effectiveReferencedAmount == 0.0 && !inputs.empty()) {
+        effectiveReferencedAmount = inputs[0].amount;
+    }
+    
     // Implement the formula: Ti.Inputs[0].amount == Ti.ReferencedAmount
-    if (std::abs(inputs[0].amount - referencedAmount) > 0.00000001) { // Handle floating point precision
+    if (std::abs(inputs[0].amount - effectiveReferencedAmount) > 0.00000001) { // Handle floating point precision
         return false;
     }
     
@@ -434,6 +446,13 @@ bool Transaction::isGenesis() const {
 
 bool Transaction::hasValidPrevReference() const {
     if (isCoinbase || isGenesis()) {
+        return true;
+    }
+    
+    // For third-party wallets: if prevTxHash is not set but we have inputs,
+    // automatically derive it from the first input's txHash
+    if ((prevTxHash.empty() || prevTxHash == "0") && !inputs.empty()) {
+        // This is valid - the blockchain will use inputs[0].txHash as the reference
         return true;
     }
     
