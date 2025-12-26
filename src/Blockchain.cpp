@@ -18,10 +18,11 @@ Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0),
     securityEngine = std::make_unique<GXCSecurity::SecurityEngine>();
     
     // Set difficulty based on network type
+    // CONSENSUS RULE: Minimum difficulty is 1.0 (at least 1 leading zero required)
     bool isTestnet = Config::isTestnet();
     if (isTestnet) {
-        difficulty = 0.1;  // Very easy for testnet
-        LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created (TESTNET mode, difficulty: 0.1)");
+        difficulty = 1.0;  // Minimum difficulty for testnet (1 leading zero)
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created (TESTNET mode, difficulty: 1.0)");
     } else {
         difficulty = 1000.0;  // Harder for mainnet
         LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created (MAINNET mode, difficulty: 1000.0)");
@@ -142,9 +143,10 @@ void Blockchain::createGenesisBlock() {
     genesis.setMinerAddress(genesisAddress);
     
     // Use easier difficulty for testnet
+    // CONSENSUS RULE: Minimum difficulty is 1.0
     if (isTestnet) {
-        genesis.setDifficulty(0.1);  // Very easy for testnet
-        LOG_BLOCKCHAIN(LogLevel::INFO, "Using testnet difficulty: 0.1");
+        genesis.setDifficulty(1.0);  // Minimum difficulty for testnet (1 leading zero)
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Using testnet difficulty: 1.0");
     } else {
         genesis.setDifficulty(1000.0);  // Harder for mainnet
         LOG_BLOCKCHAIN(LogLevel::INFO, "Using mainnet difficulty: 1000.0");

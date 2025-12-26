@@ -2171,13 +2171,69 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         result["version"] = 1;
         result["previousblockhash"] = latestBlock.getHash();
         
+        // Extract miner address from params
+        std::string minerAddress = "";
+        if (params.size() > 0 && params[0].is_object()) {
+            if (params[0].contains("minerAddress")) {
+                minerAddress = params[0]["minerAddress"].get<std::string>();
+            } else if (params[0].contains("miner_address")) {
+                minerAddress = params[0]["miner_address"].get<std::string>();
+            } else if (params[0].contains("address")) {
+                minerAddress = params[0]["address"].get<std::string>();
+            }
+        }
+        
+        // If no miner address provided, use node wallet
+        if (minerAddress.empty()) {
+            minerAddress = wallet->getAddress();
+        }
+        
+        LOG_API(LogLevel::INFO, "getBlockTemplate: Miner address: " + minerAddress);
+        
+        // CRITICAL: Create coinbase transaction for the template
+        // Miners MUST include this in their submitted blocks
+        Transaction coinbaseTx(minerAddress, blockReward);
+        
+        LOG_API(LogLevel::INFO, "✅ Created coinbase transaction: " + coinbaseTx.getHash().substr(0, 16) + 
+                "..., Reward: " + std::to_string(blockReward) + " GXC to " + minerAddress.substr(0, 20) + "...");
+        
         // CRITICAL FIX: Include pending transactions from mempool
         // Without this, transactions are never included in mined blocks!
         std::vector<Transaction> pendingTxs = blockchain->getPendingTransactions(1000);
         JsonValue txArray(JsonValue::array());
         
+        // Add coinbase as FIRST transaction (index 0)
+        JsonValue coinbaseJson;
+        coinbaseJson["hash"] = coinbaseTx.getHash();
+        coinbaseJson["txid"] = coinbaseTx.getHash();
+        coinbaseJson["type"] = "COINBASE";
+        coinbaseJson["from"] = "";
+        coinbaseJson["to"] = minerAddress;
+        coinbaseJson["amount"] = blockReward;
+        coinbaseJson["fee"] = 0.0;
+        coinbaseJson["timestamp"] = static_cast<uint64_t>(coinbaseTx.getTimestamp());
+        coinbaseJson["is_coinbase"] = true;
+        coinbaseJson["coinbase"] = true;
+        
+        // Coinbase inputs (empty)
+        coinbaseJson["inputs"] = JsonValue(JsonValue::array());
+        
+        // Coinbase outputs
+        JsonValue coinbaseOutputsArray(JsonValue::array());
+        for (const auto& output : coinbaseTx.getOutputs()) {
+            JsonValue outputJson;
+            outputJson["address"] = output.address;
+            outputJson["amount"] = output.amount;
+            outputJson["script"] = output.script;
+            coinbaseOutputsArray.push_back(outputJson);
+        }
+        coinbaseJson["outputs"] = coinbaseOutputsArray;
+        
+        txArray.push_back(coinbaseJson);
+        
         LOG_API(LogLevel::INFO, "getBlockTemplate: " + std::to_string(pendingTxs.size()) + " pending transactions in mempool");
         
+        // Add pending transactions AFTER coinbase
         for (const auto& tx : pendingTxs) {
             JsonValue txJson;
             txJson["hash"] = tx.getHash();
