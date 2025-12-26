@@ -13,6 +13,7 @@
 #include "GoldToken.h"
 #include "StockContract.h"
 #include "security/SecurityEngine.h"
+#include "StakingPool.h"
 #include <mutex>
 
 class Blockchain {
@@ -62,6 +63,9 @@ private:
     // Security Engine - protects against attacks
     std::unique_ptr<GXCSecurity::SecurityEngine> securityEngine;
     
+    
+    // Staking pool - tracks reserved coins
+    std::unique_ptr<StakingPool> stakingPool;
     // Security metrics tracking
     double currentHashrate;
     double lastBlockTime;
@@ -239,9 +243,23 @@ public:
     std::string getAttackStatus() const;
     
     // Hashrate tracking
+    
+    // Staking reward distribution
+    void distributeStakingRewards(const Block& block);
     void updateHashrate(double hashrate);
     double getCurrentHashrate() const { return currentHashrate; }
     
+
+    // Address tracking and statistics
+    
+    // Staking pool access
+    StakingPool* getStakingPool() { return stakingPool.get(); }
+    const StakingPool* getStakingPool() const { return stakingPool.get(); }
+    size_t getTotalAddressCount() const;
+    size_t getActiveAddressCount() const;
+    size_t getAddressesWithBalanceCount() const;
+    std::vector<std::string> getAllAddresses() const;
+    std::unordered_map<std::string, double> getAddressBalances() const;
     // Constants
     static const uint32_t MAX_SUPPLY = 31000000; // 31 million GXC
     static const uint32_t HALVING_INTERVAL = 1051200; // ~4 years

@@ -443,6 +443,11 @@ void RPCAPI::registerMethods() {
     rpcMethods["addnode"] = [this](const JsonValue& params) { return addNode(params); };
     rpcMethods["disconnectnode"] = [this](const JsonValue& params) { return disconnectNode(params); };
     
+    // Address statistics methods
+    rpcMethods["getaddresscount"] = [this](const JsonValue& params) { return getAddressCount(params); };
+    rpcMethods["getaddressstats"] = [this](const JsonValue& params) { return getAddressStats(params); };
+    rpcMethods["listalladdresses"] = [this](const JsonValue& params) { return listAllAddresses(params); };
+    
     // Utility methods
     rpcMethods["help"] = [this](const JsonValue& params) { return help(params); };
     rpcMethods["stop"] = [this](const JsonValue& params) { return stopNode(params); };
@@ -2583,6 +2588,14 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     double stakeAmount = params[1].get<double>();
     uint32_t stakingDays = params[2].get<uint32_t>();
     
+    // Optional profile parameters
+    std::string name = params.size() > 3 && params[3].is_string() ? params[3].get<std::string>() : "";
+    std::string logo = params.size() > 4 && params[4].is_string() ? params[4].get<std::string>() : "";
+    std::string bio = params.size() > 5 && params[5].is_string() ? params[5].get<std::string>() : "";
+    std::string website = params.size() > 6 && params[6].is_string() ? params[6].get<std::string>() : "";
+    std::string contact = params.size() > 7 && params[7].is_string() ? params[7].get<std::string>() : "";
+    double commission = params.size() > 8 && params[8].is_number() ? params[8].get<double>() : 0.10;
+    
     // Validate minimum stake
     if (stakeAmount < Validator::MIN_STAKE) {
         throw RPCException(RPCException::RPC_INVALID_PARAMETER, 
@@ -2663,17 +2676,63 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     std::string pubKeyForValidator;
     
     try {
-        const auto& utxoSet = blockchain->getUtxoSet();
+        // Get UTXOs and filter for mature coinbase only (same as sendtoaddress)
+        const auto& fullUtxoSet = blockchain->getUtxoSet();
+        uint32_t currentHeight = blockchain->getHeight();
+        const uint32_t COINBASE_MATURITY = 100;
+        
+        // Filter UTXOs to only include mature coinbase outputs
+        std::unordered_map<std::string, TransactionOutput> spendableUtxoSet;
+        
+        for (const auto& [utxoKey, utxo] : fullUtxoSet) {
+            size_t sepPos = utxoKey.find('_');
+            if (sepPos != std::string::npos) {
+                std::string txHash = utxoKey.substr(0, sepPos);
+                
+                bool isCoinbase = false;
+                uint32_t txHeight = 0;
+                bool found = false;
+                
+                for (uint32_t h = 0; h < currentHeight && !found; h++) {
+                    try {
+                        Block block = blockchain->getBlock(h);
+                        for (const auto& tx : block.getTransactions()) {
+                            if (tx.getHash() == txHash) {
+                                isCoinbase = tx.isCoinbaseTransaction();
+                                txHeight = h;
+                                found = true;
+                                break;
+                            }
+                        }
+                    } catch (...) {
+                        continue;
+                    }
+                }
+                
+                if (found && isCoinbase) {
+                    uint32_t confirmations = currentHeight - txHeight;
+                    if (confirmations < COINBASE_MATURITY) {
+                        continue;
+                    }
+                }
+                
+                spendableUtxoSet[utxoKey] = utxo;
+            }
+        }
+        
+        LOG_API(LogLevel::INFO, "Filtered UTXOs for staking: " + std::to_string(spendableUtxoSet.size()) + 
+                " spendable out of " + std::to_string(fullUtxoSet.size()) + " total");
+        
         Transaction stakeTx;
         
         // Check if this is the main wallet or an imported address
         if (address == wallet->getAddress()) {
-            // Use main wallet method
-            stakeTx = wallet->createStakeTransaction(stakeAmount, utxoSet, fee);
+            // Use main wallet method with filtered UTXOs
+            stakeTx = wallet->createStakeTransaction(stakeAmount, spendableUtxoSet, fee);
             pubKeyForValidator = wallet->getPublicKey();
         } else {
-            // Use imported address method (third-party wallet support)
-            stakeTx = wallet->createStakeTransactionFrom(address, stakeAmount, utxoSet, fee);
+            // Use imported address method (third-party wallet support) with filtered UTXOs
+            stakeTx = wallet->createStakeTransactionFrom(address, stakeAmount, spendableUtxoSet, fee);
             pubKeyForValidator = wallet->getPublicKeyForAddress(address);
         }
         
@@ -2710,6 +2769,14 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
     validator.setPublicKey(pubKeyForValidator);
     validator.setPending(true);
     validator.setIsActive(false); // Not active until stake tx is confirmed
+    
+    // Set profile information
+    validator.setName(name);
+    validator.setLogo(logo);
+    validator.setBio(bio);
+    validator.setWebsite(website);
+    validator.setContact(contact);
+    validator.setCommissionRate(commission);
     
     // Register validator in blockchain
     blockchain->registerValidator(validator);
@@ -2929,13 +2996,61 @@ JsonValue RPCAPI::addStake(const JsonValue& params) {
         if (validator.getAddress() == address) {
             // Create proper STAKE transaction using wallet
             try {
-                const auto& utxoSet = blockchain->getUtxoSet();
+                // Get UTXOs and filter for mature coinbase only (same as sendtoaddress and registerValidator)
+                const auto& fullUtxoSet = blockchain->getUtxoSet();
+                uint32_t currentHeight = blockchain->getHeight();
+                const uint32_t COINBASE_MATURITY = 100;
+                
+                // Filter UTXOs to only include mature coinbase outputs
+                std::unordered_map<std::string, TransactionOutput> spendableUtxoSet;
+                
+                for (const auto& [utxoKey, utxo] : fullUtxoSet) {
+                    size_t sepPos = utxoKey.find('_');
+                    if (sepPos != std::string::npos) {
+                        std::string txHash = utxoKey.substr(0, sepPos);
+                        
+                        bool isCoinbase = false;
+                        uint32_t txHeight = 0;
+                        bool found = false;
+                        
+                        // Search blockchain for transaction
+                        for (uint32_t h = 0; h < currentHeight && !found; h++) {
+                            try {
+                                Block block = blockchain->getBlock(h);
+                                for (const auto& tx : block.getTransactions()) {
+                                    if (tx.getHash() == txHash) {
+                                        isCoinbase = tx.isCoinbaseTransaction();
+                                        txHeight = h;
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            } catch (...) {
+                                continue;
+                            }
+                        }
+                        
+                        // Check maturity
+                        if (found && isCoinbase) {
+                            uint32_t confirmations = currentHeight - txHeight;
+                            if (confirmations < COINBASE_MATURITY) {
+                                continue; // Skip immature coinbase
+                            }
+                        }
+                        
+                        spendableUtxoSet[utxoKey] = utxo;
+                    }
+                }
+                
+                LOG_API(LogLevel::INFO, "Filtered UTXOs for additional staking: " + std::to_string(spendableUtxoSet.size()) + 
+                        " spendable out of " + std::to_string(fullUtxoSet.size()) + " total");
+                
                 Transaction stakeTx;
 
                 if (address == wallet->getAddress()) {
-                     stakeTx = wallet->createStakeTransaction(additionalAmount, utxoSet, fee);
+                     stakeTx = wallet->createStakeTransaction(additionalAmount, spendableUtxoSet, fee);
                 } else {
-                     stakeTx = wallet->createStakeTransactionFrom(address, additionalAmount, utxoSet, fee);
+                     stakeTx = wallet->createStakeTransactionFrom(address, additionalAmount, spendableUtxoSet, fee);
                 }
 
                 if (blockchain->addTransaction(stakeTx)) {
@@ -2983,6 +3098,14 @@ JsonValue RPCAPI::getValidators(const JsonValue& params) {
         v["apy"] = validator.calculateAPY();
         v["is_slashed"] = validator.getIsSlashed();
         
+        // Profile information
+        v["name"] = validator.getName();
+        v["logo"] = validator.getLogo();
+        v["bio"] = validator.getBio();
+        v["website"] = validator.getWebsite();
+        v["contact"] = validator.getContact();
+        v["commission_rate"] = validator.getCommissionRate();
+        
         result.push_back(v);
     }
     
@@ -3019,6 +3142,14 @@ JsonValue RPCAPI::getValidatorInfo(const JsonValue& params) {
             result["is_slashed"] = validator.getIsSlashed();
             result["slashed_amount"] = validator.getSlashedAmount();
             result["is_valid"] = validator.isValidValidator();
+            
+            // Profile information
+            result["name"] = validator.getName();
+            result["logo"] = validator.getLogo();
+            result["bio"] = validator.getBio();
+            result["website"] = validator.getWebsite();
+            result["contact"] = validator.getContact();
+            result["commission_rate"] = validator.getCommissionRate();
             
             return result;
         }
@@ -3199,6 +3330,7 @@ JsonValue RPCAPI::registerExternalValidator(const JsonValue& params) {
     
     // Check balance (must have enough for stake + fee)
     double fee = 0.001;
+
     double totalRequired = stakeAmount + fee;
     double balance = blockchain->getBalance(address);
     
@@ -3826,6 +3958,141 @@ JsonValue RPCAPI::listUnspent(const JsonValue& params) {
     }
     
     return result;
+}
+
+// Address statistics methods
+JsonValue RPCAPI::getAddressCount(const JsonValue& params) {
+    try {
+        size_t totalAddresses = blockchain->getTotalAddressCount();
+        size_t activeAddresses = blockchain->getActiveAddressCount();
+        size_t addressesWithBalance = blockchain->getAddressesWithBalanceCount();
+        
+        JsonValue result;
+        result["total_addresses"] = static_cast<uint64_t>(totalAddresses);
+        result["active_addresses"] = static_cast<uint64_t>(activeAddresses);
+        result["addresses_with_balance"] = static_cast<uint64_t>(addressesWithBalance);
+        result["inactive_addresses"] = static_cast<uint64_t>(totalAddresses - activeAddresses);
+        result["empty_addresses"] = static_cast<uint64_t>(totalAddresses - addressesWithBalance);
+        
+        LOG_API(LogLevel::INFO, "Address count: total=" + std::to_string(totalAddresses) + 
+                ", active=" + std::to_string(activeAddresses) + 
+                ", with_balance=" + std::to_string(addressesWithBalance));
+        
+        return result;
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "getAddressCount error: " + std::string(e.what()));
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, 
+            "Failed to get address count: " + std::string(e.what()));
+    }
+}
+
+JsonValue RPCAPI::getAddressStats(const JsonValue& params) {
+    try {
+        size_t totalAddresses = blockchain->getTotalAddressCount();
+        size_t activeAddresses = blockchain->getActiveAddressCount();
+        size_t addressesWithBalance = blockchain->getAddressesWithBalanceCount();
+        auto addressBalances = blockchain->getAddressBalances();
+        
+        // Calculate statistics
+        double totalBalance = 0.0;
+        double maxBalance = 0.0;
+        double minBalance = std::numeric_limits<double>::max();
+        
+        for (const auto& [address, balance] : addressBalances) {
+            totalBalance += balance;
+            if (balance > maxBalance) maxBalance = balance;
+            if (balance < minBalance && balance > 0) minBalance = balance;
+        }
+        
+        double avgBalance = addressesWithBalance > 0 ? totalBalance / addressesWithBalance : 0.0;
+        
+        JsonValue result;
+        result["total_addresses"] = static_cast<uint64_t>(totalAddresses);
+        result["active_addresses"] = static_cast<uint64_t>(activeAddresses);
+        result["addresses_with_balance"] = static_cast<uint64_t>(addressesWithBalance);
+        result["total_balance"] = totalBalance;
+        result["average_balance"] = avgBalance;
+        result["max_balance"] = maxBalance;
+        result["min_balance"] = minBalance == std::numeric_limits<double>::max() ? 0.0 : minBalance;
+        result["blockchain_height"] = static_cast<uint64_t>(blockchain->getHeight());
+        
+        LOG_API(LogLevel::INFO, "Address stats: total=" + std::to_string(totalAddresses) + 
+                ", total_balance=" + std::to_string(totalBalance) + " GXC");
+        
+        return result;
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "getAddressStats error: " + std::string(e.what()));
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, 
+            "Failed to get address stats: " + std::string(e.what()));
+    }
+}
+
+JsonValue RPCAPI::listAllAddresses(const JsonValue& params) {
+    try {
+        // Optional parameters: offset, limit, with_balance_only
+        size_t offset = params.size() > 0 && params[0].is_number() ? params[0].get<uint64_t>() : 0;
+        size_t limit = params.size() > 1 && params[1].is_number() ? params[1].get<uint64_t>() : 100;
+        bool withBalanceOnly = params.size() > 2 && params[2].is_boolean() ? params[2].get<bool>() : false;
+        
+        // Limit maximum results to prevent memory issues
+        if (limit > 10000) {
+            limit = 10000;
+        }
+        
+        std::vector<std::string> allAddresses;
+        
+        if (withBalanceOnly) {
+            // Get only addresses with balance
+            auto addressBalances = blockchain->getAddressBalances();
+            for (const auto& [address, balance] : addressBalances) {
+                if (balance > 0) {
+                    allAddresses.push_back(address);
+                }
+            }
+        } else {
+            // Get all addresses
+            allAddresses = blockchain->getAllAddresses();
+        }
+        
+        // Sort for consistent ordering
+        std::sort(allAddresses.begin(), allAddresses.end());
+        
+        // Apply pagination
+        size_t totalCount = allAddresses.size();
+        size_t startIdx = std::min(offset, totalCount);
+        size_t endIdx = std::min(offset + limit, totalCount);
+        
+        JsonValue result;
+        result["total_count"] = static_cast<uint64_t>(totalCount);
+        result["offset"] = static_cast<uint64_t>(offset);
+        result["limit"] = static_cast<uint64_t>(limit);
+        result["returned_count"] = static_cast<uint64_t>(endIdx - startIdx);
+        
+        JsonValue addressArray(JsonValue::array());
+        for (size_t i = startIdx; i < endIdx; i++) {
+            JsonValue addrInfo;
+            addrInfo["address"] = allAddresses[i];
+            
+            // Optionally include balance
+            if (params.size() > 3 && params[3].is_boolean() && params[3].get<bool>()) {
+                double balance = blockchain->getBalance(allAddresses[i]);
+                addrInfo["balance"] = balance;
+            }
+            
+            addressArray.push_back(addrInfo);
+        }
+        result["addresses"] = addressArray;
+        
+        LOG_API(LogLevel::INFO, "Listed " + std::to_string(endIdx - startIdx) + 
+                " addresses (offset=" + std::to_string(offset) + 
+                ", total=" + std::to_string(totalCount) + ")");
+        
+        return result;
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "listAllAddresses error: " + std::string(e.what()));
+        throw RPCException(RPCException::RPC_INTERNAL_ERROR, 
+            "Failed to list addresses: " + std::string(e.what()));
+    }
 }
 
 // RPCException implementation

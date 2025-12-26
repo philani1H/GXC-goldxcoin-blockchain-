@@ -31,6 +31,14 @@ private:
     // Pending status (for external validators waiting for stake confirmation)
     bool isPending;
     
+    // Profile information
+    std::string name;
+    std::string logo;
+    std::string bio;
+    std::string website;
+    std::string contact;
+    double commissionRate;
+    
 public:
     // Constructor
     Validator();
@@ -81,12 +89,28 @@ public:
     bool getIsSlashed() const { return isSlashed; }
     double getSlashedAmount() const { return slashedAmount; }
     
+    // Profile getters
+    std::string getName() const { return name; }
+    std::string getLogo() const { return logo; }
+    std::string getBio() const { return bio; }
+    std::string getWebsite() const { return website; }
+    std::string getContact() const { return contact; }
+    double getCommissionRate() const { return commissionRate; }
+    
     // Setters
     void setAddress(const std::string& addr) { address = addr; }
     void setPublicKey(const std::string& pubKey) { publicKey = pubKey; }
     void setIsActive(bool active) { isActive = active; }
     void setPending(bool pending) { isPending = pending; }
     bool getIsPending() const { return isPending; }
+    
+    // Profile setters
+    void setName(const std::string& n) { name = n; }
+    void setLogo(const std::string& l) { logo = l; }
+    void setBio(const std::string& b) { bio = b; }
+    void setWebsite(const std::string& w) { website = w; }
+    void setContact(const std::string& c) { contact = c; }
+    void setCommissionRate(double rate) { commissionRate = rate; }
     
     // Validation
     bool isValidValidator() const;

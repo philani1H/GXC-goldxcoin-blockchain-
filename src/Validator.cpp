@@ -13,7 +13,8 @@ Validator::Validator()
       isActive(false), publicKey(""), signature(""),
       blocksProduced(0), missedBlocks(0), uptime(0.0),
       totalRewards(0.0), pendingRewards(0.0),
-      isSlashed(false), slashedAmount(0.0), isPending(false) {
+      isSlashed(false), slashedAmount(0.0), isPending(false),
+      name(""), logo(""), bio(""), website(""), contact(""), commissionRate(0.10) {
 }
 
 Validator::Validator(const std::string& addressIn, double stakeAmountIn, uint32_t stakingDaysIn)
@@ -21,7 +22,8 @@ Validator::Validator(const std::string& addressIn, double stakeAmountIn, uint32_
       isActive(true), publicKey(""), signature(""),
       blocksProduced(0), missedBlocks(0), uptime(1.0),
       totalRewards(0.0), pendingRewards(0.0),
-      isSlashed(false), slashedAmount(0.0), isPending(false) {
+      isSlashed(false), slashedAmount(0.0), isPending(false),
+      name(""), logo(""), bio(""), website(""), contact(""), commissionRate(0.10) {
     stakeStartTime = std::time(nullptr);
 }
 
@@ -116,9 +118,24 @@ void Validator::distributePendingRewards() {
 }
 
 double Validator::calculateAPY() const {
-    // Simple APY calculation based on rewards and stake
     if (stakeAmount <= 0.0) return 0.0;
-    return (totalRewards / stakeAmount) * 100.0;
+    
+    if (totalRewards > 0.0 && stakeStartTime > 0) {
+        std::time_t now = std::time(nullptr);
+        double daysStaked = (now - stakeStartTime) / 86400.0;
+        if (daysStaked > 0) {
+            double dailyReturn = totalRewards / daysStaked;
+            double annualReturn = dailyReturn * 365.0;
+            return (annualReturn / stakeAmount) * 100.0;
+        }
+    }
+    
+    const double BLOCKS_PER_YEAR = 365.25 * 24 * 60 * 6;
+    const double STAKING_REWARD_PER_BLOCK = 0.0001;
+    double estimatedAnnualReward = STAKING_REWARD_PER_BLOCK * BLOCKS_PER_YEAR * getWeightedStake();
+    double estimatedAPY = (estimatedAnnualReward / stakeAmount) * 100.0;
+    estimatedAPY *= (1.0 + commissionRate);
+    return estimatedAPY;
 }
 
 void Validator::slash(double amount, const std::string& reason) {
