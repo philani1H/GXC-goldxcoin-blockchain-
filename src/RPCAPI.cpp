@@ -1786,6 +1786,60 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
             throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Block height too far in future: " + std::to_string(height) + " (current: " + std::to_string(currentHeight) + ")");
         }
         
+        // EARLY REJECTION: Quick PoW check before expensive validation
+        // This prevents wasting resources on blocks that will fail anyway
+        double networkDifficulty = blockchain->getDifficulty();
+        const double MIN_DIFFICULTY = 1.0;
+        
+        if (networkDifficulty < MIN_DIFFICULTY) {
+            networkDifficulty = MIN_DIFFICULTY;
+        }
+        
+        // Count leading zeros in submitted hash
+        size_t leadingZeros = 0;
+        for (char c : hash) {
+            if (c == '0') {
+                leadingZeros++;
+            } else {
+                break;
+            }
+        }
+        
+        size_t requiredZeros = static_cast<size_t>(networkDifficulty);
+        
+        // HARD REJECT: Insufficient proof of work
+        if (leadingZeros < requiredZeros) {
+            LOG_API(LogLevel::WARNING, std::string("❌ Block rejected: Insufficient proof of work. ") +
+                    "Hash: " + hash.substr(0, 16) + "..., " +
+                    "Leading zeros: " + std::to_string(leadingZeros) + ", " +
+                    "Required: " + std::to_string(requiredZeros) + " " +
+                    "(Network difficulty: " + std::to_string(networkDifficulty) + ")");
+            throw RPCException(RPCException::RPC_VERIFY_REJECTED, 
+                              std::string("Block does not meet difficulty target. Hash has ") + 
+                              std::to_string(leadingZeros) + " leading zeros, requires " + 
+                              std::to_string(requiredZeros));
+        }
+        
+        // HARD REJECT: Difficulty mismatch
+        if (std::abs(difficulty - networkDifficulty) > 0.0001) {
+            LOG_API(LogLevel::WARNING, std::string("❌ Block rejected: Difficulty mismatch. ") +
+                    "Block claims: " + std::to_string(difficulty) + ", " +
+                    "Network requires: " + std::to_string(networkDifficulty));
+            throw RPCException(RPCException::RPC_VERIFY_REJECTED,
+                              std::string("Block difficulty mismatch. Network requires ") + 
+                              std::to_string(networkDifficulty));
+        }
+        
+        // HARD REJECT: Stale block (height already exists)
+        if (height < currentHeight) {
+            LOG_API(LogLevel::WARNING, "❌ Block rejected: Stale block at height " + 
+                    std::to_string(height) + " (current height: " + std::to_string(currentHeight) + ")");
+            throw RPCException(RPCException::RPC_VERIFY_REJECTED, "Stale block");
+        }
+        
+        LOG_API(LogLevel::INFO, "✅ Early validation passed. Hash: " + hash.substr(0, 16) + "..., " +
+                "PoW: " + std::to_string(leadingZeros) + "/" + std::to_string(requiredZeros) + " zeros");
+        
         // Validate timestamp (not too far in past or future)
         uint64_t currentTime = Utils::getCurrentTimestamp();
         if (timestamp > currentTime + 7200) { // 2 hours in future max
@@ -1884,21 +1938,17 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
             LOG_API(LogLevel::INFO, "submitBlock: No transactions array in submitted block data");
         }
         
-        // If no coinbase transaction, create one automatically
-        if (!hasCoinbase && !minerAddress.empty()) {
-            LOG_API(LogLevel::INFO, "Creating coinbase transaction for miner: " + minerAddress + 
-                    ", Reward: " + std::to_string(blockReward) + " GXC");
-            LOG_API(LogLevel::INFO, "  Transactions before adding coinbase: " + std::to_string(newBlock.getTransactions().size()));
-            Transaction coinbase(minerAddress, blockReward);
-            newBlock.addTransactionUnchecked(coinbase);
-            LOG_API(LogLevel::INFO, "  Transactions after adding coinbase: " + std::to_string(newBlock.getTransactions().size()));
-            // Recalculate merkle root after adding coinbase
-            newBlock.calculateMerkleRoot();
-            LOG_API(LogLevel::INFO, "  Transactions after calculateMerkleRoot: " + std::to_string(newBlock.getTransactions().size()));
-        } else {
-            // Merkle root should already be calculated, but recalculate to ensure it's correct
-            newBlock.calculateMerkleRoot();
+        // CONSENSUS RULE: Coinbase transaction is MANDATORY
+        // Miners MUST include coinbase in their submitted blocks
+        if (!hasCoinbase) {
+            LOG_API(LogLevel::ERROR, std::string("❌ Block rejected: Missing coinbase transaction. ") +
+                    "Miners must include coinbase at index 0.");
+            throw RPCException(RPCException::RPC_VERIFY_REJECTED, 
+                              std::string("Block missing coinbase transaction. Every block must have exactly one coinbase at index 0."));
         }
+        
+        // Recalculate merkle root to ensure it's correct
+        newBlock.calculateMerkleRoot();
         
         // Verify hash is still set after all modifications
         if (newBlock.getHash().empty()) {

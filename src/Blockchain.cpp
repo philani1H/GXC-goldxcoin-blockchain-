@@ -213,49 +213,82 @@ bool Blockchain::addBlock(const Block& block) {
         
         LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Original hash: " + originalHash.substr(0, 16) + "...");
         
-        // Check if block has coinbase transaction
-        for (const auto& tx : block.getTransactions()) {
-            if (tx.isCoinbaseTransaction()) {
-                hasCoinbase = true;
-                LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Block already has coinbase transaction");
-                break;
+        // CONSENSUS RULE: Every block MUST have exactly one coinbase transaction at index 0
+        // Count coinbase transactions
+        int coinbaseCount = 0;
+        int coinbaseIndex = -1;
+        
+        for (size_t i = 0; i < block.getTransactions().size(); i++) {
+            if (block.getTransactions()[i].isCoinbaseTransaction()) {
+                coinbaseCount++;
+                if (coinbaseIndex == -1) {
+                    coinbaseIndex = i;
+                }
             }
         }
         
-        // If no coinbase and we have miner address, create one
-        if (!hasCoinbase && !minerAddress.empty()) {
-            // Calculate block reward with halving
-            double blockReward = calculateBlockReward(block.getIndex());
-            
-            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Creating coinbase transaction for miner: " + minerAddress.substr(0, 20) + 
-                          "..., Reward: " + std::to_string(blockReward) + " GXC");
-            
-            Transaction coinbase(minerAddress, blockReward);
-            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Coinbase TX hash: " + coinbase.getHash().substr(0, 16) + 
-                          "..., Outputs: " + std::to_string(coinbase.getOutputs().size()));
-            
-            // Add coinbase transaction to the block
-            blockToAdd.addTransaction(coinbase);
-            
-            // If this is a PoS block, the reward goes to the validator's spendable balance.
-            // Our logic automatically handles this because the coinbase transaction creates a UTXO
-            // for the minerAddress (which is the validator's address).
-            // So, rewards are NOT locked in the stake, they are liquid.
-            // This behavior is correct per requirements.
-
-            // Recalculate merkle root
-            blockToAdd.calculateMerkleRoot();
-            
-            // CRITICAL: Restore the original hash (miner's proof of work)
-            // The hash must not change when we add the coinbase
-            blockToAdd.setHash(originalHash);
-            
-            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Coinbase added, hash restored: " + blockToAdd.getHash().substr(0, 16) + "...");
-        } else if (hasCoinbase) {
-            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Using existing coinbase transaction");
-        } else {
-            LOG_BLOCKCHAIN(LogLevel::WARNING, "addBlock: No coinbase and no miner address!");
+        // HARD REJECT: No coinbase transaction
+        if (coinbaseCount == 0) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, std::string("❌ CONSENSUS FAILURE: Block missing coinbase transaction. ") +
+                          "Every block MUST have exactly one coinbase at index 0.");
+            return false;
         }
+        
+        // HARD REJECT: Multiple coinbase transactions
+        if (coinbaseCount > 1) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "❌ CONSENSUS FAILURE: Block has " + std::to_string(coinbaseCount) + 
+                          " coinbase transactions. Only 1 allowed.");
+            return false;
+        }
+        
+        // HARD REJECT: Coinbase not at index 0
+        if (coinbaseIndex != 0) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "❌ CONSENSUS FAILURE: Coinbase transaction at index " + 
+                          std::to_string(coinbaseIndex) + ". Must be at index 0.");
+            return false;
+        }
+        
+        // Validate coinbase reward
+        const auto& coinbaseTx = block.getTransactions()[0];
+        double expectedReward = calculateBlockReward(block.getIndex());
+        
+        // Calculate total fees from non-coinbase transactions
+        double totalFees = 0.0;
+        for (size_t i = 1; i < block.getTransactions().size(); i++) {
+            const auto& tx = block.getTransactions()[i];
+            double inputSum = 0.0;
+            double outputSum = 0.0;
+            
+            for (const auto& input : tx.getInputs()) {
+                inputSum += input.amount;
+            }
+            for (const auto& output : tx.getOutputs()) {
+                outputSum += output.amount;
+            }
+            
+            if (inputSum > outputSum) {
+                totalFees += (inputSum - outputSum);
+            }
+        }
+        
+        double maxReward = expectedReward + totalFees;
+        double actualReward = 0.0;
+        
+        for (const auto& output : coinbaseTx.getOutputs()) {
+            actualReward += output.amount;
+        }
+        
+        // HARD REJECT: Excessive coinbase reward
+        if (actualReward > maxReward + 0.00000001) { // Allow floating point tolerance
+            LOG_BLOCKCHAIN(LogLevel::ERROR, std::string("❌ CONSENSUS FAILURE: Coinbase reward exceeds maximum. ") +
+                          "Actual: " + std::to_string(actualReward) + " GXC, " +
+                          "Max allowed: " + std::to_string(maxReward) + " GXC " +
+                          "(Block reward: " + std::to_string(expectedReward) + " + Fees: " + std::to_string(totalFees) + ")");
+            return false;
+        }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Coinbase validation passed. Reward: " + std::to_string(actualReward) + 
+                      " GXC (max: " + std::to_string(maxReward) + " GXC)");
         
         // Validate block
         // NOTE: We already hold chainMutex, so we can't call methods that try to lock it
@@ -388,12 +421,60 @@ bool Blockchain::addBlock(const Block& block) {
         // Update difficulty every DIFFICULTY_ADJUSTMENT_INTERVAL blocks
         uint32_t currentHeight = chain.size();
         if (currentHeight % DIFFICULTY_ADJUSTMENT_INTERVAL == 0 && currentHeight >= DIFFICULTY_ADJUSTMENT_INTERVAL) {
-            // Use SecurityEngine for advanced difficulty calculation
-            double newDifficulty = getSecurityAdjustedDifficulty();
-            LOG_BLOCKCHAIN(LogLevel::INFO, "Difficulty adjustment at height " + std::to_string(currentHeight) + 
-                          ": " + std::to_string(difficulty) + " → " + std::to_string(newDifficulty) + 
-                          " (SecurityEngine)");
+            // Calculate time-based difficulty adjustment
+            uint64_t oldTimestamp = chain[currentHeight - DIFFICULTY_ADJUSTMENT_INTERVAL]->getTimestamp();
+            uint64_t newTimestamp = chain[currentHeight - 1]->getTimestamp();
+            uint64_t actualTime = newTimestamp - oldTimestamp;
+            
+            // Target: 10 minutes per block
+            const uint64_t TARGET_BLOCK_TIME = 600; // seconds
+            uint64_t expectedTime = DIFFICULTY_ADJUSTMENT_INTERVAL * TARGET_BLOCK_TIME;
+            
+            // Calculate adjustment ratio
+            double ratio = static_cast<double>(actualTime) / static_cast<double>(expectedTime);
+            
+            // CONSENSUS RULE: Limit adjustment to ±25% (prevents wild swings)
+            const double MAX_ADJUSTMENT = 1.25;
+            const double MIN_ADJUSTMENT = 0.75;
+            
+            if (ratio > MAX_ADJUSTMENT) {
+                LOG_BLOCKCHAIN(LogLevel::INFO, "Difficulty adjustment ratio " + std::to_string(ratio) + 
+                              " capped at " + std::to_string(MAX_ADJUSTMENT));
+                ratio = MAX_ADJUSTMENT;
+            }
+            if (ratio < MIN_ADJUSTMENT) {
+                LOG_BLOCKCHAIN(LogLevel::INFO, "Difficulty adjustment ratio " + std::to_string(ratio) + 
+                              " floored at " + std::to_string(MIN_ADJUSTMENT));
+                ratio = MIN_ADJUSTMENT;
+            }
+            
+            // Apply adjustment
+            double oldDifficulty = difficulty;
+            double newDifficulty = oldDifficulty * ratio;
+            
+            // CONSENSUS RULE: Enforce minimum and maximum difficulty bounds
+            const double MIN_DIFFICULTY = 1.0;
+            const double MAX_DIFFICULTY = 1000000.0;
+            
+            if (newDifficulty < MIN_DIFFICULTY) {
+                LOG_BLOCKCHAIN(LogLevel::INFO, "New difficulty " + std::to_string(newDifficulty) + 
+                              " below minimum, setting to " + std::to_string(MIN_DIFFICULTY));
+                newDifficulty = MIN_DIFFICULTY;
+            }
+            
+            if (newDifficulty > MAX_DIFFICULTY) {
+                LOG_BLOCKCHAIN(LogLevel::INFO, "New difficulty " + std::to_string(newDifficulty) + 
+                              " above maximum, capping at " + std::to_string(MAX_DIFFICULTY));
+                newDifficulty = MAX_DIFFICULTY;
+            }
+            
             difficulty = newDifficulty;
+            
+            LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Difficulty adjusted at height " + std::to_string(currentHeight) + 
+                          ": " + std::to_string(oldDifficulty) + " → " + std::to_string(newDifficulty) + 
+                          " (ratio: " + std::to_string(ratio) + ", " +
+                          "actual time: " + std::to_string(actualTime) + "s, " +
+                          "expected: " + std::to_string(expectedTime) + "s)");
         }
         
         // Update transaction pool (remove confirmed transactions)
@@ -960,40 +1041,66 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
         return false;
     }
     
-    // CRITICAL FIX: Do NOT recalculate hash for validation
-    // The miner's submitted hash is the proof of work. Recalculating it will give a different
-    // result if the block structure was modified (e.g., coinbase added, merkle root updated).
-    // We only need to verify the submitted hash meets the difficulty target.
-    // This is the correct approach used by Bitcoin and other blockchains.
-    
-    LOG_BLOCKCHAIN(LogLevel::DEBUG, "validateProofOfWork: Validating submitted hash meets difficulty target");
-    
-    // Use blockchain's difficulty for validation (not block's difficulty)
-    // This prevents miners from submitting blocks with incorrect difficulty
-    double validationDifficulty = difficulty;
-    
-    // For testnet, use easier validation (difficulty 0.1 means 0 leading zeros required)
-    // For mainnet, use stricter validation
-    // Use the submitted hash for difficulty validation (miner's proof of work)
-    bool isValid = meetsTarget(submittedHash, validationDifficulty);
-    
-    if (!isValid) {
-        // Count leading zeros for logging
-        int leadingZeros = 0;
-        for (char c : submittedHash) {
-            if (c == '0') {
-                leadingZeros++;
-            } else {
-                break;
-            }
-        }
-        size_t requiredZeros = static_cast<size_t>(validationDifficulty);
-        LOG_BLOCKCHAIN(LogLevel::DEBUG, "validateProofOfWork: Hash " + submittedHash.substr(0, 16) + 
-                      "... has " + std::to_string(leadingZeros) + " leading zeros, required: " + 
-                      std::to_string(requiredZeros) + " (difficulty: " + std::to_string(validationDifficulty) + ")");
+    // Validate hash format (64 hex characters)
+    if (submittedHash.length() != 64) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Invalid hash length: " + std::to_string(submittedHash.length()));
+        return false;
     }
     
-    return isValid;
+    for (char c : submittedHash) {
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Hash contains non-hex characters");
+            return false;
+        }
+    }
+    
+    // CONSENSUS RULE: Minimum difficulty enforcement
+    const double MIN_DIFFICULTY = 1.0; // At least 1 leading zero required
+    double networkDifficulty = difficulty;
+    
+    // Enforce minimum difficulty floor
+    if (networkDifficulty < MIN_DIFFICULTY) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Network difficulty " + std::to_string(networkDifficulty) + 
+                      " below minimum, enforcing " + std::to_string(MIN_DIFFICULTY));
+        networkDifficulty = MIN_DIFFICULTY;
+    }
+    
+    // Verify block's claimed difficulty matches network difficulty
+    double blockDifficulty = block.getDifficulty();
+    if (std::abs(blockDifficulty - networkDifficulty) > 0.0001) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, std::string("❌ CONSENSUS FAILURE: Block difficulty mismatch. ") +
+                      "Block claims: " + std::to_string(blockDifficulty) + ", " +
+                      "Network requires: " + std::to_string(networkDifficulty));
+        return false;
+    }
+    
+    // Count leading zeros in submitted hash
+    size_t leadingZeros = 0;
+    for (char c : submittedHash) {
+        if (c == '0') {
+            leadingZeros++;
+        } else {
+            break;
+        }
+    }
+    
+    // Calculate required leading zeros from difficulty
+    size_t requiredZeros = static_cast<size_t>(networkDifficulty);
+    
+    // HARD REJECT: Insufficient proof of work
+    if (leadingZeros < requiredZeros) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, std::string("❌ CONSENSUS FAILURE: Insufficient proof of work. ") +
+                      "Hash: " + submittedHash.substr(0, 16) + "..., " +
+                      "Leading zeros: " + std::to_string(leadingZeros) + ", " +
+                      "Required: " + std::to_string(requiredZeros) + " " +
+                      "(Difficulty: " + std::to_string(networkDifficulty) + ")");
+        return false;
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Proof of work valid. Hash: " + submittedHash.substr(0, 16) + "..., " +
+                  "Leading zeros: " + std::to_string(leadingZeros) + "/" + std::to_string(requiredZeros));
+    
+    return true;
 }
 
 bool Blockchain::validateProofOfStake(const Block& block) const {
@@ -1188,9 +1295,52 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
          }
     }
     
-    // Skip validation for coinbase transactions
+    // Skip most validation for coinbase transactions (but still check maturity when spending)
     if (tx.isCoinbaseTransaction()) {
         return true;
+    }
+    
+    // CONSENSUS RULE: Coinbase maturity check
+    // Coinbase outputs cannot be spent until 100 blocks have passed
+    const uint32_t COINBASE_MATURITY = 100;
+    uint32_t currentHeight = chain.size();
+    
+    for (const auto& input : tx.getInputs()) {
+        std::string inputTxHash = input.txHash;
+        
+        // Find the transaction that created this UTXO
+        bool foundSourceTx = false;
+        uint32_t sourceTxHeight = 0;
+        bool isSourceCoinbase = false;
+        
+        for (const auto& block : chain) {
+            for (const auto& blockTx : block->getTransactions()) {
+                if (blockTx.getHash() == inputTxHash) {
+                    foundSourceTx = true;
+                    sourceTxHeight = block->getIndex();
+                    isSourceCoinbase = blockTx.isCoinbaseTransaction();
+                    break;
+                }
+            }
+            if (foundSourceTx) break;
+        }
+        
+        // If source transaction is coinbase, check maturity
+        if (foundSourceTx && isSourceCoinbase) {
+            uint32_t confirmations = currentHeight - sourceTxHeight;
+            
+            if (confirmations < COINBASE_MATURITY) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, std::string("❌ CONSENSUS FAILURE: Coinbase output not mature. ") +
+                              "TX: " + inputTxHash.substr(0, 16) + "..., " +
+                              "Height: " + std::to_string(sourceTxHeight) + ", " +
+                              "Current: " + std::to_string(currentHeight) + ", " +
+                              "Confirmations: " + std::to_string(confirmations) + "/" + std::to_string(COINBASE_MATURITY));
+                return false;
+            }
+            
+            LOG_BLOCKCHAIN(LogLevel::DEBUG, std::string("✅ Coinbase maturity check passed. ") +
+                          "Confirmations: " + std::to_string(confirmations) + "/" + std::to_string(COINBASE_MATURITY));
+        }
     }
     
     TransactionType txType = tx.getType();
