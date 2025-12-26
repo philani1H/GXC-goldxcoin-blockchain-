@@ -2320,20 +2320,22 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
             minerAddress = wallet->getAddress();
         }
         
-        LOG_API(LogLevel::INFO, "");
-        LOG_API(LogLevel::INFO, "╔════════════════════════════════════════════════════════════════╗");
-        LOG_API(LogLevel::INFO, "║           BLOCK TEMPLATE REQUEST                               ║");
-        LOG_API(LogLevel::INFO, "╠════════════════════════════════════════════════════════════════╣");
-        LOG_API(LogLevel::INFO, "║ Miner Address: " + minerAddress.substr(0, 40) + (minerAddress.length() > 40 ? "..." : "   ") + " ║");
-        LOG_API(LogLevel::INFO, "║ Block Height:  " + std::to_string(nextBlockHeight) + std::string(47 - std::to_string(nextBlockHeight).length(), ' ') + "║");
-        LOG_API(LogLevel::INFO, "║ Block Reward:  " + std::to_string(blockReward) + " GXC" + std::string(39 - std::to_string(blockReward).length(), ' ') + "║");
-        LOG_API(LogLevel::INFO, "╚════════════════════════════════════════════════════════════════╝");
+        // MULTI-MINER SUPPORT: Each miner gets their own template with their address
+        // This allows unlimited concurrent miners to work on the same block
+        LOG_API(LogLevel::DEBUG, "");
+        LOG_API(LogLevel::DEBUG, "╔════════════════════════════════════════════════════════════════╗");
+        LOG_API(LogLevel::DEBUG, "║           BLOCK TEMPLATE REQUEST                               ║");
+        LOG_API(LogLevel::DEBUG, "╠════════════════════════════════════════════════════════════════╣");
+        LOG_API(LogLevel::DEBUG, "║ Miner Address: " + minerAddress.substr(0, 40) + (minerAddress.length() > 40 ? "..." : "   ") + " ║");
+        LOG_API(LogLevel::DEBUG, "║ Block Height:  " + std::to_string(nextBlockHeight) + std::string(47 - std::to_string(nextBlockHeight).length(), ' ') + "║");
+        LOG_API(LogLevel::DEBUG, "║ Block Reward:  " + std::to_string(blockReward) + " GXC" + std::string(39 - std::to_string(blockReward).length(), ' ') + "║");
+        LOG_API(LogLevel::DEBUG, "╚════════════════════════════════════════════════════════════════╝");
         
         // CRITICAL: Create coinbase transaction TEMPLATE for the block template
         // This is NOT a payment - miner must find valid block and submit it to get paid
         Transaction coinbaseTx(minerAddress, blockReward);
         
-        LOG_API(LogLevel::DEBUG, "📝 Coinbase TEMPLATE created (NOT PAID YET): " + coinbaseTx.getHash().substr(0, 16) + "...");
+        LOG_API(LogLevel::DEBUG, "📝 Coinbase TEMPLATE created for miner " + minerAddress.substr(0, 16) + "...");
         
         // CRITICAL FIX: Include pending transactions from mempool
         // Without this, transactions are never included in mined blocks!
@@ -2369,8 +2371,8 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         
         txArray.push_back(coinbaseJson);
         
-        LOG_API(LogLevel::INFO, "");
-        LOG_API(LogLevel::INFO, "📦 Mempool: " + std::to_string(pendingTxs.size()) + " pending transaction(s)");
+        LOG_API(LogLevel::DEBUG, "");
+        LOG_API(LogLevel::DEBUG, "📦 Mempool: " + std::to_string(pendingTxs.size()) + " pending transaction(s)");
         
         // Add pending transactions AFTER coinbase
         for (const auto& tx : pendingTxs) {
