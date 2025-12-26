@@ -424,6 +424,11 @@ private:
     JsonValue stopNode(const JsonValue& params);
     JsonValue getInfo(const JsonValue& params);
     
+    // Address statistics methods
+    JsonValue getAddressCount(const JsonValue& params);
+    JsonValue getAddressStats(const JsonValue& params);
+    JsonValue listAllAddresses(const JsonValue& params);
+    
     // Staking and Validator methods
     JsonValue registerValidator(const JsonValue& params);
     JsonValue registerExternalValidator(const JsonValue& params);  // For third-party wallets

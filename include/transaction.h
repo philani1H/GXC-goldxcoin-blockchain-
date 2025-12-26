@@ -22,7 +22,9 @@ struct TransactionOutput {
 enum class TransactionType {
     NORMAL = 0,
     STAKE = 1,
-    UNSTAKE = 2
+    UNSTAKE = 2,
+    REWARD = 3,      // Staking rewards (mints new coins)
+    COINBASE = 4     // Mining rewards (mints new coins)
 };
 
 class Transaction {

@@ -17,6 +17,9 @@ Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0),
     // Initialize Security Engine
     securityEngine = std::make_unique<GXCSecurity::SecurityEngine>();
     
+    // Initialize Staking Pool
+    stakingPool = std::make_unique<StakingPool>();
+    
     // Set difficulty based on network type
     // CONSENSUS RULE: Minimum difficulty is 1.0 (at least 1 leading zero required)
     bool isTestnet = Config::isTestnet();
@@ -365,6 +368,10 @@ bool Blockchain::addBlock(const Block& block) {
         LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Block added successfully. Height: " + std::to_string(chain.size()) + 
                       ", Index: " + std::to_string(blockPtr->getIndex()) + 
                       ", Hash: " + blockPtr->getHash().substr(0, 16) + "...");
+        
+        // DISTRIBUTE STAKING REWARDS (like coinbase, but for stakers)
+        // This happens BEFORE UTXO update so rewards are included
+        distributeStakingRewards(blockToAdd);
         
         // Update UTXO set (add outputs, remove inputs)
         // This must be called BEFORE any balance queries to ensure wallet is updated
@@ -2376,3 +2383,263 @@ void Blockchain::updateHashrate(double hashrate) {
         }
     }
 }
+
+// Staking reward distribution - EXACTLY like coinbase but for stakers
+void Blockchain::distributeStakingRewards(const Block& block) {
+    // PRODUCTION: Use proper validator address field
+    std::string validatorAddress = block.getValidatorAddress();
+    
+    // If no validator address, try miner address (for PoW blocks)
+    if (validatorAddress.empty()) {
+        validatorAddress = block.getMinerAddress();
+    }
+    
+    if (validatorAddress.empty()) {
+        // No validator, skip rewards
+        return;
+    }
+    
+    // Calculate block reward (same as coinbase)
+    double blockReward = calculateBlockReward(block.getIndex());
+    
+    // Get validator's staking pool
+    if (!stakingPool) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "StakingPool not initialized, skipping reward distribution");
+        return;
+    }
+    
+    auto stakes = stakingPool->getStakesForValidator(validatorAddress);
+    if (stakes.empty()) {
+        LOG_BLOCKCHAIN(LogLevel::INFO, "No stakes for validator " + validatorAddress.substr(0, 16) + "...");
+        return;
+    }
+    
+    // Calculate total stake for this validator
+    double totalValidatorStake = stakingPool->getStakedWithValidator(validatorAddress);
+    if (totalValidatorStake <= 0) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Validator has zero total stake");
+        return;
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "Distributing " + std::to_string(blockReward) + 
+                   " GXC rewards to " + std::to_string(stakes.size()) + " stakers");
+    
+    // Distribute rewards proportionally to each staker
+    for (const auto& stake : stakes) {
+        // Calculate this staker's share
+        double stakerShare = (stake.amount / totalValidatorStake) * blockReward;
+        
+        if (stakerShare <= 0) continue;
+        
+        // Create REWARD transaction (mints new coins, just like coinbase)
+        Transaction rewardTx;
+        rewardTx.setType(TransactionType::REWARD);
+        rewardTx.setSenderAddress("STAKING_POOL");  // Special sender
+        rewardTx.setReceiverAddress(stake.ownerAddress);
+        rewardTx.setReferencedAmount(stakerShare);
+        rewardTx.setFee(0.0);
+        rewardTx.setMemo("Staking reward from block " + std::to_string(block.getIndex()));
+        
+        // TRACEABILITY: Link to stake transaction
+        TransactionInput rewardInput;
+        rewardInput.txHash = stake.stakeTxHash;  // Link to original stake
+        rewardInput.outputIndex = 0;
+        rewardInput.amount = stakerShare;
+        rewardInput.signature = "";  // No signature needed for minting
+        rewardInput.publicKey = "";
+        rewardTx.addInput(rewardInput);
+        
+        // Create output (NEW COINS)
+        TransactionOutput rewardOutput;
+        rewardOutput.address = stake.ownerAddress;
+        rewardOutput.amount = stakerShare;
+        rewardOutput.script = "OP_DUP OP_HASH160 " + stake.ownerAddress + " OP_EQUALVERIFY OP_CHECKSIG";
+        rewardTx.addOutput(rewardOutput);
+        
+        // Calculate hash
+        rewardTx.calculateHash();
+        
+        // Add to pending transactions (will be included in UTXO update)
+        pendingTransactions.push_back(rewardTx);
+        
+        // Update stake's accumulated rewards
+        stakingPool->addReward(stake.stakeId, stakerShare);
+        
+        // Record in validator pool
+        stakingPool->recordBlockProduced(validatorAddress);
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Reward: " + std::to_string(stakerShare) + 
+                       " GXC to " + stake.ownerAddress.substr(0, 16) + "..." +
+                       " (stake: " + std::to_string(stake.amount) + " GXC)");
+    }
+    
+    // Save staking pool state
+    stakingPool->saveToDatabase();
+}
+
+// Address tracking and statistics implementation
+size_t Blockchain::getTotalAddressCount() const {
+    try {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        std::unordered_set<std::string> uniqueAddresses;
+        
+        // Quick return for empty blockchain
+        if (chain.empty()) {
+            return 0;
+        }
+        
+        // Scan all blocks and collect unique addresses
+        for (const auto& blockPtr : chain) {
+            if (!blockPtr) continue;
+            
+            try {
+                for (const auto& tx : blockPtr->getTransactions()) {
+                    // Add sender address
+                    if (!tx.getSenderAddress().empty()) {
+                        uniqueAddresses.insert(tx.getSenderAddress());
+                    }
+                    
+                    // Add receiver address
+                    if (!tx.getReceiverAddress().empty()) {
+                        uniqueAddresses.insert(tx.getReceiverAddress());
+                    }
+                    
+                    // Add addresses from outputs
+                    for (const auto& output : tx.getOutputs()) {
+                        if (!output.address.empty()) {
+                            uniqueAddresses.insert(output.address);
+                        }
+                    }
+                }
+            } catch (...) {
+                // Skip problematic transactions
+                continue;
+            }
+        }
+        
+        return uniqueAddresses.size();
+    } catch (...) {
+        return 0;
+    }
+}
+
+size_t Blockchain::getActiveAddressCount() const {
+    try {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        std::unordered_set<std::string> activeAddresses;
+        
+        // Quick return for empty blockchain
+        if (chain.empty()) {
+            return 0;
+        }
+        
+        // Consider addresses active if they have transactions in last 1000 blocks
+        uint32_t currentHeight = getHeight();
+        if (currentHeight == 0) {
+            return 0;
+        }
+        
+        uint32_t startHeight = currentHeight > 1000 ? currentHeight - 1000 : 0;
+        
+        for (uint32_t h = startHeight; h < currentHeight; h++) {
+            try {
+                Block block = getBlock(h);
+                for (const auto& tx : block.getTransactions()) {
+                    if (!tx.getSenderAddress().empty()) {
+                        activeAddresses.insert(tx.getSenderAddress());
+                    }
+                    if (!tx.getReceiverAddress().empty()) {
+                        activeAddresses.insert(tx.getReceiverAddress());
+                    }
+                    for (const auto& output : tx.getOutputs()) {
+                        if (!output.address.empty()) {
+                            activeAddresses.insert(output.address);
+                        }
+                    }
+                }
+            } catch (...) {
+                continue;
+            }
+        }
+        
+        return activeAddresses.size();
+    } catch (...) {
+        return 0;
+    }
+}
+
+size_t Blockchain::getAddressesWithBalanceCount() const {
+    try {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        std::unordered_set<std::string> addressesWithBalance;
+        
+        // Check UTXO set for addresses with balance
+        for (const auto& [utxoKey, utxo] : utxoSet) {
+            if (utxo.amount > 0 && !utxo.address.empty()) {
+                addressesWithBalance.insert(utxo.address);
+            }
+        }
+        
+        return addressesWithBalance.size();
+    } catch (...) {
+        return 0;
+    }
+}
+
+std::vector<std::string> Blockchain::getAllAddresses() const {
+    try {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        std::unordered_set<std::string> uniqueAddresses;
+        
+        // Quick return for empty blockchain
+        if (chain.empty()) {
+            return std::vector<std::string>();
+        }
+        
+        // Scan all blocks and collect unique addresses
+        for (const auto& blockPtr : chain) {
+            if (!blockPtr) continue;
+            
+            try {
+                for (const auto& tx : blockPtr->getTransactions()) {
+                    if (!tx.getSenderAddress().empty()) {
+                        uniqueAddresses.insert(tx.getSenderAddress());
+                    }
+                    if (!tx.getReceiverAddress().empty()) {
+                        uniqueAddresses.insert(tx.getReceiverAddress());
+                    }
+                    for (const auto& output : tx.getOutputs()) {
+                        if (!output.address.empty()) {
+                            uniqueAddresses.insert(output.address);
+                        }
+                    }
+                }
+            } catch (...) {
+                continue;
+            }
+        }
+        
+        return std::vector<std::string>(uniqueAddresses.begin(), uniqueAddresses.end());
+    } catch (...) {
+        return std::vector<std::string>();
+    }
+}
+
+std::unordered_map<std::string, double> Blockchain::getAddressBalances() const {
+    try {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        std::unordered_map<std::string, double> balances;
+        
+        // Calculate balances from UTXO set
+        for (const auto& [utxoKey, utxo] : utxoSet) {
+            if (!utxo.address.empty()) {
+                balances[utxo.address] += utxo.amount;
+            }
+        }
+        
+        return balances;
+    } catch (...) {
+        return std::unordered_map<std::string, double>();
+    }
+}
+

@@ -22,7 +22,8 @@ private:
     std::time_t timestamp;
     uint64_t nonce;
     BlockType blockType;
-    std::string minerAddress;
+    std::string minerAddress;      // For PoW blocks
+    std::string validatorAddress;  // For PoS blocks - PRODUCTION FIELD
     std::vector<Transaction> transactions;
     double difficulty;
     std::string validatorSignature; // For PoS blocks
@@ -69,6 +70,7 @@ public:
     uint64_t getNonce() const { return nonce; }
     BlockType getBlockType() const { return blockType; }
     std::string getMinerAddress() const { return minerAddress; }
+    std::string getValidatorAddress() const { return validatorAddress; }  // PRODUCTION GETTER
     const std::vector<Transaction>& getTransactions() const { return transactions; }
     double getDifficulty() const { return difficulty; }
     std::string getValidatorSignature() const { return validatorSignature; }
@@ -88,6 +90,7 @@ public:
     void setNonce(uint64_t n) { nonce = n; }
     void incrementNonce() { nonce++; }
     void setMinerAddress(const std::string& address) { minerAddress = address; }
+    void setValidatorAddress(const std::string& address) { validatorAddress = address; }  // PRODUCTION SETTER
     void setValidatorSignature(const std::string& signature) { validatorSignature = signature; }
     void setBlockReward(double reward) { blockReward = reward; }
     void setFeeBurnRate(double rate) { feeBurnRate = rate; }

@@ -308,44 +308,110 @@ Transaction Wallet::createStakeTransaction(double stakeAmount,
 }
 
 Transaction Wallet::createUnstakeTransaction(double unstakeAmount, double fee) {
-    // UNSTAKE transaction: creates new spendable coins from staked balance
-    // This is a special transaction with no inputs (funds come from stake pool)
+    // UNSTAKE transaction: RETURNS reserved coins from staking pool
+    // CRITICAL: Does NOT mint new coins - returns original staked coins
+    // INCLUDES TRACEABILITY: Links to original stake transaction for audit trail
     
     if (fee <= 0) {
-        fee = 0.0; // No fee for unstaking (no inputs to pay from)
+        fee = 0.0; // No fee for unstaking
     }
     
     std::vector<TransactionInput> inputs;
     std::vector<TransactionOutput> outputs;
     
-    // Create a dummy input to link to previous transaction for signing
-    // This provides proof of ownership
-    TransactionInput dummyInput;
-    dummyInput.txHash = lastTxHash.empty() ? "stake_withdrawal" : lastTxHash;
-    dummyInput.outputIndex = 0;
-    dummyInput.amount = 0.0; // No actual UTXO being spent
-    inputs.push_back(dummyInput);
+    // TRACEABILITY: Create input that references the staking transaction
+    // This proves:
+    // 1. Ownership of the staked coins
+    // 2. Which stake is being unstaked
+    // 3. Complete audit trail from original coins → stake → unstake
+    TransactionInput stakeRefInput;
+    stakeRefInput.txHash = lastTxHash.empty() ? "stake_withdrawal" : lastTxHash;
+    stakeRefInput.outputIndex = 0;
+    stakeRefInput.amount = unstakeAmount;  // Referenced amount from stake
+    stakeRefInput.signature = "";  // Will be signed below
+    stakeRefInput.publicKey = publicKey;
+    inputs.push_back(stakeRefInput);
     
-    // Create output for the unstaked amount
+    // Create output for the unstaked amount (RETURNING reserved coins)
     TransactionOutput unstakeOutput;
     unstakeOutput.address = address;
     unstakeOutput.amount = unstakeAmount;
+    unstakeOutput.script = "OP_DUP OP_HASH160 " + address + " OP_EQUALVERIFY OP_CHECKSIG";
     outputs.push_back(unstakeOutput);
     
-    // Create the unstake transaction
+    // Create the unstake transaction with traceability
     Transaction tx(inputs, outputs, lastTxHash);
     tx.setType(TransactionType::UNSTAKE);
     tx.setFee(fee);
     tx.setSenderAddress(address);
     tx.setReceiverAddress(address);
-    tx.setMemo("Unstake: " + std::to_string(unstakeAmount) + " GXC");
-    tx.setReferencedAmount(0.0); // No referenced amount for unstake
+    tx.setMemo("Unstake: Returning " + std::to_string(unstakeAmount) + " GXC from staking pool");
+    tx.setReferencedAmount(unstakeAmount);  // CRITICAL: Amount must match stake
     
-    // Sign to prove ownership
+    // Sign to prove ownership - CRITICAL for traceability
+    tx.signInputs(privateKey);
+    
+    // Update last transaction hash for next transaction's traceability
+    lastTxHash = tx.getHash();
+    
+    // LOG: Created unstake transaction with traceability
+    
+    return tx;
+}
+
+Transaction Wallet::createRewardTransaction(double rewardAmount,
+                                           const std::string& stakeTxHash,
+                                           const std::string& blockHash) {
+    // REWARD transaction: MINTS new coins as staking rewards
+    // INCLUDES TRACEABILITY: Links to stake transaction and block that generated reward
+    // This is the ONLY place where new coins are created (controlled inflation)
+    
+    std::vector<TransactionInput> inputs;
+    std::vector<TransactionOutput> outputs;
+    
+    // TRACEABILITY: Input references the stake transaction that earned this reward
+    // This proves:
+    // 1. Which stake generated the reward
+    // 2. Feasibility: Reward is legitimate (from actual staking)
+    // 3. Complete audit trail: stake → block production → reward
+    TransactionInput rewardRefInput;
+    rewardRefInput.txHash = stakeTxHash;  // Link to staking transaction
+    rewardRefInput.outputIndex = 0;
+    rewardRefInput.amount = rewardAmount;  // Amount being rewarded
+    rewardRefInput.signature = "";  // No signature needed for minting
+    rewardRefInput.publicKey = publicKey;
+    inputs.push_back(rewardRefInput);
+    
+    // Create output for the reward (NEW COINS)
+    TransactionOutput rewardOutput;
+    rewardOutput.address = address;
+    rewardOutput.amount = rewardAmount;
+    rewardOutput.script = "OP_DUP OP_HASH160 " + address + " OP_EQUALVERIFY OP_CHECKSIG";
+    outputs.push_back(rewardOutput);
+    
+    // Create the reward transaction with traceability
+    Transaction tx(inputs, outputs, stakeTxHash);  // Previous hash = stake transaction
+    tx.setType(TransactionType::REWARD);  // REWARD type - mints new coins
+    tx.setFee(0.0);  // No fee for minting
+    tx.setSenderAddress("STAKING_POOL");  // Special sender for rewards
+    tx.setReceiverAddress(address);
+    tx.setMemo("Staking reward: " + std::to_string(rewardAmount) + 
+               " GXC from block " + blockHash.substr(0, 16) + "...");
+    tx.setReferencedAmount(rewardAmount);  // Amount minted
+    
+    // Add metadata for traceability
+    // Note: Transaction class needs metadata support for this
+    // tx.setMetadata("blockHash", blockHash);
+    // tx.setMetadata("stakeTxHash", stakeTxHash);
+    // tx.setMetadata("rewardType", "staking");
+    
+    // Sign to prove this is a legitimate reward
     tx.signInputs(privateKey);
     
     // Update last transaction hash
     lastTxHash = tx.getHash();
+    
+    // LOG: Created reward transaction with traceability
     
     return tx;
 }

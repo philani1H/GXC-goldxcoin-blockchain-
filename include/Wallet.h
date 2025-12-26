@@ -43,6 +43,11 @@ public:
     // Create an unstaking transaction (releases coins from stake pool)
     Transaction createUnstakeTransaction(double unstakeAmount, double fee = 0.0);
 
+    
+    // Create a reward transaction (mints new coins with traceability)
+    Transaction createRewardTransaction(double rewardAmount, 
+                                       const std::string& stakeTxHash,
+                                       const std::string& blockHash);
     // Sign a transaction
     void signTransaction(Transaction& tx);
 
