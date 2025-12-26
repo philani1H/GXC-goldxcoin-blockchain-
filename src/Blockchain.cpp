@@ -38,6 +38,46 @@ Blockchain::~Blockchain() {
     shutdown();
 }
 
+std::vector<Transaction> Blockchain::getTransactionHistory(const std::string& address) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    std::vector<Transaction> history;
+    
+    // Search through all blocks
+    for (const auto& blockPtr : chain) {
+        const auto& transactions = blockPtr->getTransactions();
+        
+        for (const auto& tx : transactions) {
+            bool relevant = false;
+            
+            // Check if address is in outputs (received)
+            for (const auto& output : tx.getOutputs()) {
+                if (output.address == address) {
+                    relevant = true;
+                    break;
+                }
+            }
+            
+            // Check if address is in inputs (sent)
+            if (!relevant) {
+                for (const auto& input : tx.getInputs()) {
+                    // Would need to look up the input's source address from UTXO
+                    // For now, check sender address field
+                    if (tx.getSenderAddress() == address) {
+                        relevant = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (relevant) {
+                history.push_back(tx);
+            }
+        }
+    }
+    
+    return history;
+}
+
 bool Blockchain::initialize() {
     try {
         LOG_BLOCKCHAIN(LogLevel::INFO, "Initializing blockchain");
@@ -48,12 +88,10 @@ bool Blockchain::initialize() {
             LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to load blocks from database, starting fresh");
         }
         
-        // Create genesis block ONLY if blockchain is still empty after loading from database
-        // AND only if explicitly requested (not on every startup)
+        // Create genesis block if blockchain is still empty after loading from database
         if (chain.empty()) {
-            LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain is empty. Genesis block will be created when first block is mined.");
-            // Do NOT create genesis block automatically
-            // It will be created when the first mining operation starts
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain is empty. Creating genesis block now.");
+            createGenesisBlock();
         } else {
             LOG_BLOCKCHAIN(LogLevel::INFO, "Loaded " + std::to_string(chain.size()) + 
                           " blocks from database, rebuilding UTXO set...");

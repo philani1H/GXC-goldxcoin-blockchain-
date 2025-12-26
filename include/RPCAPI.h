@@ -451,6 +451,40 @@ private:
     JsonValue signMessageWithAddress(const JsonValue& params);
     JsonValue verifySignedMessage(const JsonValue& params);
     
+    // ============================================================================
+    // NEW HIGH PRIORITY RPC METHODS
+    // ============================================================================
+    
+    // Block methods
+    JsonValue getBlockHeader(const JsonValue& params);
+    JsonValue getBlockStats(const JsonValue& params);
+    
+    // UTXO methods
+    JsonValue getTxOut(const JsonValue& params);
+    JsonValue getTxOutSetInfo(const JsonValue& params);
+    
+    // Transaction methods
+    JsonValue decodeRawTransaction(const JsonValue& params);
+    JsonValue createRawTransaction(const JsonValue& params);
+    JsonValue signRawTransactionWithKey(const JsonValue& params);
+    
+    // Address methods
+    JsonValue getAddressBalance(const JsonValue& params);
+    JsonValue getAddressUtxos(const JsonValue& params);
+    
+    // Wallet methods
+    JsonValue dumpPrivKey(const JsonValue& params);
+    
+    // Network methods
+    JsonValue getNetTotals(const JsonValue& params);
+    
+    // Mempool methods
+    JsonValue getMempoolEntry(const JsonValue& params);
+    
+    // Address traceability tracking
+    JsonValue traceAddress(const JsonValue& params);
+    JsonValue trackStolenFunds(const JsonValue& params);
+    
 public:
     RPCAPI(Blockchain* blockchain, uint16_t port);
     RPCAPI(Blockchain* blockchain, Network* network, uint16_t port);
