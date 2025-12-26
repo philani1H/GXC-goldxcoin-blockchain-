@@ -8,7 +8,7 @@
 |---------|---------|---------|
 | **Address Prefix** | `tGXC` | `GXC` |
 | **Initial Difficulty** | **1.0** | **1000.0** |
-| **Min Difficulty** | **1.0** | **100.0** |
+| **Min Difficulty** | **1.0** | **1000.0** |
 | **Max Difficulty** | **10,000** | **10,000,000** |
 | **Database** | `blockchain_testnet.db` | `blockchain.db` |
 | **Purpose** | Testing | Production |
@@ -40,7 +40,7 @@
 - Coinbase maturity 100 blocks ✅ SAME
 - PoW validation required ✅ SAME
 - SecurityEngine active ✅ SAME
-- **Minimum difficulty:** Testnet 1.0, Mainnet 100.0 ❗ DIFFERENT
+- **Minimum difficulty:** Testnet 1.0, Mainnet 1000.0 ❗ DIFFERENT
 - **Maximum difficulty:** Testnet 10,000, Mainnet 10,000,000 ❗ DIFFERENT
 
 ---
@@ -105,8 +105,8 @@ curl -s http://localhost:8332 | python3 -m json.tool
 
 3. **SecurityEngine Works on Both (with different bounds)**
    - Testnet: Adjusts from 1.0 baseline, bounded by MIN 1.0, MAX 10,000
-   - Mainnet: Adjusts from 1000.0 baseline, bounded by MIN 100.0, MAX 10,000,000
-   - Different bounds prevent testnet from being too hard, mainnet from being too easy
+   - Mainnet: Adjusts from 1000.0 baseline, bounded by MIN 1000.0, MAX 10,000,000
+   - Mainnet minimum = initial difficulty (prevents difficulty from dropping below launch level)
 
 4. **Always Test First**
    - Test on testnet

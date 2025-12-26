@@ -430,7 +430,7 @@ bool Blockchain::addBlock(const Block& block) {
             
             // CONSENSUS RULE: Enforce minimum and maximum difficulty based on network
             bool isTestnet = Config::isTestnet();
-            double MIN_DIFFICULTY = isTestnet ? 1.0 : 100.0;      // Testnet: 1.0, Mainnet: 100.0
+            double MIN_DIFFICULTY = isTestnet ? 1.0 : 1000.0;      // Testnet: 1.0, Mainnet: 1000.0
             double MAX_DIFFICULTY = isTestnet ? 10000.0 : 10000000.0;  // Testnet: 10K, Mainnet: 10M
             
             if (newDifficulty < MIN_DIFFICULTY) {
@@ -1033,7 +1033,7 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
     
     // CONSENSUS RULE: Minimum difficulty enforcement based on network
     bool isTestnet = Config::isTestnet();
-    double MIN_DIFFICULTY = isTestnet ? 1.0 : 100.0;  // Testnet: 1 zero, Mainnet: 100 zeros (effectively)
+    double MIN_DIFFICULTY = isTestnet ? 1.0 : 1000.0;  // Testnet: 1.0, Mainnet: 1000.0
     double networkDifficulty = difficulty;
     
     // Enforce minimum difficulty floor
