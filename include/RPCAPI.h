@@ -396,6 +396,7 @@ private:
     JsonValue getTransaction(const JsonValue& params);
     JsonValue listTransactions(const JsonValue& params);
     JsonValue getBalance(const JsonValue& params);
+    JsonValue getPendingBalance(const JsonValue& params);
     JsonValue getNewAddress(const JsonValue& params);
     JsonValue sendToAddress(const JsonValue& params);
     JsonValue estimateFee(const JsonValue& params);

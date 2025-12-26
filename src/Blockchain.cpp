@@ -1955,16 +1955,48 @@ double Blockchain::getBalance(const std::string& address) const {
         }
     }
 
-    // Add pending incoming outputs (unconfirmed balance)
+    // BEST PRACTICE: Do NOT include pending transactions in spendable balance
+    // Pending transactions should be shown separately as "pending" or "unconfirmed"
+    // This follows Bitcoin/Ethereum standard:
+    // - getBalance() = confirmed, spendable balance only
+    // - Pending balance = separate query (getPendingBalance)
+    // 
+    // Removed code that added pending incoming outputs to balance
+    // Users should only see what they can actually spend
+    
+    // Always log balance queries at INFO level for debugging
+    LOG_BLOCKCHAIN(LogLevel::INFO, "getBalance(" + address.substr(0, 20) + "...): " + std::to_string(balance) + 
+                  " GXC from " + std::to_string(utxoCount) + " UTXOs (total UTXOs in set: " + std::to_string(utxoSet.size()) + ")");
+    
+    return balance;
+}
+
+double Blockchain::getPendingBalance(const std::string& address) const {
+    std::lock_guard<std::mutex> lock(chainMutex);
+    std::lock_guard<std::mutex> txLock(transactionMutex);
+    
+    double pendingBalance = 0.0;
+    
+    // Identify UTXOs spent by pending transactions
+    std::unordered_set<std::string> spentInMempool;
+    for (const auto& tx : pendingTransactions) {
+        if (!tx.isCoinbaseTransaction()) {
+            for (const auto& input : tx.getInputs()) {
+                spentInMempool.insert(input.txHash + "_" + std::to_string(input.outputIndex));
+            }
+        }
+    }
+    
+    // Calculate pending incoming balance from mempool
     for (const auto& tx : pendingTransactions) {
         uint32_t outputIndex = 0;
         for (const auto& output : tx.getOutputs()) {
             if (output.address == address) {
                 std::string pendingUtxoKey = tx.getHash() + "_" + std::to_string(outputIndex);
-
-                // If this pending output is not spent by another pending transaction, add it
+                
+                // If this pending output is not spent by another pending transaction, count it
                 if (spentInMempool.find(pendingUtxoKey) == spentInMempool.end()) {
-                    balance += output.amount;
+                    pendingBalance += output.amount;
                     LOG_BLOCKCHAIN(LogLevel::DEBUG, "  Pending Receive: " + pendingUtxoKey + " = " + std::to_string(output.amount) +
                                   " GXC to " + output.address.substr(0, 20) + "...");
                 }
@@ -1973,11 +2005,9 @@ double Blockchain::getBalance(const std::string& address) const {
         }
     }
     
-    // Always log balance queries at INFO level for debugging
-    LOG_BLOCKCHAIN(LogLevel::INFO, "getBalance(" + address.substr(0, 20) + "...): " + std::to_string(balance) + 
-                  " GXC from " + std::to_string(utxoCount) + " UTXOs (total UTXOs in set: " + std::to_string(utxoSet.size()) + ")");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "getPendingBalance(" + address.substr(0, 20) + "...): " + std::to_string(pendingBalance) + " GXC");
     
-    return balance;
+    return pendingBalance;
 }
 
 const std::unordered_map<std::string, TransactionOutput>& Blockchain::getUtxoSet() const {

@@ -226,6 +226,7 @@ void RPCAPI::registerMethods() {
     
     // Wallet methods
     rpcMethods["getbalance"] = [this](const JsonValue& params) { return getBalance(params); };
+    rpcMethods["getpendingbalance"] = [this](const JsonValue& params) { return getPendingBalance(params); };
     rpcMethods["gxc_getBalance"] = [this](const JsonValue& params) { return getBalance(params); };
     rpcMethods["getaddressbalance"] = [this](const JsonValue& params) { return getBalance(params); };
     rpcMethods["getaccountbalance"] = [this](const JsonValue& params) { return getBalance(params); };
@@ -1444,6 +1445,22 @@ JsonValue RPCAPI::getBalance(const JsonValue& params) {
             std::to_string(balance) + " GXC (REAL-TIME)");
     
     return balance;
+}
+
+JsonValue RPCAPI::getPendingBalance(const JsonValue& params) {
+    std::string address = params.size() > 0 ? params[0].get<std::string>() : "";
+    
+    if (address.empty()) {
+        throw RPCException(RPCException::RPC_INVALID_PARAMETER, "Missing address parameter");
+    }
+    
+    // Get pending (unconfirmed) balance from mempool
+    double pendingBalance = blockchain->getPendingBalance(address);
+    
+    LOG_API(LogLevel::DEBUG, "getPendingBalance(" + address.substr(0, 16) + "...): " + 
+            std::to_string(pendingBalance) + " GXC (UNCONFIRMED)");
+    
+    return pendingBalance;
 }
 
 JsonValue RPCAPI::getNewAddress(const JsonValue& params) {
