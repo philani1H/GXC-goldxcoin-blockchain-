@@ -162,6 +162,7 @@ set(CORE_SOURCES
     src/Wallet.cpp
     src/Validator.cpp
     src/SalectValidator.cpp
+    src/StakingPool.cpp
     src/ProofOfPrice.cpp
     src/CrossChainBridge.cpp
     src/HashUtils.cpp
