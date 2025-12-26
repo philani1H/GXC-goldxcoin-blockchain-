@@ -1789,7 +1789,8 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         // EARLY REJECTION: Quick PoW check before expensive validation
         // This prevents wasting resources on blocks that will fail anyway
         double networkDifficulty = blockchain->getDifficulty();
-        const double MIN_DIFFICULTY = 1.0;
+        bool isTestnet = Config::isTestnet();
+        double MIN_DIFFICULTY = isTestnet ? 1.0 : 100.0;  // Testnet: 1.0, Mainnet: 100.0
         
         if (networkDifficulty < MIN_DIFFICULTY) {
             networkDifficulty = MIN_DIFFICULTY;

@@ -8,6 +8,8 @@
 |---------|---------|---------|
 | **Address Prefix** | `tGXC` | `GXC` |
 | **Initial Difficulty** | **1.0** | **1000.0** |
+| **Min Difficulty** | **1.0** | **100.0** |
+| **Max Difficulty** | **10,000** | **10,000,000** |
 | **Database** | `blockchain_testnet.db` | `blockchain.db` |
 | **Purpose** | Testing | Production |
 | **Coin Value** | None (testing only) | Real value |
@@ -33,13 +35,13 @@
 - **Mainnet:** `./gxc_data/blockchain.db` (contains real value)
 
 ### 4. Consensus Rules
-**SAME for both:**
-- Mandatory coinbase at index 0
-- Minimum difficulty 1.0 (enforced by consensus)
-- Maximum difficulty 1000000.0
-- Coinbase maturity 100 blocks
-- PoW validation required
-- SecurityEngine active
+**SAME rules, DIFFERENT bounds:**
+- Mandatory coinbase at index 0 ✅ SAME
+- Coinbase maturity 100 blocks ✅ SAME
+- PoW validation required ✅ SAME
+- SecurityEngine active ✅ SAME
+- **Minimum difficulty:** Testnet 1.0, Mainnet 100.0 ❗ DIFFERENT
+- **Maximum difficulty:** Testnet 10,000, Mainnet 10,000,000 ❗ DIFFERENT
 
 ---
 
@@ -101,10 +103,10 @@ curl -s http://localhost:8332 | python3 -m json.tool
    - Both use same consensus rules
    - Only difference: initial difficulty and address prefix
 
-3. **SecurityEngine Works on Both**
-   - Testnet: Adjusts from 1.0 baseline
-   - Mainnet: Adjusts from 1000.0 baseline
-   - Both: Bounded by MIN 1.0, MAX 1000000.0
+3. **SecurityEngine Works on Both (with different bounds)**
+   - Testnet: Adjusts from 1.0 baseline, bounded by MIN 1.0, MAX 10,000
+   - Mainnet: Adjusts from 1000.0 baseline, bounded by MIN 100.0, MAX 10,000,000
+   - Different bounds prevent testnet from being too hard, mainnet from being too easy
 
 4. **Always Test First**
    - Test on testnet

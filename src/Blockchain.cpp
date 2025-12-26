@@ -428,19 +428,22 @@ bool Blockchain::addBlock(const Block& block) {
             // Use SecurityEngine for advanced difficulty calculation
             double newDifficulty = getSecurityAdjustedDifficulty();
             
-            // CONSENSUS RULE: Enforce minimum difficulty (prevents trivial mining)
-            const double MIN_DIFFICULTY = 1.0;
+            // CONSENSUS RULE: Enforce minimum and maximum difficulty based on network
+            bool isTestnet = Config::isTestnet();
+            double MIN_DIFFICULTY = isTestnet ? 1.0 : 100.0;      // Testnet: 1.0, Mainnet: 100.0
+            double MAX_DIFFICULTY = isTestnet ? 10000.0 : 10000000.0;  // Testnet: 10K, Mainnet: 10M
+            
             if (newDifficulty < MIN_DIFFICULTY) {
                 LOG_BLOCKCHAIN(LogLevel::INFO, "SecurityEngine difficulty " + std::to_string(newDifficulty) + 
-                              " below minimum, enforcing " + std::to_string(MIN_DIFFICULTY));
+                              " below minimum, enforcing " + std::to_string(MIN_DIFFICULTY) + 
+                              " (" + std::string(isTestnet ? "testnet" : "mainnet") + ")");
                 newDifficulty = MIN_DIFFICULTY;
             }
             
-            // CONSENSUS RULE: Enforce maximum difficulty (prevents overflow)
-            const double MAX_DIFFICULTY = 1000000.0;
             if (newDifficulty > MAX_DIFFICULTY) {
                 LOG_BLOCKCHAIN(LogLevel::INFO, "SecurityEngine difficulty " + std::to_string(newDifficulty) + 
-                              " above maximum, capping at " + std::to_string(MAX_DIFFICULTY));
+                              " above maximum, capping at " + std::to_string(MAX_DIFFICULTY) + 
+                              " (" + std::string(isTestnet ? "testnet" : "mainnet") + ")");
                 newDifficulty = MAX_DIFFICULTY;
             }
             
@@ -448,7 +451,7 @@ bool Blockchain::addBlock(const Block& block) {
             
             LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Difficulty adjusted at height " + std::to_string(currentHeight) + 
                           ": " + std::to_string(oldDifficulty) + " → " + std::to_string(newDifficulty) + 
-                          " (SecurityEngine with min/max enforcement)");
+                          " (SecurityEngine with " + std::string(isTestnet ? "testnet" : "mainnet") + " bounds)");
         }
         
         // Update transaction pool (remove confirmed transactions)
@@ -1028,14 +1031,16 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
         }
     }
     
-    // CONSENSUS RULE: Minimum difficulty enforcement
-    const double MIN_DIFFICULTY = 1.0; // At least 1 leading zero required
+    // CONSENSUS RULE: Minimum difficulty enforcement based on network
+    bool isTestnet = Config::isTestnet();
+    double MIN_DIFFICULTY = isTestnet ? 1.0 : 100.0;  // Testnet: 1 zero, Mainnet: 100 zeros (effectively)
     double networkDifficulty = difficulty;
     
     // Enforce minimum difficulty floor
     if (networkDifficulty < MIN_DIFFICULTY) {
         LOG_BLOCKCHAIN(LogLevel::WARNING, "Network difficulty " + std::to_string(networkDifficulty) + 
-                      " below minimum, enforcing " + std::to_string(MIN_DIFFICULTY));
+                      " below minimum, enforcing " + std::to_string(MIN_DIFFICULTY) + 
+                      " (" + std::string(isTestnet ? "testnet" : "mainnet") + ")");
         networkDifficulty = MIN_DIFFICULTY;
     }
     
