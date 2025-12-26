@@ -423,49 +423,23 @@ bool Blockchain::addBlock(const Block& block) {
         // Update difficulty every DIFFICULTY_ADJUSTMENT_INTERVAL blocks
         uint32_t currentHeight = chain.size();
         if (currentHeight % DIFFICULTY_ADJUSTMENT_INTERVAL == 0 && currentHeight >= DIFFICULTY_ADJUSTMENT_INTERVAL) {
-            // Calculate time-based difficulty adjustment
-            uint64_t oldTimestamp = chain[currentHeight - DIFFICULTY_ADJUSTMENT_INTERVAL]->getTimestamp();
-            uint64_t newTimestamp = chain[currentHeight - 1]->getTimestamp();
-            uint64_t actualTime = newTimestamp - oldTimestamp;
-            
-            // Target: 10 minutes per block
-            const uint64_t TARGET_BLOCK_TIME = 600; // seconds
-            uint64_t expectedTime = DIFFICULTY_ADJUSTMENT_INTERVAL * TARGET_BLOCK_TIME;
-            
-            // Calculate adjustment ratio
-            double ratio = static_cast<double>(actualTime) / static_cast<double>(expectedTime);
-            
-            // CONSENSUS RULE: Limit adjustment to ±25% (prevents wild swings)
-            const double MAX_ADJUSTMENT = 1.25;
-            const double MIN_ADJUSTMENT = 0.75;
-            
-            if (ratio > MAX_ADJUSTMENT) {
-                LOG_BLOCKCHAIN(LogLevel::INFO, "Difficulty adjustment ratio " + std::to_string(ratio) + 
-                              " capped at " + std::to_string(MAX_ADJUSTMENT));
-                ratio = MAX_ADJUSTMENT;
-            }
-            if (ratio < MIN_ADJUSTMENT) {
-                LOG_BLOCKCHAIN(LogLevel::INFO, "Difficulty adjustment ratio " + std::to_string(ratio) + 
-                              " floored at " + std::to_string(MIN_ADJUSTMENT));
-                ratio = MIN_ADJUSTMENT;
-            }
-            
-            // Apply adjustment
             double oldDifficulty = difficulty;
-            double newDifficulty = oldDifficulty * ratio;
             
-            // CONSENSUS RULE: Enforce minimum and maximum difficulty bounds
+            // Use SecurityEngine for advanced difficulty calculation
+            double newDifficulty = getSecurityAdjustedDifficulty();
+            
+            // CONSENSUS RULE: Enforce minimum difficulty (prevents trivial mining)
             const double MIN_DIFFICULTY = 1.0;
-            const double MAX_DIFFICULTY = 1000000.0;
-            
             if (newDifficulty < MIN_DIFFICULTY) {
-                LOG_BLOCKCHAIN(LogLevel::INFO, "New difficulty " + std::to_string(newDifficulty) + 
-                              " below minimum, setting to " + std::to_string(MIN_DIFFICULTY));
+                LOG_BLOCKCHAIN(LogLevel::INFO, "SecurityEngine difficulty " + std::to_string(newDifficulty) + 
+                              " below minimum, enforcing " + std::to_string(MIN_DIFFICULTY));
                 newDifficulty = MIN_DIFFICULTY;
             }
             
+            // CONSENSUS RULE: Enforce maximum difficulty (prevents overflow)
+            const double MAX_DIFFICULTY = 1000000.0;
             if (newDifficulty > MAX_DIFFICULTY) {
-                LOG_BLOCKCHAIN(LogLevel::INFO, "New difficulty " + std::to_string(newDifficulty) + 
+                LOG_BLOCKCHAIN(LogLevel::INFO, "SecurityEngine difficulty " + std::to_string(newDifficulty) + 
                               " above maximum, capping at " + std::to_string(MAX_DIFFICULTY));
                 newDifficulty = MAX_DIFFICULTY;
             }
@@ -474,9 +448,7 @@ bool Blockchain::addBlock(const Block& block) {
             
             LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Difficulty adjusted at height " + std::to_string(currentHeight) + 
                           ": " + std::to_string(oldDifficulty) + " → " + std::to_string(newDifficulty) + 
-                          " (ratio: " + std::to_string(ratio) + ", " +
-                          "actual time: " + std::to_string(actualTime) + "s, " +
-                          "expected: " + std::to_string(expectedTime) + "s)");
+                          " (SecurityEngine with min/max enforcement)");
         }
         
         // Update transaction pool (remove confirmed transactions)
