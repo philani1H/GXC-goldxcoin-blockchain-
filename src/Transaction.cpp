@@ -10,7 +10,8 @@
 // Default constructor
 Transaction::Transaction() 
     : timestamp(std::time(nullptr)), referencedAmount(0.0), nonce(0),
-      isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0), type(TransactionType::NORMAL) {
+      isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0), type(TransactionType::NORMAL),
+      workReceiptHash(""), blockHeight(0) {
     txHash = "";
     prevTxHash = "";
 }
@@ -54,7 +55,8 @@ Transaction::Transaction(const std::vector<TransactionInput>& inputsIn,
 // Constructor for coinbase transaction
 Transaction::Transaction(const std::string& minerAddress, double blockReward)
     : prevTxHash("0"), referencedAmount(0.0), receiverAddress(minerAddress),
-      isGoldBacked(false), isCoinbase(true), fee(0.0), lockTime(0), type(TransactionType::NORMAL) {
+      isGoldBacked(false), isCoinbase(true), fee(0.0), lockTime(0), type(TransactionType::NORMAL),
+      workReceiptHash(""), blockHeight(0) {
     timestamp = std::time(nullptr);
     nonce = Utils::randomUint32();
     

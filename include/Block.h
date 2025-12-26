@@ -41,6 +41,10 @@ private:
     std::string chainWork;  // Hex string representation of cumulative work
     uint32_t nBits;         // Compact difficulty target
     
+    // Proof-of-Work Receipt (Block-Bound Traceability)
+    std::string workReceiptHash;  // H(prev_hash || merkle_root || nonce || miner_pubkey || difficulty || timestamp)
+    std::string minerPublicKey;   // Public key of miner (for work receipt)
+    
 public:
     // Constructors
     Block(); // Default constructor
@@ -48,6 +52,9 @@ public:
     
     // Mining and validation
     void mineBlock(double difficultyIn);
+    
+    // Compute Work Receipt Hash (Proof-of-Work Receipt)
+    std::string computeWorkReceipt() const;
     bool validateBlock(const std::string& validatorSignature = "") const;
     
     // Transaction management
@@ -74,6 +81,12 @@ public:
     const std::vector<Transaction>& getTransactions() const { return transactions; }
     double getDifficulty() const { return difficulty; }
     std::string getValidatorSignature() const { return validatorSignature; }
+    
+    // Work receipt getters/setters
+    std::string getWorkReceiptHash() const { return workReceiptHash; }
+    std::string getMinerPublicKey() const { return minerPublicKey; }
+    void setWorkReceiptHash(const std::string& hash) { workReceiptHash = hash; }
+    void setMinerPublicKey(const std::string& pubkey) { minerPublicKey = pubkey; }
     double getBlockReward() const { return blockReward; }
     double getFeeBurnRate() const { return feeBurnRate; }
     std::string getPopReference() const { return popReference; }

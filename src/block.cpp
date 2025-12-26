@@ -51,7 +51,24 @@ void Block::mineBlock(double difficultyIn) {
             nonce++;
             hash = calculateHash();
         }
+        
+        // After mining, compute and set the work receipt hash
+        workReceiptHash = computeWorkReceipt();
     }
+}
+
+std::string Block::computeWorkReceipt() const {
+    // WorkReceipt = H(prev_hash || merkle_root || nonce || miner_pubkey || difficulty || timestamp)
+    // This proves: which block was extended, what transactions, who did work, under what difficulty, when
+    std::stringstream ss;
+    ss << previousHash 
+       << merkleRoot 
+       << nonce 
+       << minerPublicKey 
+       << difficulty 
+       << timestamp;
+    
+    return sha256(ss.str());
 }
 
 bool Block::validateBlock(const std::string& validatorSignature) const {

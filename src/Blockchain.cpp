@@ -990,6 +990,14 @@ bool Blockchain::validateBlockInternal(const Block& block, uint32_t expectedInde
             return false;
         }
         LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Proof of work OK");
+        
+        // Validate Work Receipt (Block-Bound Traceability)
+        LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Validating work receipt...");
+        if (!validateWorkReceipt(block)) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Invalid work receipt for block at index " + std::to_string(block.getIndex()));
+            return false;
+        }
+        LOG_BLOCKCHAIN(LogLevel::INFO, "validateBlock: Work receipt OK");
     }
     
     // Validate transactions
@@ -1086,6 +1094,48 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
     LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Proof of work valid. Hash: " + submittedHash.substr(0, 16) + "..., " +
                   "Leading zeros: " + std::to_string(leadingZeros) + "/" + std::to_string(requiredZeros));
     
+    return true;
+}
+
+bool Blockchain::validateWorkReceipt(const Block& block) const {
+    // Validate Work Receipt (Block-Bound Traceability)
+    // This ensures mining rewards are traceable to actual proof-of-work
+    
+    // 1. Recompute work receipt from block header
+    std::string computedReceipt = block.computeWorkReceipt();
+    
+    // 2. Get work receipt from block
+    std::string blockReceipt = block.getWorkReceiptHash();
+    
+    // 3. Verify they match
+    if (computedReceipt != blockReceipt) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Work receipt mismatch! Computed: " + computedReceipt.substr(0, 16) + 
+                      "..., Block has: " + blockReceipt.substr(0, 16) + "...");
+        return false;
+    }
+    
+    // 4. Verify coinbase transaction has matching work receipt
+    const auto& transactions = block.getTransactions();
+    if (!transactions.empty()) {
+        const Transaction& coinbase = transactions[0];
+        if (coinbase.isCoinbaseTransaction()) {
+            std::string coinbaseReceipt = coinbase.getWorkReceiptHash();
+            if (coinbaseReceipt != blockReceipt) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "Coinbase work receipt mismatch! Block: " + blockReceipt.substr(0, 16) + 
+                              "..., Coinbase: " + coinbaseReceipt.substr(0, 16) + "...");
+                return false;
+            }
+            
+            // 5. Verify block height matches
+            if (coinbase.getBlockHeight() != block.getIndex()) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "Coinbase block height mismatch! Block: " + std::to_string(block.getIndex()) + 
+                              ", Coinbase: " + std::to_string(coinbase.getBlockHeight()));
+                return false;
+            }
+        }
+    }
+    
+    LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Work receipt valid: " + blockReceipt.substr(0, 16) + "...");
     return true;
 }
 

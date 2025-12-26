@@ -110,6 +110,7 @@ public:
     bool validateBlock(const Block& block);
     bool validateBlockInternal(const Block& block, uint32_t expectedIndex);
     bool validateProofOfWork(const Block& block) const;
+    bool validateWorkReceipt(const Block& block) const;
     bool validateBlockTraceability(const Block& block);
     bool validateTransaction(const Transaction& tx);
     bool validateTraceability();

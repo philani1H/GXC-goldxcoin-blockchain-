@@ -52,6 +52,10 @@ private:
     double fee;                  // Transaction fee
     std::string memo;            // Optional memo field
     uint32_t lockTime;           // Time lock for the transaction
+    
+    // Proof-of-Work Receipt (for COINBASE transactions only)
+    std::string workReceiptHash; // Links mining reward to proof-of-work
+    uint32_t blockHeight;        // Block height for coinbase
 
 public:
     // Default constructor
@@ -103,6 +107,12 @@ public:
     bool isCoinbaseTransaction() const { return isCoinbase; }
     double getFee() const { return fee; }
     std::string getMemo() const { return memo; }
+    
+    // Work receipt getters/setters (for COINBASE)
+    std::string getWorkReceiptHash() const { return workReceiptHash; }
+    uint32_t getBlockHeight() const { return blockHeight; }
+    void setWorkReceiptHash(const std::string& hash) { workReceiptHash = hash; }
+    void setBlockHeight(uint32_t height) { blockHeight = height; }
     uint32_t getLockTime() const { return lockTime; }
     TransactionType getType() const { return type; }
 
