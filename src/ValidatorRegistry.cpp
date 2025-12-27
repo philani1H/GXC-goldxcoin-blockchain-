@@ -225,6 +225,7 @@ std::shared_ptr<Validator> ValidatorRegistry::getValidator(const std::string& ad
 }
 
 std::vector<std::shared_ptr<Validator>> ValidatorRegistry::getAllValidators() const {
+    std::lock_guard<std::mutex> lock(registryMutex);
     std::vector<std::shared_ptr<Validator>> result;
     for (const auto& pair : validators) {
         result.push_back(pair.second);
@@ -233,6 +234,7 @@ std::vector<std::shared_ptr<Validator>> ValidatorRegistry::getAllValidators() co
 }
 
 std::vector<std::shared_ptr<Validator>> ValidatorRegistry::getActiveValidators() const {
+    std::lock_guard<std::mutex> lock(registryMutex);
     std::vector<std::shared_ptr<Validator>> result;
     for (const auto& pair : validators) {
         if (pair.second->getIsActive() && pair.second->isValidValidator()) {
@@ -243,10 +245,12 @@ std::vector<std::shared_ptr<Validator>> ValidatorRegistry::getActiveValidators()
 }
 
 bool ValidatorRegistry::isValidatorRegistered(const std::string& address) const {
+    std::lock_guard<std::mutex> lock(registryMutex);
     return validators.find(address) != validators.end();
 }
 
 double ValidatorRegistry::getTotalWeightedStake() const {
+    std::lock_guard<std::mutex> lock(registryMutex);
     double total = 0.0;
     for (const auto& pair : validators) {
         if (pair.second->getIsActive()) {

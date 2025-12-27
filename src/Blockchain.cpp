@@ -154,12 +154,14 @@ bool Blockchain::loadValidatorsFromDatabase() {
 }
 
 void Blockchain::ensureGenesisBlockExists() {
-    std::lock_guard<std::mutex> lock(chainMutex);
-    if (chain.empty()) {
+    {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        if (!chain.empty()) {
+            return;  // Genesis block already exists
+        }
         LOG_BLOCKCHAIN(LogLevel::INFO, "Chain is empty, creating genesis block for first mining operation");
-        lock.~lock_guard(); // Release lock before calling createGenesisBlock
-        createGenesisBlock();
-    }
+    }  // Lock released here automatically
+    createGenesisBlock();
 }
 
 void Blockchain::createGenesisBlock() {
@@ -1206,62 +1208,62 @@ bool Blockchain::validateWorkReceipt(const Block& block) const {
 }
 
 bool Blockchain::validateProofOfStake(const Block& block) const {
-    std::lock_guard<std::mutex> lock(chainMutex);
-    
+    // NOTE: Caller must hold chainMutex lock (called from validateBlockInternal)
+
     // Check if block is PoS type
     if (block.getBlockType() != BlockType::POS) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block is not PoS type");
         return false;
     }
-    
+
     // Get validator address from miner address
     std::string validatorAddress = block.getMinerAddress();
     if (validatorAddress.empty()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block missing validator address");
         return false;
     }
-    
+
     // Check if validator exists and is active
     auto it = validatorMap.find(validatorAddress);
     if (it == validatorMap.end()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Validator not found: " + validatorAddress);
         return false;
     }
-    
+
     const Validator& validator = it->second;
     if (!validator.getIsActive() || !validator.isValidValidator()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Validator is not active or invalid: " + validatorAddress);
         return false;
     }
-    
+
     // Verify validator signature
     std::string validatorSignature = block.getValidatorSignature();
     if (validatorSignature.empty()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block missing validator signature");
         return false;
     }
-    
+
     // Verify signature matches validator
     std::string blockHash = block.getHash();
     if (!validator.verifySignature(blockHash, validatorSignature)) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Invalid validator signature");
         return false;
     }
-    
+
     // Verify block hash is valid (should meet a basic target for PoS)
     // PoS blocks still need a valid hash, but difficulty is much lower
     if (blockHash.empty()) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block hash is empty");
         return false;
     }
-    
+
     // PoS blocks require minimal hash difficulty (much easier than PoW)
     double posDifficulty = 0.01; // Very easy for PoS
     if (!meetsTarget(blockHash, posDifficulty)) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfStake: Block hash does not meet PoS target");
         return false;
     }
-    
+
     LOG_BLOCKCHAIN(LogLevel::INFO, "validateProofOfStake: Valid PoS block from validator " + validatorAddress);
     return true;
 }
