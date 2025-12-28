@@ -131,34 +131,39 @@ bool StakingPool::removeStake(const std::string& stakeId) {
 
 bool StakingPool::isStakeMature(const std::string& stakeId) const {
     std::lock_guard<std::mutex> lock(poolMutex);
-    
+    return isStakeMatureInternal(stakeId);
+}
+
+bool StakingPool::isStakeMatureInternal(const std::string& stakeId) const {
+    // NOTE: Caller must hold poolMutex lock
+
     auto it = stakes.find(stakeId);
     if (it == stakes.end()) {
         return false;
     }
-    
+
     const auto& entry = it->second;
-    
+
     // Calculate maturity time
     uint64_t lockDurationSeconds = static_cast<uint64_t>(entry.lockPeriodDays) * 86400;
     uint64_t maturityTime = entry.lockStartTime + lockDurationSeconds;
     uint64_t currentTime = Utils::getCurrentTimestamp();
-    
+
     return currentTime >= maturityTime;
 }
 
 bool StakingPool::canUnstake(const std::string& stakeId) const {
     std::lock_guard<std::mutex> lock(poolMutex);
-    
+
     auto it = stakes.find(stakeId);
     if (it == stakes.end()) {
         return false;
     }
-    
+
     const auto& entry = it->second;
-    
+
     // Must be locked and mature
-    return entry.isLocked && isStakeMature(stakeId);
+    return entry.isLocked && isStakeMatureInternal(stakeId);
 }
 
 StakingPool::StakeEntry StakingPool::getStake(const std::string& stakeId) const {
@@ -205,7 +210,12 @@ bool StakingPool::stakeExists(const std::string& stakeId) const {
 
 void StakingPool::initializeValidatorPool(const std::string& validatorAddress, double ownStake) {
     std::lock_guard<std::mutex> lock(poolMutex);
-    
+    initializeValidatorPoolInternal(validatorAddress, ownStake);
+}
+
+void StakingPool::initializeValidatorPoolInternal(const std::string& validatorAddress, double ownStake) {
+    // NOTE: Caller must hold poolMutex lock
+
     ValidatorPoolStats stats;
     stats.validatorAddress = validatorAddress;
     stats.ownStake = ownStake;
@@ -215,22 +225,22 @@ void StakingPool::initializeValidatorPool(const std::string& validatorAddress, d
     stats.blocksProduced = 0;
     stats.missedBlocks = 0;
     stats.totalRewardsDistributed = 0.0;
-    
+
     validatorPools[validatorAddress] = stats;
-    
+
     LOG_CORE(LogLevel::INFO, "Validator pool initialized: " + validatorAddress);
 }
 
 void StakingPool::updateValidatorPool(const std::string& validatorAddress, double deltaStake, bool isAdd) {
     // Note: poolMutex already locked by caller
-    
+
     auto it = validatorPools.find(validatorAddress);
     if (it == validatorPools.end()) {
         // Initialize if doesn't exist
-        initializeValidatorPool(validatorAddress, 0.0);
+        initializeValidatorPoolInternal(validatorAddress, 0.0);
         it = validatorPools.find(validatorAddress);
     }
-    
+
     if (isAdd) {
         it->second.totalDelegated += deltaStake;
         it->second.totalStake += deltaStake;
@@ -504,30 +514,32 @@ bool StakingPool::loadFromDatabase() {
         if (status.ok()) {
             totalStakedCoins = std::stod(totalStakedStr);
         }
-        
-        // Load all stakes
-        leveldb::Iterator* it = db->NewIterator(readOptions);
-        for (it->Seek("stake:"); it->Valid() && it->key().ToString().substr(0, 6) == "stake:"; it->Next()) {
-            std::string stakeId = it->key().ToString().substr(6);
-            StakeEntry entry = deserializeStakeEntry(it->value().ToString());
-            stakes[stakeId] = entry;
-        }
-        delete it;
-        
-        // Load all validator pools
-        it = db->NewIterator(readOptions);
-        for (it->Seek("validator:"); it->Valid() && it->key().ToString().substr(0, 10) == "validator:"; it->Next()) {
-            std::string validatorAddr = it->key().ToString().substr(10);
-            ValidatorPoolStats stats = deserializeValidatorStats(it->value().ToString());
-            validatorPools[validatorAddr] = stats;
-        }
-        delete it;
-        
-        LOG_CORE(LogLevel::INFO, "StakingPool loaded from LevelDB: " + 
+
+        // Load all stakes - use unique_ptr for automatic cleanup
+        {
+            std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+            for (it->Seek("stake:"); it->Valid() && it->key().ToString().substr(0, 6) == "stake:"; it->Next()) {
+                std::string stakeId = it->key().ToString().substr(6);
+                StakeEntry entry = deserializeStakeEntry(it->value().ToString());
+                stakes[stakeId] = entry;
+            }
+        }  // Iterator automatically deleted here
+
+        // Load all validator pools - use unique_ptr for automatic cleanup
+        {
+            std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+            for (it->Seek("validator:"); it->Valid() && it->key().ToString().substr(0, 10) == "validator:"; it->Next()) {
+                std::string validatorAddr = it->key().ToString().substr(10);
+                ValidatorPoolStats stats = deserializeValidatorStats(it->value().ToString());
+                validatorPools[validatorAddr] = stats;
+            }
+        }  // Iterator automatically deleted here
+
+        LOG_CORE(LogLevel::INFO, "StakingPool loaded from LevelDB: " +
                  std::to_string(stakes.size()) + " stakes, " +
                  std::to_string(validatorPools.size()) + " validators, " +
                  std::to_string(totalStakedCoins) + " GXC total staked");
-        
+
         return true;
     } catch (const std::exception& e) {
         LOG_CORE(LogLevel::ERROR, "Failed to load staking pool: " + std::string(e.what()));

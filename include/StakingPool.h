@@ -58,7 +58,11 @@ private:
     std::string dbPath;
     
     std::string generateStakeId(const std::string& owner, const std::string& validator);
-    
+
+    // Internal helper methods (caller must hold poolMutex)
+    bool isStakeMatureInternal(const std::string& stakeId) const;
+    void initializeValidatorPoolInternal(const std::string& validatorAddress, double ownStake);
+
     // LevelDB helper methods
     std::string serializeStakeEntry(const StakeEntry& entry) const;
     StakeEntry deserializeStakeEntry(const std::string& data) const;

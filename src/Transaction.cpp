@@ -510,7 +510,7 @@ bool Transaction::verifyScript(const std::string& signature, const std::string& 
     // 2. Verify that publicKey generates this address
     // Note: We need to know if it's testnet or mainnet.
     // Usually address prefix determines this.
-    bool isTestnet = (address.substr(0, 4) == "tGXC");
+    bool isTestnet = (address.length() >= 4 && address.substr(0, 4) == "tGXC");
     std::string derivedAddress = Crypto::generateAddress(publicKey, isTestnet);
 
     if (derivedAddress != address) {
