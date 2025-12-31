@@ -768,6 +768,150 @@ void RPCAPI::handleClient(int clientSocket) {
                 response += "\r\n";
                 response += rpcResponse;
             }
+            else if (path == "/api/getblockchaininfo" || path == "/getblockchaininfo") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getblockchaininfo";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getmininginfo" || path == "/getmininginfo") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getmininginfo";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getnetworkinfo" || path == "/getnetworkinfo") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getnetworkinfo";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getpeerinfo" || path == "/getpeerinfo") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getpeerinfo";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getmempoolinfo" || path == "/getmempoolinfo") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getmempoolinfo";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getrawmempool" || path == "/getrawmempool") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getrawmempool";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getstakinginfo" || path == "/getstakinginfo") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getstakinginfo";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/listvalidators" || path == "/listvalidators") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "listvalidators";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/validatetraceability" || path == "/validatetraceability") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "validatetraceability";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
             else {
                 // 404 for other GET requests
                 std::string body = "{\"error\":\"Not found\",\"path\":\"" + path + "\",\"hint\":\"Try /health, /api/getinfo, /api/getblockcount, /api/getblocktemplate\"}";
