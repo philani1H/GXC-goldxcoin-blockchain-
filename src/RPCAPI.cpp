@@ -661,7 +661,7 @@ void RPCAPI::handleClient(int clientSocket) {
         
         std::string response;
         
-        // Handle GET requests (health checks)
+        // Handle GET requests (health checks and REST API)
         if (method == "GET") {
             if (path == "/" || path == "/health" || path == "/ping") {
                 // Health check endpoint
@@ -682,12 +682,99 @@ void RPCAPI::handleClient(int clientSocket) {
                 response += "Connection: close\r\n";
                 response += "\r\n";
                 response += body;
-            } else {
+            }
+            // REST API endpoints (GET alternatives to RPC methods)
+            else if (path == "/api/getinfo" || path == "/getinfo") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getblockchaininfo";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getblockcount" || path == "/getblockcount") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getblockcount";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getdifficulty" || path == "/getdifficulty") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getdifficulty";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getbestblockhash" || path == "/getbestblockhash") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getbestblockhash";
+                rpcRequest["params"] = JsonValue::array();
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path == "/api/getblocktemplate" || path == "/getblocktemplate") {
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getblocktemplate";
+                JsonValue params = JsonValue::array();
+                JsonValue templateRequest;
+                templateRequest["algorithm"] = "gxhash";
+                params.push_back(templateRequest);
+                rpcRequest["params"] = params;
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else {
                 // 404 for other GET requests
-                std::string body = "{\"error\":\"Not found\"}";
+                std::string body = "{\"error\":\"Not found\",\"path\":\"" + path + "\",\"hint\":\"Try /health, /api/getinfo, /api/getblockcount, /api/getblocktemplate\"}";
                 response = "HTTP/1.1 404 Not Found\r\n";
                 response += "Content-Type: application/json\r\n";
                 response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
                 response += "Connection: close\r\n";
                 response += "\r\n";
                 response += body;
@@ -703,16 +790,39 @@ void RPCAPI::handleClient(int clientSocket) {
                 body = request.substr(bodyStart + 4);
             }
             
-            // Process RPC request
-            std::string rpcResponse = processRequest(body);
-            
-            response = "HTTP/1.1 200 OK\r\n";
-            response += "Content-Type: application/json\r\n";
-            response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
-            response += "Access-Control-Allow-Origin: *\r\n";
-            response += "Connection: close\r\n";
-            response += "\r\n";
-            response += rpcResponse;
+            // Log for debugging Railway proxy issues
+            LOG_API(LogLevel::DEBUG, "POST request body length: " + std::to_string(body.length()));
+            if (body.empty()) {
+                LOG_API(LogLevel::WARNING, "Empty POST body received - Railway proxy may be stripping it");
+                // Return helpful error
+                JsonValue errorResponse;
+                errorResponse["jsonrpc"] = "2.0";
+                errorResponse["id"] = nullptr;
+                JsonValue errorObj;
+                errorObj["code"] = -32700;
+                errorObj["message"] = "Parse error: Empty request body. Railway proxy may be stripping POST data. Use GET endpoints instead: /api/getinfo, /api/getblockcount, /api/getblocktemplate";
+                errorResponse["error"] = errorObj;
+                
+                std::string errorJson = errorResponse.dump();
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(errorJson.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += errorJson;
+            } else {
+                // Process RPC request
+                std::string rpcResponse = processRequest(body);
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
         }
         // Handle OPTIONS requests (CORS preflight)
         else if (method == "OPTIONS") {
