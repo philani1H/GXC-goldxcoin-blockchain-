@@ -230,8 +230,9 @@ This document provides a complete overview of the GXC blockchain fraud detection
 | Admin Users | create, list, update, delete, change-password | 5 |
 | Dashboard | overview, fraud-stats, pool-status, audit-logs | 4 |
 | System | config (get/update) | 2 |
+| Market Makers | applications, verify (5 steps), approve, reject, revoke, stats | 16 |
 
-**Total API Endpoints:** 19
+**Total API Endpoints:** 35
 
 ---
 
@@ -522,12 +523,15 @@ reversal_execution_fee_percentage=0.002
 4. **Dashboard** (1 file)
    - ADMIN_DASHBOARD_QUICK_START.md
 
-5. **Testing** (3 files)
+5. **Market Maker** (1 file)
+   - MARKET_MAKER_APPROVAL_GUIDE.md
+
+6. **Testing** (3 files)
    - test_self_sustaining_reversal.py
    - test_fraud_detection_scenarios.py
    - test_fraud_apis.sh
 
-**Total Documentation:** 13 files, 10,000+ lines
+**Total Documentation:** 15 files, 12,000+ lines
 
 ### Quick Links
 
