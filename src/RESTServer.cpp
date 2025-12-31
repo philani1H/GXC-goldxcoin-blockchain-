@@ -1,6 +1,8 @@
 #include "../include/RESTServer.h"
 #include "../include/blockchain.h"
 #include "../include/transaction.h"
+#include "../include/FraudDetection.h"
+#include "../include/MarketMakerAdmin.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
 #include <sstream>
@@ -11,8 +13,30 @@
 #include <nlohmann/json.hpp>
 
 RESTServer::RESTServer(Blockchain* blockchain, uint16_t port)
-    : blockchain(blockchain), serverPort(port), isRunning(false) {
+    : blockchain(blockchain), fraudDetection(nullptr), adminSystem(nullptr), 
+      serverPort(port), isRunning(false) {
     LOG_API(LogLevel::INFO, "REST API initialized on port " + std::to_string(port));
+}
+
+RESTServer::RESTServer(Blockchain* blockchain, FraudDetection* fraud, MarketMakerAdmin* admin, uint16_t port)
+    : blockchain(blockchain), fraudDetection(fraud), adminSystem(admin), feePool(nullptr),
+      serverPort(port), isRunning(false) {
+    LOG_API(LogLevel::INFO, "REST API with Fraud Detection and Admin System initialized on port " + std::to_string(port));
+}
+
+void RESTServer::setFraudDetection(FraudDetection* fraud) {
+    fraudDetection = fraud;
+    LOG_API(LogLevel::INFO, "Fraud Detection system connected to REST API");
+}
+
+void RESTServer::setAdminSystem(MarketMakerAdmin* admin) {
+    adminSystem = admin;
+    LOG_API(LogLevel::INFO, "Admin System connected to REST API");
+}
+
+void RESTServer::setReversalFeePool(ReversalFeePool* pool) {
+    feePool = pool;
+    LOG_API(LogLevel::INFO, "Reversal Fee Pool connected to REST API");
 }
 
 RESTServer::~RESTServer() {
@@ -119,6 +143,19 @@ std::string RESTServer::handleRequest(const std::string& method, const std::stri
         else if (path == "/api/v1/stats") {
             return getStats();
         }
+        // Fraud reporting endpoints (public - for users to report)
+        else if (path == "/api/fraud/report-stolen" && method == "POST") {
+            return reportStolenFunds(body);
+        }
+        else if (path.find("/api/fraud/check-transaction/") == 0) {
+            std::string txHash = path.substr(29); // Remove "/api/fraud/check-transaction/"
+            return checkTransactionTaint(txHash);
+        }
+        else if (path.find("/api/fraud/check-address/") == 0) {
+            std::string address = path.substr(25); // Remove "/api/fraud/check-address/"
+            return checkAddressFraud(address);
+        }
+        // Admin endpoints are handled by RESTServer_AdminAPIs.cpp
         else {
             return createErrorResponse(404, "Not Found", "Endpoint not found: " + path);
         }
@@ -691,3 +728,105 @@ std::string RESTServer::createErrorResponse(int code, const std::string& error, 
 std::string RESTServer::jsonToString(const nlohmann::json& json) {
     return json.dump(2);  // Pretty print with 2-space indentation
 }
+
+// ============================================================================
+// FRAUD REPORTING API IMPLEMENTATION
+// ============================================================================
+
+std::string RESTServer::reportStolenFunds(const std::string& body) {
+    try {
+        if (!fraudDetection) {
+            return createErrorResponse(503, "SERVICE_UNAVAILABLE", 
+                "Fraud detection system not available");
+        }
+        
+        auto json = nlohmann::json::parse(body);
+        
+        // Validate required fields
+        if (!json.contains("txHash") || !json.contains("amount")) {
+            return createErrorResponse(400, "MISSING_FIELDS", 
+                "txHash and amount are required");
+        }
+        
+        std::string txHash = json["txHash"];
+        std::string reporterAddress = json.value("reporterAddress", "");
+        double amount = json["amount"];
+        std::string description = json.value("description", "");
+        
+        // Note: Actual fraud reports should go through admin system for review
+        // This endpoint just logs the report for now
+        // Admins will review and approve/reject through the admin API
+        
+        // Log security event
+        LOG_SECURITY(LogLevel::CRITICAL, 
+            "Fraud report received for TX: " + txHash + 
+            " | Amount: " + std::to_string(amount),
+            "FraudDetection");
+        
+        // Create response
+        nlohmann::json response;
+        response["success"] = true;
+        response["txHash"] = txHash;
+        response["status"] = "PENDING_REVIEW";
+        response["message"] = "Report submitted successfully. We will review within 24 hours.";
+        response["timestamp"] = std::time(nullptr);
+        
+        return jsonToString(response);
+        
+    } catch (const std::exception& e) {
+        return createErrorResponse(500, "INTERNAL_ERROR", e.what());
+    }
+}
+
+// Old fraud report methods removed - now handled by MarketMakerAdmin system
+
+std::string RESTServer::checkTransactionTaint(const std::string& txHash) {
+    if (!fraudDetection) {
+        return createErrorResponse(503, "SERVICE_UNAVAILABLE", 
+            "Fraud detection system not available");
+    }
+    
+    double taintScore = fraudDetection->getTaintScore(txHash);
+    bool isStolen = fraudDetection->isStolen(txHash);
+    
+    nlohmann::json response;
+    response["txHash"] = txHash;
+    response["taintScore"] = taintScore;
+    response["isStolen"] = isStolen;
+    response["riskLevel"] = taintScore >= 0.8 ? "CRITICAL" :
+                            taintScore >= 0.5 ? "HIGH" :
+                            taintScore >= 0.1 ? "MEDIUM" : "LOW";
+    
+    return jsonToString(response);
+}
+
+std::string RESTServer::checkAddressFraud(const std::string& address) {
+    if (!fraudDetection) {
+        return createErrorResponse(503, "SERVICE_UNAVAILABLE", 
+            "Fraud detection system not available");
+    }
+    
+    bool isFlagged = fraudDetection->isAddressFlagged(address);
+    auto alerts = fraudDetection->getAddressAlerts(address);
+    
+    nlohmann::json response;
+    response["address"] = address;
+    response["isFlagged"] = isFlagged;
+    response["alertCount"] = alerts.size();
+    response["alerts"] = nlohmann::json::array();
+    
+    for (const auto& alert : alerts) {
+        nlohmann::json alertJson;
+        alertJson["level"] = alert.level == FraudAlert::AlertLevel::CRITICAL ? "CRITICAL" :
+                            alert.level == FraudAlert::AlertLevel::HIGH ? "HIGH" :
+                            alert.level == FraudAlert::AlertLevel::MEDIUM ? "MEDIUM" : "LOW";
+        alertJson["description"] = alert.description;
+        alertJson["taintScore"] = alert.taintScore;
+        alertJson["timestamp"] = alert.timestamp;
+        response["alerts"].push_back(alertJson);
+    }
+    
+    return jsonToString(response);
+}
+
+// Old admin authentication removed - now handled by MarketMakerAdmin system

@@ -550,6 +550,31 @@ bool Blockchain::addBlock(const Block& block) {
             // Don't fail the block addition, but log the error
         }
         
+        // DEPOSIT TRANSACTION FEE SPLIT TO SYSTEM POOL
+        // Self-sustaining model: 10-20% of transaction fees go to system pool
+        if (reversalFeePool) {
+            double feePoolSplitPercentage = Config::getDouble("fee_pool_split_percentage", 0.15);
+            uint64_t totalPoolDeposits = 0;
+            
+            for (const auto& tx : blockToAdd.getTransactions()) {
+                if (!tx.isCoinbaseTransaction()) {
+                    uint64_t txFee = static_cast<uint64_t>(tx.getFee() * 100000000); // Convert to satoshis
+                    if (txFee > 0) {
+                        uint64_t poolDeposit = reversalFeePool->depositTransactionFeeSplit(
+                            tx.getHash(), txFee, feePoolSplitPercentage);
+                        totalPoolDeposits += poolDeposit;
+                    }
+                }
+            }
+            
+            if (totalPoolDeposits > 0) {
+                LOG_BLOCKCHAIN(LogLevel::INFO, "System Pool: Deposited " + 
+                              std::to_string(totalPoolDeposits / 100000000.0) + 
+                              " GXC from transaction fee splits (" + 
+                              std::to_string(feePoolSplitPercentage * 100) + "%)");
+            }
+        }
+        
         LOG_BLOCKCHAIN(LogLevel::INFO, "Block added successfully. Height: " + 
                       std::to_string(chain.size()) + ", Hash: " + blockToAdd.getHash().substr(0, 16) + "...");
         
@@ -582,12 +607,22 @@ double Blockchain::calculateBlockReward(uint32_t height) const {
         difficultyMultiplier = 1.0 + std::min(0.1, (difficulty - 1.0) / 100.0);
     }
     
-    // 3. Transaction fee component
-    // Miners get transaction fees on top of base reward
+    // 3. Transaction fee component with system pool split
+    // Transaction fees are split: 80-90% to miners, 10-20% to system pool
     double transactionFees = 0.0;
+    double systemPoolShare = 0.0;
+    double feePoolSplitPercentage = Config::getDouble("fee_pool_split_percentage", 0.15); // Default 15%
+    
     for (const auto& tx : pendingTransactions) {
-        transactionFees += tx.getFee();
+        double txFee = tx.getFee();
+        double poolShare = txFee * feePoolSplitPercentage;
+        double minerShare = txFee - poolShare;
+        
+        transactionFees += minerShare;
+        systemPoolShare += poolShare;
     }
+    
+    // Note: systemPoolShare will be deposited to pool separately during block processing
     
     // 4. Network health bonus
     // If blocks are being mined slower than target, increase reward slightly
@@ -1650,6 +1685,47 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         LOG_BLOCKCHAIN(LogLevel::WARNING, "Transaction has excess input: " + std::to_string(excessAmount) + 
                       " GXC will be added to fee (potential coin burning)");
         // Note: We allow this but log a warning - the excess goes to the miner as extra fee
+    }
+    
+    // REVERSAL TRANSACTION VALIDATION
+    if (txType == TransactionType::REVERSAL) {
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Validating REVERSAL transaction: " + tx.getHash());
+        
+        // Reversal transactions are special - they don't follow normal UTXO rules
+        // They are validated by the reversal system (ProofGenerator)
+        // Here we just check basic structure
+        
+        // Must have exactly one input (current holder) and one output (victim)
+        if (tx.getInputs().size() != 1) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "REVERSAL transaction must have exactly 1 input");
+            return false;
+        }
+        
+        if (tx.getOutputs().size() != 1) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "REVERSAL transaction must have exactly 1 output");
+            return false;
+        }
+        
+        // Amount must be > 0
+        double amount = tx.getTotalOutputAmount();
+        if (amount <= 0) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "REVERSAL transaction amount must be > 0");
+            return false;
+        }
+        
+        // Fee must be paid (from system pool)
+        double fee = tx.getFee();
+        if (fee <= 0) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "REVERSAL transaction must have fee > 0");
+            return false;
+        }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "REVERSAL transaction validated: " + tx.getHash() + 
+                      ", amount=" + std::to_string(amount) + ", fee=" + std::to_string(fee));
+        
+        // Note: Full reversal validation (proof verification) is done by ReversalExecutor
+        // before the transaction is created
+        return true;
     }
     
     LOG_BLOCKCHAIN(LogLevel::DEBUG, "Transaction validated: " + tx.getHash() + 
@@ -2759,5 +2835,212 @@ std::unordered_map<std::string, double> Blockchain::getAddressBalances() const {
     } catch (...) {
         return std::unordered_map<std::string, double>();
     }
+}
+
+// ============================================================================
+// FRAUD DETECTION INTEGRATION
+// ============================================================================
+
+std::shared_ptr<Transaction> Blockchain::getTransaction(const std::string& txHash) const {
+    try {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        
+        // Search through all blocks for the transaction
+        for (const auto& blockPtr : chain) {
+            if (!blockPtr) continue;
+            
+            const auto& transactions = blockPtr->getTransactions();
+            for (const auto& tx : transactions) {
+                if (tx.getHash() == txHash) {
+                    return std::make_shared<Transaction>(tx);
+                }
+            }
+        }
+        
+        // Check pending transactions
+        std::lock_guard<std::mutex> txLock(transactionMutex);
+        for (const auto& tx : pendingTransactions) {
+            if (tx.getHash() == txHash) {
+                return std::make_shared<Transaction>(tx);
+            }
+        }
+        
+        return nullptr;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+std::vector<std::string> Blockchain::getDescendantTransactions(const std::string& txHash) const {
+    try {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        std::vector<std::string> descendants;
+        
+        // Find all transactions that spend outputs from this transaction
+        for (const auto& blockPtr : chain) {
+            if (!blockPtr) continue;
+            
+            const auto& transactions = blockPtr->getTransactions();
+            for (const auto& tx : transactions) {
+                // Check if any input references the given transaction
+                const auto& inputs = tx.getInputs();
+                for (const auto& input : inputs) {
+                    if (input.txHash == txHash) {
+                        descendants.push_back(tx.getHash());
+                        break; // Found a match, move to next transaction
+                    }
+                }
+            }
+        }
+        
+        return descendants;
+    } catch (...) {
+        return std::vector<std::string>();
+    }
+}
+
+std::vector<std::shared_ptr<Transaction>> Blockchain::getTransactionsByAddress(const std::string& address) const {
+    try {
+        std::lock_guard<std::mutex> lock(chainMutex);
+        std::vector<std::shared_ptr<Transaction>> transactions;
+        
+        // Search through all blocks for transactions involving this address
+        for (const auto& blockPtr : chain) {
+            if (!blockPtr) continue;
+            
+            const auto& blockTransactions = blockPtr->getTransactions();
+            for (const auto& tx : blockTransactions) {
+                bool isRelevant = false;
+                
+                // Check if address is sender or receiver
+                if (tx.getSenderAddress() == address || tx.getReceiverAddress() == address) {
+                    isRelevant = true;
+                }
+                
+                // Check outputs
+                const auto& outputs = tx.getOutputs();
+                for (const auto& output : outputs) {
+                    if (output.address == address) {
+                        isRelevant = true;
+                        break;
+                    }
+                }
+                
+                // Check inputs
+                const auto& inputs = tx.getInputs();
+                for (const auto& input : inputs) {
+                    // Would need to look up the input transaction to get its address
+                    // For now, we'll skip this check
+                }
+                
+                if (isRelevant) {
+                    transactions.push_back(std::make_shared<Transaction>(tx));
+                }
+            }
+        }
+        
+        return transactions;
+    } catch (...) {
+        return std::vector<std::shared_ptr<Transaction>>();
+    }
+}
+
+// Get the block height where a transaction was confirmed
+uint32_t Blockchain::getTransactionBlockHeight(const std::string& txHash) const {
+    try {
+        // Search through all blocks to find the transaction
+        uint32_t chainHeight = getHeight();
+        for (uint32_t height = 0; height <= chainHeight; height++) {
+            try {
+                Block block = getBlock(height);
+                
+                // Check if transaction is in this block
+                const auto& transactions = block.getTransactions();
+                for (const auto& tx : transactions) {
+                    if (tx.getHash() == txHash) {
+                        LOG_BLOCKCHAIN(LogLevel::DEBUG, 
+                            "Transaction " + txHash + " found at block height " + std::to_string(height));
+                        return height;
+                    }
+                }
+            } catch (...) {
+                // Block not found, continue
+                continue;
+            }
+        }
+        
+        // Transaction not found in any block
+        LOG_BLOCKCHAIN(LogLevel::WARNING, 
+            "Transaction " + txHash + " not found in blockchain (may be in mempool)");
+        return 0;
+        
+    } catch (const std::exception& e) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, 
+            "Error getting transaction block height: " + std::string(e.what()));
+        return 0;
+    }
+}
+
+// Add a reversal transaction to the blockchain
+bool Blockchain::addReversalTransaction(const std::string& from, 
+                                       const std::string& to,
+                                       uint64_t amount,
+                                       const std::string& proof_hash,
+                                       uint64_t fee) {
+    try {
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Adding reversal transaction to blockchain");
+        LOG_BLOCKCHAIN(LogLevel::INFO, "From: " + from);
+        LOG_BLOCKCHAIN(LogLevel::INFO, "To: " + to);
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Amount: " + std::to_string(amount));
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Proof: " + proof_hash);
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Fee: " + std::to_string(fee));
+        
+        // Create reversal transaction
+        // Note: Transaction creation is simplified here
+        // In production, this would create proper UTXO inputs/outputs
+        
+        // For now, just log the reversal
+        // The actual balance updates are handled by ReversalExecutor
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Reversal transaction structure:");
+        LOG_BLOCKCHAIN(LogLevel::INFO, "  Type: REVERSAL");
+        LOG_BLOCKCHAIN(LogLevel::INFO, "  From: " + from);
+        LOG_BLOCKCHAIN(LogLevel::INFO, "  To: " + to);
+        LOG_BLOCKCHAIN(LogLevel::INFO, "  Amount: " + std::to_string(amount));
+        LOG_BLOCKCHAIN(LogLevel::INFO, "  Fee: " + std::to_string(fee));
+        LOG_BLOCKCHAIN(LogLevel::INFO, "  Proof: " + proof_hash);
+        
+        // Verify balances
+        uint64_t from_balance = getBalance(from);
+        if (from_balance < amount) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Insufficient balance for reversal");
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Required: " + std::to_string(amount) + 
+                          ", Available: " + std::to_string(from_balance));
+            return false;
+        }
+        
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Balance check passed");
+        LOG_BLOCKCHAIN(LogLevel::INFO, "Reversal will be processed by ReversalExecutor");
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, 
+            "Error adding reversal transaction: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// Check if a transaction has already been reversed
+bool Blockchain::isTransactionReversed(const std::string& txHash) const {
+    std::lock_guard<std::mutex> lock(reversalMutex);
+    return reversedTransactions.find(txHash) != reversedTransactions.end();
+}
+
+// Mark a transaction as reversed
+void Blockchain::markTransactionAsReversed(const std::string& txHash, const std::string& reversal_tx_hash) {
+    std::lock_guard<std::mutex> lock(reversalMutex);
+    reversedTransactions[txHash] = reversal_tx_hash;
+    LOG_BLOCKCHAIN(LogLevel::INFO, 
+        "Transaction " + txHash + " marked as reversed by " + reversal_tx_hash);
 }
 

@@ -94,6 +94,11 @@ private:
         uint64_t timestamp;
     };
     std::unordered_map<std::string, TraceabilityEntry> traceabilityIndex;
+
+    // Reversal tracking (prevent double reversals)
+    std::unordered_map<std::string, std::string> reversedTransactions;
+    mutable std::mutex reversalMutex;
+
     
 public:
     // Constructor
@@ -261,6 +266,39 @@ public:
     size_t getAddressesWithBalanceCount() const;
     std::vector<std::string> getAllAddresses() const;
     std::unordered_map<std::string, double> getAddressBalances() const;
+    
+    // Fraud Detection Integration
+    std::shared_ptr<Transaction> getTransaction(const std::string& txHash) const;
+    std::vector<std::string> getDescendantTransactions(const std::string& txHash) const;
+    std::vector<std::shared_ptr<Transaction>> getTransactionsByAddress(const std::string& address) const;
+    
+    // Reversal System Integration
+    /**
+     * Get the block height where a transaction was confirmed
+     * Returns 0 if transaction not found or not yet confirmed
+     */
+    uint32_t getTransactionBlockHeight(const std::string& txHash) const;
+    
+    /**
+     * Add a reversal transaction to the blockchain
+     * This is called by ReversalExecutor after proof validation
+     */
+    bool addReversalTransaction(const std::string& from, 
+                               const std::string& to,
+                               uint64_t amount,
+                               const std::string& proof_hash,
+                               uint64_t fee);
+    
+    /**
+     * Check if a transaction has already been reversed
+     * Uses POT chain to prevent double reversals
+     */
+    bool isTransactionReversed(const std::string& txHash) const;
+    
+    /**
+     * Mark a transaction as reversed
+     */
+    void markTransactionAsReversed(const std::string& txHash, const std::string& reversal_tx_hash);
     // Constants
     static const uint32_t MAX_SUPPLY = 31000000; // 31 million GXC
     static const uint32_t HALVING_INTERVAL = 1051200; // ~4 years

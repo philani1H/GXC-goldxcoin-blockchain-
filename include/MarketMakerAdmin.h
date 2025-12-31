@@ -83,11 +83,53 @@ struct AdminUser {
     std::string adminId;
     std::string username;
     std::string passwordHash;
-    std::string role;            // "super_admin", "verifier", "reviewer"
+    std::string role;            // "super_admin", "fraud_admin", "fraud_approver", "fraud_reviewer", "verifier", "reviewer"
     std::vector<std::string> permissions;
     bool isActive;
     std::time_t createdAt;
     std::time_t lastLoginAt;
+    std::string sessionToken;    // Current session token
+    std::time_t sessionExpiry;   // Session expiration time
+};
+
+/**
+ * Fraud Report (for admin management)
+ * 
+ * IMPORTANT: Admin approval validates FACTS (fraud legitimacy), not execution.
+ * The protocol independently validates feasibility and executes automatically.
+ * 
+ * Status Flow:
+ * 1. PENDING: Awaiting admin review
+ * 2. FACTS_APPROVED: Admin confirmed fraud is legitimate
+ * 3. FACTS_REJECTED: Admin determined fraud claim is invalid
+ * 4. PROTOCOL_VALIDATING: System checking mathematical feasibility
+ * 5. EXECUTED: Protocol validated and executed reversal
+ * 6. INFEASIBLE: Protocol determined reversal is mathematically impossible
+ */
+struct FraudReport {
+    std::string reportId;
+    std::string txHash;
+    std::string reporterAddress;
+    double amount;
+    std::string email;
+    std::string description;
+    std::string evidence;
+    uint64_t timestamp;
+    
+    // Admin fact validation (NOT execution approval)
+    std::string factsStatus;     // "PENDING", "FACTS_APPROVED", "FACTS_REJECTED"
+    std::string reviewedBy;      // Admin ID who reviewed facts
+    uint64_t reviewedAt;
+    std::string reviewNotes;     // Admin's notes on fraud legitimacy
+    std::string assignedTo;      // Admin ID assigned to review
+    
+    // Protocol execution status (independent of admin)
+    std::string executionStatus; // "NOT_STARTED", "VALIDATING", "EXECUTED", "INFEASIBLE"
+    std::string proofHash;       // Hash of generated proof
+    uint64_t validatedAt;        // When protocol validated
+    uint64_t executedAt;         // When reversal executed
+    uint64_t recoveredAmount;    // Amount actually recovered
+    std::string executionNotes;  // Protocol's notes on feasibility/execution
 };
 
 /**
@@ -111,22 +153,35 @@ class MarketMakerAdmin {
 private:
     std::unordered_map<std::string, MarketMakerApplication> applications;
     std::unordered_map<std::string, AdminUser> admins;
+    std::unordered_map<std::string, FraudReport> fraudReports;
+    std::unordered_map<std::string, std::string> sessionTokens; // token -> adminId
     std::vector<AuditLogEntry> auditLog;
     
     // Generate unique IDs
     std::string generateApplicationId();
     std::string generateAdminId();
     std::string generateLogId();
+    std::string generateReportId();
+    std::string generateSessionToken();
     
     // Verify admin permissions
     bool verifyAdminPermission(const std::string& adminId, const std::string& permission);
+    bool verifySessionToken(const std::string& sessionToken, std::string& adminId);
     
     // Log action
     void logAction(const std::string& adminId, const std::string& action, 
-                   const std::string& applicationId, const std::string& details);
+                   const std::string& targetId, const std::string& details);
+    
+    // Fraud detection system (for reversal execution)
+    class FraudDetection* fraudDetection;
     
 public:
     MarketMakerAdmin();
+    
+    // Set fraud detection system (called after initialization)
+    void setFraudDetection(class FraudDetection* fd) {
+        fraudDetection = fd;
+    }
     
     // ===== ADMIN MANAGEMENT =====
     
@@ -144,14 +199,25 @@ public:
     
     /**
      * Admin login
-     * Returns: Admin session token
+     * Returns: JSON with session token and admin info
      */
-    std::string adminLogin(const std::string& username, const std::string& password);
+    json adminLogin(const std::string& username, const std::string& password);
+    
+    /**
+     * Admin logout
+     */
+    bool adminLogout(const std::string& sessionToken);
     
     /**
      * Verify admin session
+     * Returns: Admin ID if valid, empty string if invalid
      */
-    bool verifyAdminSession(const std::string& sessionToken);
+    std::string verifyAdminSession(const std::string& sessionToken);
+    
+    /**
+     * Get admin from session token
+     */
+    AdminUser getAdminFromSession(const std::string& sessionToken);
     
     /**
      * Get admin info
@@ -432,6 +498,91 @@ public:
      * Get market maker application history
      */
     std::vector<MarketMakerApplication> getMarketMakerHistory(const std::string& marketMakerId);
+    
+    // ===== FRAUD DETECTION MANAGEMENT =====
+    
+    /**
+     * Submit fraud report (public - no admin required)
+     */
+    std::string submitFraudReport(
+        const std::string& txHash,
+        const std::string& reporterAddress,
+        double amount,
+        const std::string& email,
+        const std::string& description,
+        const std::string& evidence
+    );
+    
+    /**
+     * Get pending fraud reports
+     * Requires: fraud_reviewer permission
+     */
+    std::vector<FraudReport> getPendingFraudReports(const std::string& sessionToken);
+    
+    /**
+     * Get fraud report details
+     * Requires: fraud_reviewer permission
+     */
+    FraudReport getFraudReportDetails(const std::string& sessionToken, const std::string& reportId);
+    
+    /**
+     * Assign fraud report to reviewer
+     * Requires: fraud_admin permission
+     */
+    bool assignFraudReportToReviewer(
+        const std::string& sessionToken,
+        const std::string& reportId,
+        const std::string& reviewerAdminId
+    );
+    
+    /**
+     * Approve fraud report (marks transaction as stolen)
+     * Requires: fraud_approver permission
+     */
+    bool approveFraudReport(
+        const std::string& sessionToken,
+        const std::string& reportId,
+        const std::string& notes
+    );
+    
+    /**
+     * Reject fraud report
+     * Requires: fraud_approver permission
+     */
+    bool rejectFraudReport(
+        const std::string& sessionToken,
+        const std::string& reportId,
+        const std::string& reason
+    );
+    
+    /**
+     * Get fraud statistics
+     * Requires: fraud_reviewer permission
+     */
+    json getFraudStatistics(const std::string& sessionToken);
+    
+    /**
+     * Get all fraud reports (with filter)
+     * Requires: fraud_reviewer permission
+     */
+    std::vector<FraudReport> getAllFraudReports(
+        const std::string& sessionToken,
+        const std::string& statusFilter = "ALL"
+    );
+    
+    // ===== ADMIN DASHBOARD =====
+    
+    /**
+     * Get dashboard overview
+     * Requires: any admin permission
+     */
+    json getDashboardOverview(const std::string& sessionToken);
+    
+    /**
+     * Get admin activity summary
+     * Requires: super_admin permission
+     */
+    json getAdminActivitySummary(const std::string& sessionToken);
 };
 
 /**

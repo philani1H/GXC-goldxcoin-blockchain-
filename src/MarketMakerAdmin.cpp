@@ -1,4 +1,6 @@
 #include "../include/MarketMakerAdmin.h"
+#include "../include/Logger.h"
+#include "../include/FraudDetection.h"
 #include <random>
 #include <sstream>
 #include <iomanip>
@@ -137,7 +139,7 @@ std::string MarketMakerAdmin::createAdmin(
 }
 
 // Admin login
-std::string MarketMakerAdmin::adminLogin(const std::string& username, const std::string& password) {
+json MarketMakerAdmin::adminLogin(const std::string& username, const std::string& password) {
     std::string passwordHash = hashPassword(password);
     
     for (auto& [adminId, admin] : admins) {
@@ -686,4 +688,466 @@ std::string applicationStatusToString(ApplicationStatus status) {
         case ApplicationStatus::REVOKED: return "REVOKED";
         default: return "UNKNOWN";
     }
+}
+
+// ============================================================================
+// FRAUD DETECTION MANAGEMENT IMPLEMENTATION
+// ============================================================================
+
+std::string MarketMakerAdmin::generateReportId() {
+    static uint32_t counter = 1;
+    return "FRAUD_REPORT_" + std::to_string(counter++);
+}
+
+std::string MarketMakerAdmin::generateSessionToken() {
+    // Generate random session token
+    std::string token = "SESSION_";
+    for (int i = 0; i < 32; i++) {
+        token += "0123456789abcdef"[rand() % 16];
+    }
+    return token;
+}
+
+bool MarketMakerAdmin::verifySessionToken(const std::string& sessionToken, std::string& adminId) {
+    auto it = sessionTokens.find(sessionToken);
+    if (it == sessionTokens.end()) {
+        return false;
+    }
+    
+    adminId = it->second;
+    
+    // Check if session expired
+    auto adminIt = admins.find(adminId);
+    if (adminIt == admins.end()) {
+        sessionTokens.erase(it);
+        return false;
+    }
+    
+    if (std::time(nullptr) > adminIt->second.sessionExpiry) {
+        sessionTokens.erase(it);
+        return false;
+    }
+    
+    return true;
+}
+
+// Duplicate adminLogin removed - using the one at line 140
+
+bool MarketMakerAdmin::adminLogout(const std::string& sessionToken) {
+    auto it = sessionTokens.find(sessionToken);
+    if (it != sessionTokens.end()) {
+        std::string adminId = it->second;
+        sessionTokens.erase(it);
+        
+        logAction(adminId, "admin_logout", "", "Admin logged out");
+        return true;
+    }
+    return false;
+}
+
+std::string MarketMakerAdmin::verifyAdminSession(const std::string& sessionToken) {
+    std::string adminId;
+    if (verifySessionToken(sessionToken, adminId)) {
+        return adminId;
+    }
+    return "";
+}
+
+AdminUser MarketMakerAdmin::getAdminFromSession(const std::string& sessionToken) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (!adminId.empty()) {
+        auto it = admins.find(adminId);
+        if (it != admins.end()) {
+            return it->second;
+        }
+    }
+    throw std::runtime_error("Invalid session");
+}
+
+std::string MarketMakerAdmin::submitFraudReport(
+    const std::string& txHash,
+    const std::string& reporterAddress,
+    double amount,
+    const std::string& email,
+    const std::string& description,
+    const std::string& evidence
+) {
+    FraudReport report;
+    report.reportId = generateReportId();
+    report.txHash = txHash;
+    report.reporterAddress = reporterAddress;
+    report.amount = amount;
+    report.email = email;
+    report.description = description;
+    report.evidence = evidence;
+    report.timestamp = std::time(nullptr);
+    
+    // Admin fact validation fields
+    report.factsStatus = "PENDING";
+    report.reviewedBy = "";
+    report.reviewedAt = 0;
+    report.reviewNotes = "";
+    report.assignedTo = "";
+    
+    // Protocol execution fields
+    report.executionStatus = "NOT_STARTED";
+    report.proofHash = "";
+    report.validatedAt = 0;
+    report.executedAt = 0;
+    report.recoveredAmount = 0;
+    report.executionNotes = "";
+    
+    fraudReports[report.reportId] = report;
+    
+    // Log submission (no admin ID for public submission)
+    logAction("PUBLIC", "fraud_report_submitted", report.reportId, 
+              "Fraud report submitted for TX: " + txHash);
+    
+    return report.reportId;
+}
+
+std::vector<FraudReport> MarketMakerAdmin::getPendingFraudReports(const std::string& sessionToken) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (adminId.empty()) {
+        throw std::runtime_error("Invalid session");
+    }
+    
+    if (!verifyAdminPermission(adminId, "fraud_reviewer")) {
+        throw std::runtime_error("Permission denied: Requires fraud_reviewer permission");
+    }
+    
+    std::vector<FraudReport> pending;
+    for (const auto& [id, report] : fraudReports) {
+        if (report.factsStatus == "PENDING") {
+            pending.push_back(report);
+        }
+    }
+    
+    return pending;
+}
+
+FraudReport MarketMakerAdmin::getFraudReportDetails(const std::string& sessionToken, const std::string& reportId) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (adminId.empty()) {
+        throw std::runtime_error("Invalid session");
+    }
+    
+    if (!verifyAdminPermission(adminId, "fraud_reviewer")) {
+        throw std::runtime_error("Permission denied: Requires fraud_reviewer permission");
+    }
+    
+    auto it = fraudReports.find(reportId);
+    if (it == fraudReports.end()) {
+        throw std::runtime_error("Fraud report not found");
+    }
+    
+    return it->second;
+}
+
+bool MarketMakerAdmin::assignFraudReportToReviewer(
+    const std::string& sessionToken,
+    const std::string& reportId,
+    const std::string& reviewerAdminId
+) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (adminId.empty()) {
+        throw std::runtime_error("Invalid session");
+    }
+    
+    if (!verifyAdminPermission(adminId, "fraud_admin")) {
+        throw std::runtime_error("Permission denied: Requires fraud_admin permission");
+    }
+    
+    auto it = fraudReports.find(reportId);
+    if (it == fraudReports.end()) {
+        throw std::runtime_error("Fraud report not found");
+    }
+    
+    // Verify reviewer exists and has permission
+    if (!verifyAdminPermission(reviewerAdminId, "fraud_reviewer")) {
+        throw std::runtime_error("Target admin does not have fraud_reviewer permission");
+    }
+    
+    it->second.assignedTo = reviewerAdminId;
+    
+    logAction(adminId, "fraud_report_assigned", reportId, 
+              "Assigned to admin: " + reviewerAdminId);
+    
+    return true;
+}
+
+bool MarketMakerAdmin::approveFraudReport(
+    const std::string& sessionToken,
+    const std::string& reportId,
+    const std::string& notes
+) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (adminId.empty()) {
+        throw std::runtime_error("Invalid session");
+    }
+    
+    if (!verifyAdminPermission(adminId, "fraud_approver")) {
+        throw std::runtime_error("Permission denied: Requires fraud_approver permission");
+    }
+    
+    auto it = fraudReports.find(reportId);
+    if (it == fraudReports.end()) {
+        throw std::runtime_error("Fraud report not found");
+    }
+    
+    // ADMIN APPROVES FACTS ONLY (not execution)
+    // This confirms the fraud claim is legitimate based on evidence
+    it->second.factsStatus = "FACTS_APPROVED";
+    it->second.reviewedBy = adminId;
+    it->second.reviewedAt = std::time(nullptr);
+    it->second.reviewNotes = notes;
+    it->second.executionStatus = "VALIDATING";
+    
+    logAction(adminId, "fraud_facts_approved", reportId, 
+              "Approved fraud legitimacy for TX: " + it->second.txHash + 
+              " - Protocol will now validate feasibility");
+    
+    LOG_INFO("Admin " + adminId + " approved fraud FACTS for report " + reportId);
+    LOG_INFO("Protocol will now independently validate feasibility and execute if possible");
+    
+    // PROTOCOL VALIDATION AND EXECUTION (independent of admin)
+    if (fraudDetection) {
+        LOG_INFO("Protocol: Starting independent feasibility validation");
+        
+        std::string adminSignature = "ADMIN_" + adminId + "_" + std::to_string(std::time(nullptr));
+        
+        // Generate proof (mathematical analysis)
+        ProofOfFeasibility proof = fraudDetection->generateReversalProof(
+            it->second.txHash,
+            it->second.reporterAddress,
+            adminId,
+            adminSignature
+        );
+        
+        if (!proof.proof_hash.empty()) {
+            it->second.proofHash = proof.proof_hash;
+            it->second.validatedAt = std::time(nullptr);
+            
+            // Protocol validates feasibility independently
+            LOG_INFO("Protocol: Proof generated, validating mathematical feasibility");
+            
+            bool reversalSuccess = fraudDetection->executeReversal(proof);
+            
+            if (reversalSuccess) {
+                // AUTOMATIC EXECUTION (protocol determined it's feasible)
+                it->second.executionStatus = "EXECUTED";
+                it->second.executedAt = std::time(nullptr);
+                it->second.recoveredAmount = proof.recoverable_amount;
+                it->second.executionNotes = "Protocol validated feasibility and executed automatically. " +
+                                           "Recovered " + std::to_string(proof.recoverable_amount) + " satoshis.";
+                
+                LOG_INFO("Protocol: Reversal EXECUTED - Recovered " + 
+                        std::to_string(proof.recoverable_amount) + " satoshis");
+                LOG_INFO("Admin approved FACTS, Protocol validated and executed");
+            } else {
+                // AUTOMATIC REJECTION (protocol determined it's infeasible)
+                it->second.executionStatus = "INFEASIBLE";
+                it->second.executionNotes = "Protocol determined reversal is mathematically infeasible. " +
+                                           "Possible reasons: insufficient balance, funds already moved, " +
+                                           "or taint score below threshold.";
+                
+                LOG_WARNING("Protocol: Reversal INFEASIBLE - Cannot execute");
+                LOG_WARNING("Admin approved FACTS, but Protocol rejected due to mathematical constraints");
+            }
+        } else {
+            // Proof generation failed
+            it->second.executionStatus = "INFEASIBLE";
+            it->second.executionNotes = "Protocol failed to generate proof. " +
+                                       "Transaction may not exist or taint tracking data unavailable.";
+            LOG_ERROR("Protocol: Failed to generate reversal proof");
+        }
+    } else {
+        // No fraud detection system available
+        it->second.executionStatus = "INFEASIBLE";
+        it->second.executionNotes = "Fraud detection system not available.";
+        LOG_ERROR("Fraud detection system not initialized");
+    }
+    
+    return true;
+}
+
+bool MarketMakerAdmin::rejectFraudReport(
+    const std::string& sessionToken,
+    const std::string& reportId,
+    const std::string& reason
+) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (adminId.empty()) {
+        throw std::runtime_error("Invalid session");
+    }
+    
+    if (!verifyAdminPermission(adminId, "fraud_approver")) {
+        throw std::runtime_error("Permission denied: Requires fraud_approver permission");
+    }
+    
+    auto it = fraudReports.find(reportId);
+    if (it == fraudReports.end()) {
+        throw std::runtime_error("Fraud report not found");
+    }
+    
+    // Admin rejects FACTS (fraud claim determined to be invalid)
+    it->second.factsStatus = "FACTS_REJECTED";
+    it->second.reviewedBy = adminId;
+    it->second.reviewedAt = std::time(nullptr);
+    it->second.reviewNotes = reason;
+    it->second.executionStatus = "NOT_STARTED";
+    it->second.executionNotes = "Admin determined fraud claim is invalid. No protocol validation performed.";
+    
+    logAction(adminId, "fraud_facts_rejected", reportId, 
+              "Rejected fraud claim as invalid: " + reason);
+    
+    LOG_INFO("Admin " + adminId + " rejected fraud FACTS for report " + reportId + 
+             " - Reason: " + reason);
+    
+    return true;
+}
+
+json MarketMakerAdmin::getFraudStatistics(const std::string& sessionToken) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (adminId.empty()) {
+        throw std::runtime_error("Invalid session");
+    }
+    
+    if (!verifyAdminPermission(adminId, "fraud_reviewer")) {
+        throw std::runtime_error("Permission denied: Requires fraud_reviewer permission");
+    }
+    
+    uint32_t totalReports = fraudReports.size();
+    uint32_t pendingReports = 0;
+    uint32_t approvedReports = 0;
+    uint32_t rejectedReports = 0;
+    double totalAmountReported = 0.0;
+    
+    for (const auto& [id, report] : fraudReports) {
+        if (report.factsStatus == "PENDING") pendingReports++;
+        else if (report.factsStatus == "FACTS_APPROVED") approvedReports++;
+        else if (report.factsStatus == "FACTS_REJECTED") rejectedReports++;
+        
+        totalAmountReported += report.amount;
+    }
+    
+    json stats;
+    stats["totalReports"] = totalReports;
+    stats["pendingReports"] = pendingReports;
+    stats["approvedReports"] = approvedReports;
+    stats["rejectedReports"] = rejectedReports;
+    stats["totalAmountReported"] = totalAmountReported;
+    
+    return stats;
+}
+
+std::vector<FraudReport> MarketMakerAdmin::getAllFraudReports(
+    const std::string& sessionToken,
+    const std::string& statusFilter
+) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (adminId.empty()) {
+        throw std::runtime_error("Invalid session");
+    }
+    
+    if (!verifyAdminPermission(adminId, "fraud_reviewer")) {
+        throw std::runtime_error("Permission denied: Requires fraud_reviewer permission");
+    }
+    
+    std::vector<FraudReport> reports;
+    for (const auto& [id, report] : fraudReports) {
+        // Support both old and new status filters for backward compatibility
+        bool matchesFilter = (statusFilter == "ALL") ||
+                            (report.factsStatus == statusFilter) ||
+                            (statusFilter == "PENDING" && report.factsStatus == "PENDING") ||
+                            (statusFilter == "APPROVED" && report.factsStatus == "FACTS_APPROVED") ||
+                            (statusFilter == "REJECTED" && report.factsStatus == "FACTS_REJECTED");
+        
+        if (matchesFilter) {
+            reports.push_back(report);
+        }
+    }
+    
+    return reports;
+}
+
+json MarketMakerAdmin::getDashboardOverview(const std::string& sessionToken) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (adminId.empty()) {
+        throw std::runtime_error("Invalid session");
+    }
+    
+    json overview;
+    
+    // Get admin info
+    auto adminIt = admins.find(adminId);
+    if (adminIt != admins.end()) {
+        overview["admin"]["username"] = adminIt->second.username;
+        overview["admin"]["role"] = adminIt->second.role;
+        overview["admin"]["permissions"] = adminIt->second.permissions;
+    }
+    
+    // Count pending items based on permissions
+    if (verifyAdminPermission(adminId, "fraud_reviewer")) {
+        uint32_t pendingFraud = 0;
+        for (const auto& [id, report] : fraudReports) {
+            if (report.factsStatus == "PENDING") pendingFraud++;
+        }
+        overview["pendingFraudReports"] = pendingFraud;
+    }
+    
+    if (verifyAdminPermission(adminId, "verifier")) {
+        uint32_t pendingMM = 0;
+        for (const auto& [id, app] : applications) {
+            if (app.status == ApplicationStatus::PENDING || 
+                app.status == ApplicationStatus::UNDER_REVIEW) {
+                pendingMM++;
+            }
+        }
+        overview["pendingMMApplications"] = pendingMM;
+    }
+    
+    // Recent activity
+    overview["recentActivity"] = json::array();
+    int count = 0;
+    for (auto it = auditLog.rbegin(); it != auditLog.rend() && count < 10; ++it, ++count) {
+        json activity;
+        activity["action"] = it->action;
+        activity["timestamp"] = it->timestamp;
+        activity["details"] = it->details;
+        overview["recentActivity"].push_back(activity);
+    }
+    
+    return overview;
+}
+
+json MarketMakerAdmin::getAdminActivitySummary(const std::string& sessionToken) {
+    std::string adminId = verifyAdminSession(sessionToken);
+    if (adminId.empty()) {
+        throw std::runtime_error("Invalid session");
+    }
+    
+    if (!verifyAdminPermission(adminId, "super_admin")) {
+        throw std::runtime_error("Permission denied: Requires super_admin permission");
+    }
+    
+    json summary;
+    summary["totalAdmins"] = admins.size();
+    summary["totalAuditLogs"] = auditLog.size();
+    
+    // Count active admins
+    uint32_t activeAdmins = 0;
+    for (const auto& [id, admin] : admins) {
+        if (admin.isActive) activeAdmins++;
+    }
+    summary["activeAdmins"] = activeAdmins;
+    
+    // Admin activity by role
+    std::unordered_map<std::string, uint32_t> roleCount;
+    for (const auto& [id, admin] : admins) {
+        roleCount[admin.role]++;
+    }
+    summary["adminsByRole"] = roleCount;
+    
+    return summary;
 }

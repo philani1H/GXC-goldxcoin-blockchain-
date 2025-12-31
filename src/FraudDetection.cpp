@@ -2,6 +2,8 @@
 #include "../include/blockchain.h"
 #include "../include/transaction.h"
 #include "../include/Logger.h"
+#include "../include/ProofGenerator.h"
+#include "../include/ReversalExecutor.h"
 #include <algorithm>
 #include <sstream>
 
@@ -26,7 +28,7 @@ void FraudDetection::markAsStolen(const std::string& txHash) {
     taintMap[txHash] = taint;
     
     LOG_SECURITY(LogLevel::CRITICAL, 
-        "Transaction marked as stolen: " + txHash);
+        "Transaction marked as stolen: " + txHash, "FraudDetection");
     
     // Automatically propagate taint
     propagateTaint(txHash);
@@ -37,7 +39,7 @@ void FraudDetection::removeFromStolen(const std::string& txHash) {
     taintMap.erase(txHash);
     
     LOG_SECURITY(LogLevel::INFO, 
-        "Transaction removed from stolen list: " + txHash);
+        "Transaction removed from stolen list: " + txHash, "FraudDetection");
 }
 
 bool FraudDetection::isStolen(const std::string& txHash) const {
@@ -194,7 +196,7 @@ std::vector<FraudAlert> FraudDetection::checkTransaction(const Transaction& tx) 
     if (checkVelocityAnomaly(tx, taint)) {
         FraudAlert alert;
         alert.transactionHash = tx.getHash();
-        alert.address = tx.getFrom();
+        alert.address = tx.getSenderAddress();
         alert.rule = FraudAlert::RuleViolation::VELOCITY_ANOMALY;
         alert.taintScore = taint.taintScore;
         alert.level = calculateAlertLevel(taint.taintScore, 1);
@@ -209,7 +211,7 @@ std::vector<FraudAlert> FraudDetection::checkTransaction(const Transaction& tx) 
     if (checkFanOutPattern(tx, taint)) {
         FraudAlert alert;
         alert.transactionHash = tx.getHash();
-        alert.address = tx.getFrom();
+        alert.address = tx.getSenderAddress();
         alert.rule = FraudAlert::RuleViolation::FAN_OUT_PATTERN;
         alert.taintScore = taint.taintScore;
         alert.level = calculateAlertLevel(taint.taintScore, 1);
@@ -224,7 +226,7 @@ std::vector<FraudAlert> FraudDetection::checkTransaction(const Transaction& tx) 
     if (checkReAggregation(tx)) {
         FraudAlert alert;
         alert.transactionHash = tx.getHash();
-        alert.address = tx.getTo();
+        alert.address = tx.getReceiverAddress();
         alert.rule = FraudAlert::RuleViolation::RE_AGGREGATION;
         alert.taintScore = taint.taintScore;
         alert.level = calculateAlertLevel(taint.taintScore, 1);
@@ -239,7 +241,7 @@ std::vector<FraudAlert> FraudDetection::checkTransaction(const Transaction& tx) 
     if (checkDormancyActivation(tx, taint)) {
         FraudAlert alert;
         alert.transactionHash = tx.getHash();
-        alert.address = tx.getFrom();
+        alert.address = tx.getSenderAddress();
         alert.rule = FraudAlert::RuleViolation::DORMANCY_ACTIVATION;
         alert.taintScore = taint.taintScore;
         alert.level = calculateAlertLevel(taint.taintScore, 1);
@@ -254,7 +256,7 @@ std::vector<FraudAlert> FraudDetection::checkTransaction(const Transaction& tx) 
     if (checkCleanZoneEntry(tx, taint)) {
         FraudAlert alert;
         alert.transactionHash = tx.getHash();
-        alert.address = tx.getTo();
+        alert.address = tx.getReceiverAddress();
         alert.rule = FraudAlert::RuleViolation::CLEAN_ZONE_ENTRY;
         alert.taintScore = taint.taintScore;
         alert.level = FraudAlert::AlertLevel::CRITICAL; // Always critical
@@ -332,20 +334,19 @@ bool FraudDetection::checkDormancyActivation(const Transaction& tx, const TaintI
 
 // Rule 5: Clean Zone Entry
 bool FraudDetection::checkCleanZoneEntry(const Transaction& tx, const TaintInfo& taint) {
-    // Check if destination is a known clean zone
-    // (exchange, staking pool, merchant, etc.)
-    const std::string& destination = tx.getTo();
+    const std::string& destination = tx.getReceiverAddress();
     
     // Check if it's a staking transaction
     if (tx.getType() == TransactionType::STAKE) {
         return taint.taintScore > TAINT_THRESHOLD;
     }
     
-    // Check if destination is flagged as exchange/merchant
-    // (This would be populated from a registry)
-    // For now, we'll use a simple heuristic: high-volume addresses
+    // Check if destination is a registered clean zone
+    if (isCleanZone(destination)) {
+        return taint.taintScore > TAINT_THRESHOLD;
+    }
     
-    return false; // Implement based on address registry
+    return false;
 }
 
 // ============================================================================
@@ -372,26 +373,26 @@ void FraudDetection::addAlert(const FraudAlert& alert) {
     switch (alert.level) {
         case FraudAlert::AlertLevel::CRITICAL:
             levelStr = "CRITICAL";
-            LOG_SECURITY(LogLevel::CRITICAL, "FRAUD ALERT: " + alert.description);
+            LOG_SECURITY(LogLevel::CRITICAL, "FRAUD ALERT: " + alert.description, "FraudDetection");
             break;
         case FraudAlert::AlertLevel::HIGH:
             levelStr = "HIGH";
-            LOG_SECURITY(LogLevel::ERROR, "FRAUD ALERT: " + alert.description);
+            LOG_SECURITY(LogLevel::ERROR, "FRAUD ALERT: " + alert.description, "FraudDetection");
             break;
         case FraudAlert::AlertLevel::MEDIUM:
             levelStr = "MEDIUM";
-            LOG_SECURITY(LogLevel::WARNING, "FRAUD ALERT: " + alert.description);
+            LOG_SECURITY(LogLevel::WARNING, "FRAUD ALERT: " + alert.description, "FraudDetection");
             break;
         case FraudAlert::AlertLevel::LOW:
             levelStr = "LOW";
-            LOG_SECURITY(LogLevel::INFO, "FRAUD ALERT: " + alert.description);
+            LOG_SECURITY(LogLevel::INFO, "FRAUD ALERT: " + alert.description, "FraudDetection");
             break;
     }
     
     LOG_SECURITY(LogLevel::INFO, 
         "Alert Level: " + levelStr + 
         " | TX: " + alert.transactionHash + 
-        " | Taint: " + std::to_string(alert.taintScore));
+        " | Taint: " + std::to_string(alert.taintScore), "FraudDetection");
 }
 
 std::vector<FraudAlert> FraudDetection::getAlerts(FraudAlert::AlertLevel minLevel) const {
@@ -424,7 +425,7 @@ void FraudDetection::clearAlerts() {
 void FraudDetection::flagAddress(const std::string& address, const std::string& reason) {
     flaggedAddresses.insert(address);
     LOG_SECURITY(LogLevel::WARNING, 
-        "Address flagged: " + address + " | Reason: " + reason);
+        "Address flagged: " + address + " | Reason: " + reason, "FraudDetection");
 }
 
 void FraudDetection::unflagAddress(const std::string& address) {
@@ -482,7 +483,7 @@ FraudDetection::FraudStats FraudDetection::getStatistics() const {
 
 bool FraudDetection::shouldBlockTransaction(const Transaction& tx) const {
     // Block if sender or receiver is flagged
-    if (isAddressFlagged(tx.getFrom()) || isAddressFlagged(tx.getTo())) {
+    if (isAddressFlagged(tx.getSenderAddress()) || isAddressFlagged(tx.getReceiverAddress())) {
         return true;
     }
     
@@ -512,4 +513,319 @@ bool FraudDetection::shouldFreezeAddress(const std::string& address) const {
     }
     
     return (criticalCount >= 2);
+}
+
+// ============================================================================
+// CLEAN ZONE REGISTRY MANAGEMENT
+// ============================================================================
+
+void FraudDetection::registerExchange(const std::string& address, const std::string& name) {
+    CleanZoneInfo info;
+    info.type = CleanZoneType::EXCHANGE;
+    info.name = name;
+    info.registeredAt = std::time(nullptr);
+    
+    cleanZoneRegistry[address] = info;
+    
+    LOG_SECURITY(LogLevel::INFO, 
+        "Exchange registered: " + name + " (" + address + ")", "FraudDetection");
+}
+
+void FraudDetection::registerStakingPool(const std::string& address, const std::string& name) {
+    CleanZoneInfo info;
+    info.type = CleanZoneType::STAKING_POOL;
+    info.name = name;
+    info.registeredAt = std::time(nullptr);
+    
+    cleanZoneRegistry[address] = info;
+    
+    LOG_SECURITY(LogLevel::INFO, 
+        "Staking pool registered: " + name + " (" + address + ")", "FraudDetection");
+}
+
+void FraudDetection::registerMerchant(const std::string& address, const std::string& name) {
+    CleanZoneInfo info;
+    info.type = CleanZoneType::MERCHANT;
+    info.name = name;
+    info.registeredAt = std::time(nullptr);
+    
+    cleanZoneRegistry[address] = info;
+    
+    LOG_SECURITY(LogLevel::INFO, 
+        "Merchant registered: " + name + " (" + address + ")", "FraudDetection");
+}
+
+void FraudDetection::registerValidator(const std::string& address, const std::string& name) {
+    CleanZoneInfo info;
+    info.type = CleanZoneType::VALIDATOR;
+    info.name = name;
+    info.registeredAt = std::time(nullptr);
+    
+    cleanZoneRegistry[address] = info;
+    
+    LOG_SECURITY(LogLevel::INFO, 
+        "Validator registered: " + name + " (" + address + ")", "FraudDetection");
+}
+
+void FraudDetection::unregisterCleanZone(const std::string& address) {
+    auto it = cleanZoneRegistry.find(address);
+    if (it != cleanZoneRegistry.end()) {
+        std::string name = it->second.name;
+        cleanZoneRegistry.erase(it);
+        
+        LOG_SECURITY(LogLevel::INFO, 
+            "Clean zone unregistered: " + name + " (" + address + ")", "FraudDetection");
+    }
+}
+
+bool FraudDetection::isCleanZone(const std::string& address) const {
+    return cleanZoneRegistry.find(address) != cleanZoneRegistry.end();
+}
+
+std::string FraudDetection::getCleanZoneType(const std::string& address) const {
+    auto it = cleanZoneRegistry.find(address);
+    if (it == cleanZoneRegistry.end()) {
+        return "NOT_REGISTERED";
+    }
+    
+    switch (it->second.type) {
+        case CleanZoneType::EXCHANGE:
+            return "EXCHANGE";
+        case CleanZoneType::STAKING_POOL:
+            return "STAKING_POOL";
+        case CleanZoneType::MERCHANT:
+            return "MERCHANT";
+        case CleanZoneType::VALIDATOR:
+            return "VALIDATOR";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+std::vector<std::string> FraudDetection::getAllCleanZones() const {
+    std::vector<std::string> zones;
+    zones.reserve(cleanZoneRegistry.size());
+    
+    for (const auto& pair : cleanZoneRegistry) {
+        zones.push_back(pair.first);
+    }
+    
+    return zones;
+}
+
+// ============================================================================
+// ADDRESS CHECKING
+// ============================================================================
+
+std::vector<FraudAlert> FraudDetection::checkAddress(const std::string& address) {
+    std::vector<FraudAlert> addressSpecificAlerts;
+    
+    // Get all transactions involving this address
+    auto transactions = blockchain->getTransactionsByAddress(address);
+    
+    for (const auto& tx : transactions) {
+        auto txAlerts = checkTransaction(*tx);
+        for (const auto& alert : txAlerts) {
+            if (alert.address == address) {
+                addressSpecificAlerts.push_back(alert);
+            }
+        }
+    }
+    
+    return addressSpecificAlerts;
+}
+
+// ============================================================================
+// GRAPH ANALYSIS
+// ============================================================================
+
+std::vector<FraudDetection::FlowPath> FraudDetection::traceTaintedFlow(
+    const std::string& startTxHash, uint32_t maxHops) {
+    
+    std::vector<FlowPath> paths;
+    std::queue<FlowPath> queue;
+    
+    // Initialize with start transaction
+    FlowPath initialPath;
+    initialPath.transactions.push_back(startTxHash);
+    initialPath.taintScores.push_back(getTaintScore(startTxHash));
+    initialPath.finalTaint = getTaintScore(startTxHash);
+    initialPath.hops = 0;
+    
+    queue.push(initialPath);
+    
+    while (!queue.empty()) {
+        FlowPath currentPath = queue.front();
+        queue.pop();
+        
+        if (currentPath.hops >= maxHops) {
+            paths.push_back(currentPath);
+            continue;
+        }
+        
+        const std::string& lastTx = currentPath.transactions.back();
+        auto descendants = blockchain->getDescendantTransactions(lastTx);
+        
+        if (descendants.empty()) {
+            paths.push_back(currentPath);
+            continue;
+        }
+        
+        for (const auto& descTxHash : descendants) {
+            double descTaint = getTaintScore(descTxHash);
+            
+            if (descTaint < TAINT_THRESHOLD) {
+                continue;
+            }
+            
+            FlowPath newPath = currentPath;
+            newPath.transactions.push_back(descTxHash);
+            newPath.taintScores.push_back(descTaint);
+            newPath.finalTaint = descTaint;
+            newPath.hops++;
+            
+            auto tx = blockchain->getTransaction(descTxHash);
+            if (tx) {
+                newPath.addresses.push_back(tx->getReceiverAddress());
+            }
+            
+            queue.push(newPath);
+        }
+    }
+    
+    return paths;
+}
+
+// ============================================================================
+// PERSISTENCE
+// ============================================================================
+
+std::string FraudDetection::exportState() const {
+    std::ostringstream oss;
+    
+    // Export stolen transactions
+    oss << "STOLEN:" << stolenTransactions.size() << "\n";
+    for (const auto& txHash : stolenTransactions) {
+        oss << txHash << "\n";
+    }
+    
+    // Export taint map
+    oss << "TAINT:" << taintMap.size() << "\n";
+    for (const auto& pair : taintMap) {
+        oss << pair.first << "|"
+            << pair.second.taintScore << "|"
+            << pair.second.sourceTransaction << "|"
+            << pair.second.timestamp << "\n";
+    }
+    
+    // Export flagged addresses
+    oss << "FLAGGED:" << flaggedAddresses.size() << "\n";
+    for (const auto& address : flaggedAddresses) {
+        oss << address << "\n";
+    }
+    
+    // Export clean zones
+    oss << "CLEANZONES:" << cleanZoneRegistry.size() << "\n";
+    for (const auto& pair : cleanZoneRegistry) {
+        oss << pair.first << "|"
+            << static_cast<int>(pair.second.type) << "|"
+            << pair.second.name << "|"
+            << pair.second.registeredAt << "\n";
+    }
+    
+    return oss.str();
+}
+
+void FraudDetection::importState(const std::string& state) {
+    std::istringstream iss(state);
+    std::string line;
+    std::string section;
+    
+    while (std::getline(iss, line)) {
+        if (line.find("STOLEN:") == 0) {
+            section = "STOLEN";
+            continue;
+        } else if (line.find("TAINT:") == 0) {
+            section = "TAINT";
+            continue;
+        } else if (line.find("FLAGGED:") == 0) {
+            section = "FLAGGED";
+            continue;
+        } else if (line.find("CLEANZONES:") == 0) {
+            section = "CLEANZONES";
+            continue;
+        }
+        
+        if (section == "STOLEN") {
+            stolenTransactions.insert(line);
+        } else if (section == "TAINT") {
+            std::istringstream lineStream(line);
+            std::string txHash, sourceHash;
+            double score;
+            uint64_t timestamp;
+            
+            std::getline(lineStream, txHash, '|');
+            lineStream >> score;
+            lineStream.ignore(1);
+            std::getline(lineStream, sourceHash, '|');
+            lineStream >> timestamp;
+            
+            TaintInfo taint(score, sourceHash, timestamp);
+            taintMap[txHash] = taint;
+        } else if (section == "FLAGGED") {
+            flaggedAddresses.insert(line);
+        } else if (section == "CLEANZONES") {
+            std::istringstream lineStream(line);
+            std::string address, name;
+            int typeInt;
+            uint64_t registeredAt;
+            
+            std::getline(lineStream, address, '|');
+            lineStream >> typeInt;
+            lineStream.ignore(1);
+            std::getline(lineStream, name, '|');
+            lineStream >> registeredAt;
+            
+            CleanZoneInfo info;
+            info.type = static_cast<CleanZoneType>(typeInt);
+            info.name = name;
+            info.registeredAt = registeredAt;
+            
+            cleanZoneRegistry[address] = info;
+        }
+    }
+    
+    LOG_INFO("Fraud detection state imported successfully");
+}
+
+// ===== REVERSAL SYSTEM INTEGRATION =====
+
+ProofOfFeasibility FraudDetection::generateReversalProof(const std::string& stolen_tx,
+                                                        const std::string& current_holder,
+                                                        const std::string& admin_id,
+                                                        const std::string& admin_signature) {
+    if (!proofGenerator) {
+        LOG_ERROR("Proof generator not initialized");
+        return ProofOfFeasibility();
+    }
+    
+    return proofGenerator->generateProof(stolen_tx, current_holder, admin_id, admin_signature);
+}
+
+bool FraudDetection::validateReversalProof(const ProofOfFeasibility& proof) {
+    if (!proofGenerator) {
+        LOG_ERROR("Proof generator not initialized");
+        return false;
+    }
+    
+    return proofGenerator->validateProof(proof);
+}
+
+bool FraudDetection::executeReversal(const ProofOfFeasibility& proof) {
+    if (!reversalExecutor) {
+        LOG_ERROR("Reversal executor not initialized");
+        return false;
+    }
+    
+    return reversalExecutor->executeReversal(proof);
 }

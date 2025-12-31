@@ -215,6 +215,11 @@ set(GOVERNANCE_SOURCES
 # Security Engine
 set(SECURITY_SOURCES
     src/security/SecurityEngine.cpp
+    src/FraudDetection.cpp
+    src/MarketMakerAdmin.cpp
+    src/ReversalFeePool.cpp
+    src/ProofGenerator.cpp
+    src/ReversalExecutor.cpp
 )
 
 # Header files

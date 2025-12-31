@@ -24,7 +24,8 @@ enum class TransactionType {
     STAKE = 1,
     UNSTAKE = 2,
     REWARD = 3,      // Staking rewards (mints new coins)
-    COINBASE = 4     // Mining rewards (mints new coins)
+    COINBASE = 4,    // Mining rewards (mints new coins)
+    REVERSAL = 5     // Fraud reversal (system-approved fund recovery)
 };
 
 class Transaction {

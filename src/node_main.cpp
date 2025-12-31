@@ -5,6 +5,11 @@
 #include "../include/Network.h"
 #include "../include/RPCAPI.h"
 #include "../include/RESTServer.h"
+#include "../include/FraudDetection.h"
+#include "../include/MarketMakerAdmin.h"
+#include "../include/ReversalFeePool.h"
+#include "../include/ProofGenerator.h"
+#include "../include/ReversalExecutor.h"
 #include "../include/Utils.h"
 #include "../include/p2p_network.h"
 #include "../include/cpu_miner.h"
@@ -283,6 +288,38 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         
+        // Initialize Fraud Detection System
+        FraudDetection fraudDetection(&blockchain);
+        LOG_CORE(LogLevel::INFO, "Fraud Detection System initialized");
+        
+        // Initialize Market Maker Admin System
+        MarketMakerAdmin adminSystem;
+        LOG_CORE(LogLevel::INFO, "Market Maker Admin System initialized");
+        
+        // Initialize Reversal System
+        ReversalFeePool feePool;
+        // Initialize reversal fee pool with fixed address
+        std::string poolAddress = "GXC1REVERSAL_FEE_POOL_MAINNET";
+        feePool.initialize(poolAddress);
+        LOG_CORE(LogLevel::INFO, "Reversal Fee Pool initialized");
+        LOG_CORE(LogLevel::INFO, "Pool address: " + feePool.getPoolAddress());
+        LOG_CORE(LogLevel::INFO, "Dashboard owners should fund this address to enable reversals");
+        
+        ProofGenerator proofGenerator(&blockchain, &fraudDetection);
+        LOG_CORE(LogLevel::INFO, "Proof Generator initialized");
+        
+        ReversalExecutor reversalExecutor(&blockchain, &proofGenerator, &feePool);
+        LOG_CORE(LogLevel::INFO, "Reversal Executor initialized");
+        LOG_CORE(LogLevel::INFO, "Reversal system ready - double reversal prevention active");
+        
+        // Connect reversal system to fraud detection
+        fraudDetection.setReversalSystem(&proofGenerator, &reversalExecutor);
+        LOG_CORE(LogLevel::INFO, "Reversal system connected to fraud detection");
+        
+        // Connect fraud detection to admin system (for reversal triggers)
+        adminSystem.setFraudDetection(&fraudDetection);
+        LOG_CORE(LogLevel::INFO, "Fraud detection connected to admin system");
+        
         // Initialize RPC server
         RPCAPI rpcServer(&blockchain, nodeConfig.rpcPort);
         if (!rpcServer.start()) {
@@ -290,8 +327,9 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         
-        // Initialize REST server
-        RESTServer restServer(&blockchain, static_cast<uint16_t>(nodeConfig.restPort));
+        // Initialize REST server with Fraud Detection and Admin System
+        RESTServer restServer(&blockchain, &fraudDetection, &adminSystem, static_cast<uint16_t>(nodeConfig.restPort));
+        restServer.setReversalFeePool(&feePool);
         if (!restServer.start()) {
             LOG_CORE(LogLevel::ERROR, "Failed to start REST server on port " + std::to_string(nodeConfig.restPort));
             return 1;
