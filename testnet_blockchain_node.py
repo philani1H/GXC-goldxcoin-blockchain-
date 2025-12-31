@@ -215,35 +215,116 @@ class RPCHandler(BaseHTTPRequestHandler):
         pass
     
     def do_GET(self):
-        """Handle GET requests for health checks"""
-        if self.path == '/' or self.path == '/health' or self.path == '/ping':
-            # Health check endpoint
+        """Handle GET requests for health checks and REST API"""
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+        
+        # Health check endpoints
+        if path in ['/', '/health', '/ping']:
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             
             health_data = {
                 'status': 'ok',
-                'service': 'GXC Testnet Node',
+                'service': 'GXC Blockchain Node',
+                'network': 'testnet',
                 'height': self.blockchain.current_height if self.blockchain else 0,
                 'difficulty': self.blockchain.current_difficulty if self.blockchain else 0,
                 'timestamp': int(time.time())
             }
             self.wfile.write(json.dumps(health_data).encode('utf-8'))
+            return
+        
+        # REST API endpoints (GET alternatives to RPC methods)
+        elif path == '/api/getinfo' or path == '/getinfo':
+            result = self.blockchain.get_blockchain_info()
+        elif path == '/api/getblockcount' or path == '/getblockcount':
+            result = self.blockchain.current_height
+        elif path == '/api/getdifficulty' or path == '/getdifficulty':
+            result = self.blockchain.current_difficulty
+        elif path == '/api/getbestblockhash' or path == '/getbestblockhash':
+            latest = self.blockchain.get_latest_block()
+            result = latest['hash'] if latest else '0' * 64
+        elif path == '/api/getlatestblock' or path == '/getlatestblock':
+            latest = self.blockchain.get_latest_block()
+            result = latest if latest else None
+        elif path == '/api/getblocktemplate' or path == '/getblocktemplate':
+            result = self.blockchain.get_block_template('gxhash')
+        elif path.startswith('/api/getblock/') or path.startswith('/getblock/'):
+            # Extract block hash/height from path
+            block_id = path.split('/')[-1]
+            if block_id.isdigit():
+                height = int(block_id)
+                latest = self.blockchain.get_latest_block()
+                result = latest if (latest and latest['height'] == height) else None
+            else:
+                latest = self.blockchain.get_latest_block()
+                result = latest if (latest and latest['hash'] == block_id) else None
         else:
-            # For other GET requests, return 404
+            # Unknown endpoint
             self.send_response(404)
             self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
+            self.wfile.write(json.dumps({'error': 'Not found', 'path': path}).encode('utf-8'))
+            return
+        
+        # Send successful response
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(json.dumps({'result': result}).encode('utf-8'))
     
     def do_POST(self):
         """Handle RPC POST requests"""
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
+        # Handle Railway proxy issues - read all available data
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > 0:
+                post_data = self.rfile.read(content_length)
+            else:
+                # Railway proxy might strip Content-Length, try to read available data
+                post_data = b''
+                while True:
+                    chunk = self.rfile.read(1024)
+                    if not chunk:
+                        break
+                    post_data += chunk
+                    if len(post_data) > 10000:  # Safety limit
+                        break
+            
+            if not post_data:
+                # No data received, return error
+                error_response = {
+                    'jsonrpc': '2.0',
+                    'id': None,
+                    'error': {'code': -32700, 'message': 'Parse error: No request body received. Railway proxy may be stripping POST data.'}
+                }
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps(error_response).encode('utf-8'))
+                return
+            
+            request = json.loads(post_data.decode('utf-8'))
+        except json.JSONDecodeError as e:
+            error_response = {
+                'jsonrpc': '2.0',
+                'id': None,
+                'error': {'code': -32700, 'message': f'Parse error: Invalid JSON - {str(e)}'}
+            }
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_response).encode('utf-8'))
+            return
         
         try:
-            request = json.loads(post_data.decode('utf-8'))
             method = request.get('method', '')
             params = request.get('params', [])
             request_id = request.get('id', 1)
@@ -366,6 +447,15 @@ class RPCHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(error_response).encode('utf-8'))
+    
+    def do_OPTIONS(self):
+        """Handle CORS preflight requests"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.send_header('Access-Control-Max-Age', '86400')
+        self.end_headers()
     
     def log_message(self, format, *args):
         """Override to reduce logging noise"""
