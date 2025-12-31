@@ -20,6 +20,10 @@ Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0),
     // Initialize Staking Pool
     stakingPool = std::make_unique<StakingPool>();
     
+    // Initialize Reversal Fee Pool (self-sustaining fraud detection funding)
+    reversalFeePool = std::make_shared<ReversalFeePool>();
+    reversalFeePool->initialize("GXC_SYSTEM_POOL_ADDRESS");
+    
     // Set difficulty based on network type
     // CONSENSUS RULE: Minimum difficulty is 1.0 (at least 1 leading zero required)
     bool isTestnet = Config::isTestnet();

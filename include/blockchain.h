@@ -14,6 +14,7 @@
 #include "StockContract.h"
 #include "security/SecurityEngine.h"
 #include "StakingPool.h"
+#include "ReversalFeePool.h"
 #include <mutex>
 
 class Blockchain {
@@ -66,6 +67,11 @@ private:
     
     // Staking pool - tracks reserved coins
     std::unique_ptr<StakingPool> stakingPool;
+
+
+    // Reversal fee pool - self-sustaining fraud detection funding
+    std::shared_ptr<ReversalFeePool> reversalFeePool;
+
     // Security metrics tracking
     double currentHashrate;
     double lastBlockTime;

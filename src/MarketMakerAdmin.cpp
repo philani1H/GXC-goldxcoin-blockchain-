@@ -938,7 +938,7 @@ bool MarketMakerAdmin::approveFraudReport(
                 it->second.executionStatus = "EXECUTED";
                 it->second.executedAt = std::time(nullptr);
                 it->second.recoveredAmount = proof.recoverable_amount;
-                it->second.executionNotes = "Protocol validated feasibility and executed automatically. " +
+                it->second.executionNotes = std::string("Protocol validated feasibility and executed automatically. ") +
                                            "Recovered " + std::to_string(proof.recoverable_amount) + " satoshis.";
                 
                 LOG_INFO("Protocol: Reversal EXECUTED - Recovered " + 
@@ -947,7 +947,7 @@ bool MarketMakerAdmin::approveFraudReport(
             } else {
                 // AUTOMATIC REJECTION (protocol determined it's infeasible)
                 it->second.executionStatus = "INFEASIBLE";
-                it->second.executionNotes = "Protocol determined reversal is mathematically infeasible. " +
+                it->second.executionNotes = std::string("Protocol determined reversal is mathematically infeasible. ") +
                                            "Possible reasons: insufficient balance, funds already moved, " +
                                            "or taint score below threshold.";
                 
@@ -957,7 +957,7 @@ bool MarketMakerAdmin::approveFraudReport(
         } else {
             // Proof generation failed
             it->second.executionStatus = "INFEASIBLE";
-            it->second.executionNotes = "Protocol failed to generate proof. " +
+            it->second.executionNotes = std::string("Protocol failed to generate proof. ") +
                                        "Transaction may not exist or taint tracking data unavailable.";
             LOG_ERROR("Protocol: Failed to generate reversal proof");
         }
