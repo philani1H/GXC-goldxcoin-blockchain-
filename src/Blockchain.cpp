@@ -635,8 +635,8 @@ double Blockchain::calculateBlockReward(uint32_t height) const {
         // Calculate average block time for last 10 blocks
         uint64_t timeDiff = chain.back()->getTimestamp() - chain[chain.size() - 10]->getTimestamp();
         double avgBlockTime = timeDiff / 10.0;
-        double targetBlockTime = 120.0; // 2 minutes
-        
+        double targetBlockTime = Config::getBlockTime(); // 600s mainnet, 120s testnet
+
         if (avgBlockTime > targetBlockTime * 1.5) {
             // Blocks too slow, increase reward by up to 5%
             timeBonus = 1.0 + std::min(0.05, (avgBlockTime - targetBlockTime) / targetBlockTime);
@@ -665,8 +665,8 @@ double Blockchain::calculateBlockReward(uint32_t height) const {
 // Difficulty adjustment (like Bitcoin's 2016 block adjustment)
 double Blockchain::calculateNextDifficulty() const {
     const uint32_t DIFFICULTY_ADJUSTMENT_INTERVAL = 2016; // ~2 weeks
-    const double TARGET_BLOCK_TIME = 120.0; // 2 minutes
-    
+    const double TARGET_BLOCK_TIME = Config::getBlockTime(); // 600s mainnet, 120s testnet
+
     uint32_t currentHeight = chain.size();
     
     // Only adjust every DIFFICULTY_ADJUSTMENT_INTERVAL blocks

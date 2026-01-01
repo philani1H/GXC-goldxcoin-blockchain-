@@ -65,14 +65,15 @@ def update_file(filepath):
 
 def main():
     """Main function"""
+    global RAILWAY_URL
+
     print("=" * 60)
     print("GXC Railway URL Updater")
     print("=" * 60)
     print(f"\nNew Railway URL: {RAILWAY_URL}\n")
-    
+
     if len(sys.argv) > 1:
         # Custom URL provided
-        global RAILWAY_URL
         RAILWAY_URL = sys.argv[1]
         print(f"Using custom URL: {RAILWAY_URL}\n")
     

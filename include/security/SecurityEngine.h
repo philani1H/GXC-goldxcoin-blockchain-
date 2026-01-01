@@ -31,9 +31,9 @@ namespace GXCSecurity {
 // =========================================================
 
 // Block timing
-constexpr double TARGET_BLOCK_TIME = 10.0;           // Target 10 seconds per block
+// TARGET_BLOCK_TIME is now read from Config (600s mainnet, 120s testnet)
 constexpr double MIN_BLOCK_TIME = 1.0;               // Minimum allowed block time
-constexpr double MAX_BLOCK_TIME = 120.0;             // Maximum before difficulty drops
+constexpr double MAX_BLOCK_TIME = 1200.0;            // Maximum before difficulty drops (20 min)
 
 // Rewards (no minting inside blocks - rewards are calculated separately)
 constexpr double BASE_REWARD = 12.5;                 // Base block reward
@@ -94,21 +94,24 @@ struct BlockSecurityData {
 
 class SecurityEngine {
 private:
+    // Block timing (read from Config)
+    double targetBlockTime_;
+
     // AI Sentinel state
     double predictedHashrate_;
     double historicalHashrate_;
     std::vector<double> hashrateHistory_;
     static constexpr size_t HASHRATE_HISTORY_SIZE = 144; // ~24 hours of blocks
-    
+
     // Attack detection state
     uint32_t consecutiveFastBlocks_;
     uint32_t consecutiveSlowBlocks_;
     double lastDifficulty_;
-    
+
     // Staking metrics
     double totalStaked_;
     double totalSupply_;
-    
+
     // Fee state
     int currentMempoolSize_;
     

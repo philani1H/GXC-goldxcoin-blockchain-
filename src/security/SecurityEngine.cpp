@@ -11,6 +11,7 @@
  */
 
 #include "../../include/security/SecurityEngine.h"
+#include "../../include/Config.h"
 #include <numeric>
 #include <cmath>
 
@@ -21,7 +22,8 @@ namespace GXCSecurity {
 // =========================================================
 
 SecurityEngine::SecurityEngine()
-    : predictedHashrate_(0.0)
+    : targetBlockTime_(static_cast<double>(Config::getBlockTime()))
+    , predictedHashrate_(0.0)
     , historicalHashrate_(0.0)
     , consecutiveFastBlocks_(0)
     , consecutiveSlowBlocks_(0)
@@ -160,7 +162,7 @@ double SecurityEngine::calculateEmissionGuardedReward(double baseReward,
     
     if (timeTaken <= 0.0) timeTaken = MIN_BLOCK_TIME;
     
-    double ratio = timeTaken / TARGET_BLOCK_TIME;
+    double ratio = timeTaken / targetBlockTime_;
     
     // Clamp ratio to prevent extreme values
     ratio = clamp(ratio, MIN_REWARD_RATIO, MAX_REWARD_RATIO);
@@ -169,7 +171,7 @@ double SecurityEngine::calculateEmissionGuardedReward(double baseReward,
     double guardedReward = baseReward * ratio;
     
     // Track fast blocks for attack detection
-    if (timeTaken < TARGET_BLOCK_TIME * 0.5) {
+    if (timeTaken < targetBlockTime_ * 0.5) {
         consecutiveFastBlocks_++;
         consecutiveSlowBlocks_ = 0;
         
@@ -180,7 +182,7 @@ double SecurityEngine::calculateEmissionGuardedReward(double baseReward,
         }
     } else {
         consecutiveFastBlocks_ = 0;
-        if (timeTaken > TARGET_BLOCK_TIME * 2.0) {
+        if (timeTaken > targetBlockTime_ * 2.0) {
             consecutiveSlowBlocks_++;
         } else {
             consecutiveSlowBlocks_ = 0;
@@ -282,7 +284,7 @@ SecurityMetrics SecurityEngine::evaluateBlock(double currentHashrate,
     metrics.stakeInfluence = getStakeRatio() * STAKE_FACTOR;
     
     // 5. Calculate reward multiplier (emission guard)
-    double ratio = timeTaken / TARGET_BLOCK_TIME;
+    double ratio = timeTaken / targetBlockTime_;
     metrics.rewardMultiplier = clamp(ratio, MIN_REWARD_RATIO, MAX_REWARD_RATIO);
     
     // 6. Calculate dynamic fee
@@ -306,7 +308,7 @@ double SecurityEngine::calculateNextDifficulty(double previousDifficulty,
     double stakerDiff = applyStakerInfluence(baseDiff);
     
     // 3. Apply time-based adjustment
-    double timeRatio = TARGET_BLOCK_TIME / std::max(timeTaken, MIN_BLOCK_TIME);
+    double timeRatio = targetBlockTime_ / std::max(timeTaken, MIN_BLOCK_TIME);
     double timeAdjusted = stakerDiff * clamp(timeRatio, 0.25, 4.0);
     
     // 4. Smooth the change
@@ -325,7 +327,7 @@ double SecurityEngine::calculateBlockReward(double timeTaken) {
 
 bool SecurityEngine::detectAttack(double hashrate, double timeTaken) {
     // Fast block attack detection
-    if (timeTaken < TARGET_BLOCK_TIME * 0.1 && consecutiveFastBlocks_ > 5) {
+    if (timeTaken < targetBlockTime_ * 0.1 && consecutiveFastBlocks_ > 5) {
         return true;
     }
     
@@ -338,7 +340,7 @@ bool SecurityEngine::detectAttack(double hashrate, double timeTaken) {
     }
     
     // Slow block attack (selfish mining detection)
-    if (timeTaken > TARGET_BLOCK_TIME * 10 && consecutiveSlowBlocks_ > 3) {
+    if (timeTaken > targetBlockTime_ * 10 && consecutiveSlowBlocks_ > 3) {
         return true;
     }
     
@@ -346,7 +348,7 @@ bool SecurityEngine::detectAttack(double hashrate, double timeTaken) {
 }
 
 std::string SecurityEngine::getAttackType(double hashrate, double timeTaken) {
-    if (timeTaken < TARGET_BLOCK_TIME * 0.1 && consecutiveFastBlocks_ > 5) {
+    if (timeTaken < targetBlockTime_ * 0.1 && consecutiveFastBlocks_ > 5) {
         return "FAST_BLOCK_ATTACK";
     }
     
@@ -357,7 +359,7 @@ std::string SecurityEngine::getAttackType(double hashrate, double timeTaken) {
         }
     }
     
-    if (timeTaken > TARGET_BLOCK_TIME * 10 && consecutiveSlowBlocks_ > 3) {
+    if (timeTaken > targetBlockTime_ * 10 && consecutiveSlowBlocks_ > 3) {
         return "SELFISH_MINING_DETECTED";
     }
     
