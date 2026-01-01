@@ -373,8 +373,10 @@ PYBIND11_MODULE(pygxc, m) {
         .def("broadcast_block", &PyNetwork::broadcastBlock, "Broadcast block");
     
     // Constants
+    // Initialize Config to ensure proper values
+    Config::initialize();
     m.attr("TRACEABILITY_FORMULA") = "Ti.Inputs[0].txHash == Ti.PrevTxHash && Ti.Inputs[0].amount == Ti.ReferencedAmount";
-    m.attr("BLOCK_TIME") = 600; // 10 minutes
+    m.attr("BLOCK_TIME") = Config::getBlockTime(); // 600s mainnet, 120s testnet
     m.attr("MAX_BLOCK_SIZE") = 1048576; // 1 MB
     m.attr("COINBASE_MATURITY") = 100; // blocks
     

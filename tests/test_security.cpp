@@ -12,20 +12,26 @@
 
 #include <gtest/gtest.h>
 #include "../include/security/SecurityEngine.h"
+#include "../include/Config.h"
 
 using namespace GXCSecurity;
 
 class SecurityEngineTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        // Initialize Config for tests
+        Config::initialize();
         engine = std::make_unique<SecurityEngine>();
+        // Use testnet block time for tests (120s)
+        TARGET_BLOCK_TIME_TEST = Config::getBlockTime();
     }
-    
+
     void TearDown() override {
         engine.reset();
     }
-    
+
     std::unique_ptr<SecurityEngine> engine;
+    double TARGET_BLOCK_TIME_TEST;
 };
 
 // =========================================================
@@ -148,8 +154,8 @@ TEST_F(SecurityEngineTest, FastBlocksReduceReward) {
 
 TEST_F(SecurityEngineTest, NormalBlocksNormalReward) {
     // Normal block time
-    double reward = engine->calculateEmissionGuardedReward(BASE_REWARD, TARGET_BLOCK_TIME);
-    
+    double reward = engine->calculateEmissionGuardedReward(BASE_REWARD, TARGET_BLOCK_TIME_TEST);
+
     // Reward should be approximately base
     EXPECT_NEAR(reward, BASE_REWARD, 0.01);
 }

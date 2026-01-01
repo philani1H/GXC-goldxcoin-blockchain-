@@ -30,7 +30,7 @@ This white paper presents the technical architecture, economic model, and innova
 - Integrated governance and oracle systems
 - Stock contract tokenization
 - 31 million maximum supply with halving every 1,051,200 blocks (~4 years)
-- 2-minute target block time for fast confirmations
+- 10-minute target block time for mainnet (like Bitcoin), 2-minute for testnet
 
 ---
 
@@ -319,17 +319,23 @@ bool Blockchain::validateConsensus(const Block& block) const {
 
 #### 3.2.2 Difficulty Adjustment
 
-**Target Block Time:** 2 minutes (120 seconds) for both mainnet and testnet
+**Target Block Time:**
+- **Mainnet:** 10 minutes (600 seconds) - Same as Bitcoin for maximum security
+- **Testnet:** 2 minutes (120 seconds) - Faster for testing and development
 
-**Adjustment Interval:** Every 2,016 blocks (~2.8 days at 2-minute blocks)
+**Adjustment Interval:** Every 2,016 blocks (~14 days for mainnet, ~2.8 days for testnet)
 
 **Mathematical Formula:**
 ```
-TARGET_BLOCK_TIME = 120 seconds
+// Network-aware block time (read from Config)
+TARGET_BLOCK_TIME = Config::getBlockTime()  // 600s mainnet, 120s testnet
 DIFFICULTY_ADJUSTMENT_INTERVAL = 2,016 blocks
 
-expectedTime = DIFFICULTY_ADJUSTMENT_INTERVAL × TARGET_BLOCK_TIME
-             = 2,016 × 120 = 241,920 seconds
+// Mainnet example (10-minute blocks)
+expectedTime_mainnet = 2,016 × 600 = 1,209,600 seconds (~14 days)
+
+// Testnet example (2-minute blocks)
+expectedTime_testnet = 2,016 × 120 = 241,920 seconds (~2.8 days)
 
 actualTime = timestamp(block_n) - timestamp(block_n-2016)
 
@@ -345,7 +351,7 @@ finalDifficulty = clamp(newDifficulty, minAdjustment, maxAdjustment)
 **Implementation:**
 ```cpp
 double Blockchain::calculateNextDifficulty() const {
-    const double TARGET_BLOCK_TIME = 120.0; // 2 minutes
+    const double TARGET_BLOCK_TIME = Config::getBlockTime(); // 600s mainnet, 120s testnet
     const uint32_t DIFFICULTY_ADJUSTMENT_INTERVAL = 2016;
     
     uint32_t currentHeight = chain.size();
@@ -742,7 +748,7 @@ Law enforcement can trace stolen funds across any number of hops.
 MAX_SUPPLY = 31,000,000 GXC
 HALVING_INTERVAL = 1,051,200 blocks
 INITIAL_REWARD = 50 GXC
-TARGET_BLOCK_TIME = 120 seconds (2 minutes)
+TARGET_BLOCK_TIME = 600 seconds mainnet (10 minutes), 120 seconds testnet (2 minutes)
 
 Total Supply = Σ(INITIAL_REWARD / 2^n × HALVING_INTERVAL) for n = 0 to ∞
              ≈ 31,000,000 GXC (enforced by hard cap)
@@ -2546,7 +2552,7 @@ Network Parameters:
   MAX_SUPPLY = 31,000,000 GXC
   INITIAL_REWARD = 50 GXC
   HALVING_INTERVAL = 1,051,200 blocks
-  TARGET_BLOCK_TIME = 120 seconds (2 minutes)
+  TARGET_BLOCK_TIME = 600 seconds mainnet (10 minutes), 120 seconds testnet (2 minutes)
   DIFFICULTY_ADJUSTMENT_INTERVAL = 2,016 blocks
 
 Staking Parameters:
@@ -2644,7 +2650,7 @@ H = D × 2³² / T
 Where:
   H = Network hashrate (hashes/second)
   D = Current difficulty
-  T = Target block time (120 seconds)
+  T = Target block time (600 seconds mainnet, 120 seconds testnet)
   2³² = Hashes per difficulty unit
 
 Example with D = 1000:

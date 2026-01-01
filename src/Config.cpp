@@ -483,9 +483,19 @@ int Config::getRESTPort() {
     return getInt("rest_port", 8080);
 }
 
+uint32_t Config::getBlockTime() {
+    // Testnet uses 2 minutes (120s) for faster testing
+    // Mainnet uses 10 minutes (600s) like Bitcoin
+    if (isTestnet()) {
+        return getInt("target_block_time", 120);  // 2 minutes for testnet
+    } else {
+        return getInt("target_block_time", 600);  // 10 minutes for mainnet
+    }
+}
+
 void Config::setNetworkMode(bool testnet) {
     setBool("testnet", testnet);
-    
+
     if (testnet) {
         // Adjust default ports for testnet
         if (getInt("network_port") == 9333) {
@@ -497,6 +507,15 @@ void Config::setNetworkMode(bool testnet) {
         if (getInt("rest_port") == 8080) {
             setInt("rest_port", 18080);
         }
+        // Set faster block time for testnet (2 minutes instead of 10)
+        setInt("target_block_time", 120);
+
+        LOG_CONFIG(LogLevel::INFO, "Testnet mode enabled - block time set to 120s (2 minutes)");
+    } else {
+        // Mainnet uses 10 minute block time like Bitcoin
+        setInt("target_block_time", 600);
+
+        LOG_CONFIG(LogLevel::INFO, "Mainnet mode - block time set to 600s (10 minutes)");
     }
 }
 
