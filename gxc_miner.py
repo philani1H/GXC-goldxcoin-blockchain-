@@ -11,8 +11,8 @@ import json
 import sys
 
 # Configuration
-NODE_URL = "http://localhost:8332"
-MINER_ADDRESS = "GXC9fab7317231b966af85ac453e168c0932"  # Change this to your address
+NODE_URL = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+MINER_ADDRESS = "tGXC9fab7317231b966af85ac453e168c0932"  # Testnet address (tGXC prefix)
 
 def get_block_template():
     """Get block template from node"""
@@ -40,7 +40,8 @@ def get_block_template():
 def calculate_hash(block_data, nonce):
     """Calculate block hash using double SHA256"""
     # Serialize block data
-    data = f"{block_data['previousblockhash']}{block_data['height']}{block_data['timestamp']}{nonce}"
+    timestamp = block_data.get('curtime', block_data.get('timestamp', int(time.time())))
+    data = f"{block_data['previousblockhash']}{block_data['height']}{timestamp}{nonce}"
     
     # Double SHA256
     first_hash = hashlib.sha256(data.encode()).digest()
@@ -60,6 +61,7 @@ def check_difficulty(hash_value, difficulty):
 
 def submit_block(block_data, nonce, block_hash):
     """Submit mined block to node"""
+    timestamp = block_data.get('curtime', block_data.get('timestamp', int(time.time())))
     payload = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -70,15 +72,18 @@ def submit_block(block_data, nonce, block_hash):
             "previousblockhash": block_data["previousblockhash"],
             "nonce": nonce,
             "miner": MINER_ADDRESS,
-            "timestamp": block_data["timestamp"],
-            "difficulty": block_data["difficulty"]
+            "timestamp": timestamp,
+            "difficulty": block_data["difficulty"],
+            "transactions": block_data.get("transactions", [])
         }]
     }
     
     try:
         response = requests.post(f"{NODE_URL}/api/submitblock", json=payload, timeout=10)
         response.raise_for_status()
-        return response.json()
+        result = response.json()
+        # Success returns null/None in JSON-RPC
+        return result if result else None
     except requests.exceptions.RequestException as e:
         raise Exception(f"Failed to submit block: {e}")
 
@@ -157,13 +162,18 @@ def mine():
                     # Submit block
                     result = submit_block(template, nonce, block_hash)
                     
-                    if result.get("result", {}).get("success"):
+                    # Check if block was accepted
+                    # Success can be indicated by: no error, result=null, or result.success=true
+                    if result is None or (isinstance(result, dict) and not result.get('error')):
                         blocks_found += 1
                         print(f"✅ Block accepted! Height: {template['height']}")
                         print(f"   Reward: {template.get('coinbasevalue', 50)} GXC")
                         print(f"   Total blocks found: {blocks_found}")
+                    elif isinstance(result, dict) and result.get('error'):
+                        error_msg = result.get('error', {}).get('message', 'Unknown error')
+                        print(f"❌ Block rejected: {error_msg}")
                     else:
-                        print(f"❌ Block rejected: {result.get('result', {}).get('message', 'Unknown error')}")
+                        print(f"✅ Block submitted (response: {result})")
                     
                     print()
                     # Get new template
