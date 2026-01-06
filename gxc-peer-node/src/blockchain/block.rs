@@ -5,23 +5,25 @@ use sha2::{Sha256, Digest};
 pub struct Block {
     pub height: u32,
     pub hash: String,
-    #[serde(alias = "previousblockhash", alias = "prev_hash", alias = "parent_hash", default)]
-    pub previous_hash: String,
-    #[serde(alias = "merkleroot", default)]
-    pub merkle_root: String,
-    #[serde(alias = "time", default)]
-    pub timestamp: u64,
+    #[serde(default)]
+    pub previousblockhash: String,
+    #[serde(default)]
+    pub merkleroot: String,
+    #[serde(default)]
+    pub time: u64,
     #[serde(default)]
     pub nonce: u64,
     #[serde(default = "default_difficulty")]
     pub difficulty: f64,
-    #[serde(alias = "miner_address", default)]
+    #[serde(default)]
     pub miner: String,
     #[serde(default)]
     pub work_receipt: String,
-    #[serde(alias = "tx", default)]
-    pub transactions: Vec<Transaction>,
+    #[serde(default)]
+    pub tx: Vec<Transaction>,
 }
+
+impl Block {}
 
 fn default_difficulty() -> f64 {
     1.0
@@ -44,12 +46,12 @@ impl Block {
     pub fn compute_work_receipt(&self) -> String {
         let data = format!(
             "{}{}{}{}{}{}",
-            self.previous_hash,
-            self.merkle_root,
+            self.previousblockhash,
+            self.merkleroot,
             self.nonce,
             self.miner,
             self.difficulty,
-            self.timestamp
+            self.time
         );
         
         let mut hasher = Sha256::new();
@@ -76,11 +78,11 @@ impl Block {
     
     /// Calculate merkle root from transactions
     pub fn calculate_merkle_root(&self) -> String {
-        if self.transactions.is_empty() {
+        if self.tx.is_empty() {
             return String::from("0000000000000000000000000000000000000000000000000000000000000000");
         }
         
-        let mut hashes: Vec<String> = self.transactions
+        let mut hashes: Vec<String> = self.tx
             .iter()
             .map(|tx| tx.hash.clone())
             .collect();
@@ -109,16 +111,16 @@ impl Block {
     /// Verify merkle root matches transactions
     pub fn verify_merkle_root(&self) -> bool {
         let computed = self.calculate_merkle_root();
-        computed == self.merkle_root
+        computed == self.merkleroot
     }
     
     /// Verify coinbase transaction is valid
     pub fn verify_coinbase(&self) -> bool {
-        if self.transactions.is_empty() {
+        if self.tx.is_empty() {
             return false;
         }
         
-        let coinbase = &self.transactions[0];
+        let coinbase = &self.tx[0];
         
         // Must be coinbase type
         if !coinbase.is_coinbase {
@@ -165,14 +167,14 @@ mod tests {
         let block = Block {
             height: 1,
             hash: "00000000abc123".to_string(),
-            previous_hash: "genesis".to_string(),
-            merkle_root: "merkle".to_string(),
-            timestamp: 1234567890,
+            previousblockhash: "genesis".to_string(),
+            merkleroot: "merkle".to_string(),
+            time: 1234567890,
             nonce: 12345,
             difficulty: 1.0,
             miner: "test_miner".to_string(),
             work_receipt: String::new(),
-            transactions: vec![],
+            tx: vec![],
         };
         
         let work_receipt = block.compute_work_receipt();
@@ -184,14 +186,14 @@ mod tests {
         let block = Block {
             height: 1,
             hash: "0000abc123".to_string(), // 4 leading zeros
-            previous_hash: "genesis".to_string(),
-            merkle_root: "merkle".to_string(),
-            timestamp: 1234567890,
+            previousblockhash: "genesis".to_string(),
+            merkleroot: "merkle".to_string(),
+            time: 1234567890,
             nonce: 12345,
             difficulty: 4.0, // Requires 4 leading zeros
             miner: "test_miner".to_string(),
             work_receipt: String::new(),
-            transactions: vec![],
+            tx: vec![],
         };
         
         assert!(block.verify_proof_of_work());

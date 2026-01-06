@@ -1131,28 +1131,19 @@ JsonValue RPCAPI::getBlock(const JsonValue& params) {
     uint32_t currentHeight = blockchain->getHeight();
     uint32_t confirmations = currentHeight > height ? currentHeight - height : 1;
     
-    // Build complete block response with ALL fields explorer needs
+    // Build complete block response - Bitcoin-style naming (camelCase)
     JsonValue result;
     result["hash"] = block.getHash();
-    result["block_hash"] = block.getHash();
     result["height"] = height;
-    result["number"] = height;
-    result["block_number"] = height;
     result["confirmations"] = confirmations;
     result["version"] = 1;
     result["merkleroot"] = block.getMerkleRoot();
-    result["merkle_root"] = block.getMerkleRoot();
     result["time"] = static_cast<uint64_t>(block.getTimestamp());
-    result["timestamp"] = static_cast<uint64_t>(block.getTimestamp());
     result["nonce"] = static_cast<uint64_t>(block.getNonce());
     result["bits"] = "1d00ffff";
     result["difficulty"] = block.getDifficulty();
     result["previousblockhash"] = block.getPreviousHash();
-    result["prev_hash"] = block.getPreviousHash();
-    result["parent_hash"] = block.getPreviousHash();
     result["miner"] = block.getMinerAddress();
-    result["miner_address"] = block.getMinerAddress();
-    result["block_reward"] = block.getBlockReward();
     result["reward"] = block.getBlockReward();
     
     // Calculate block size (approximate: hash + merkle root + timestamp + nonce + transactions)
@@ -1165,8 +1156,7 @@ JsonValue RPCAPI::getBlock(const JsonValue& params) {
     // Calculate total difficulty (sum of all block difficulties up to this point)
     // For now, use current difficulty as approximation
     double totalDifficulty = block.getDifficulty() * (height + 1);
-    result["total_difficulty"] = totalDifficulty;
-    result["totalDifficulty"] = totalDifficulty;
+    result["chainwork"] = totalDifficulty;
     
     // Block type/consensus
     std::string consensusType = "pow";
@@ -1177,17 +1167,12 @@ JsonValue RPCAPI::getBlock(const JsonValue& params) {
     } else if (block.getBlockType() == BlockType::POS) {
         consensusType = "pos";
     }
-    result["consensus_type"] = consensusType;
-    result["consensusType"] = consensusType;
-    result["block_type"] = consensusType;
+    result["consensustype"] = consensusType;
     
     // PoS and advanced fields
-    result["validator_signature"] = block.getValidatorSignature();
-    result["validatorSignature"] = block.getValidatorSignature();
-    result["fee_burn_rate"] = block.getFeeBurnRate();
-    result["feeBurnRate"] = block.getFeeBurnRate();
-    result["pop_reference"] = block.getPopReference();
-    result["popReference"] = block.getPopReference();
+    result["validatorsignature"] = block.getValidatorSignature();
+    result["feeburnrate"] = block.getFeeBurnRate();
+    result["popreference"] = block.getPopReference();
     
     // Get all transactions with full data if verbose
     JsonValue transactions = JsonValue(JsonValue::array());
@@ -1203,92 +1188,52 @@ JsonValue RPCAPI::getBlock(const JsonValue& params) {
         }
     }
     
-    result["transactions"] = transactions;
-    result["tx"] = transactions; // Alternative field name
-    result["transaction_count"] = static_cast<uint32_t>(block.getTransactions().size());
-    result["tx_count"] = static_cast<uint32_t>(block.getTransactions().size());
+    result["tx"] = transactions;
     result["nTx"] = static_cast<uint32_t>(block.getTransactions().size());
     
     return result;
 }
 
-// Helper function to convert Transaction to JSON
+// Helper function to convert Transaction to JSON (Bitcoin-style naming)
 JsonValue RPCAPI::transactionToJson(const Transaction& tx, uint32_t blockHeight, const std::string& blockHash) {
     JsonValue txJson;
     
-    txJson["hash"] = tx.getHash();
-    txJson["tx_hash"] = tx.getHash();
     txJson["txid"] = tx.getHash();
-    txJson["transactionHash"] = tx.getHash();
-    
-    txJson["block_number"] = blockHeight;
-    txJson["blockNumber"] = blockHeight;
+    txJson["hash"] = tx.getHash();
     txJson["blockheight"] = blockHeight;
-    txJson["blockHeight"] = blockHeight;
     txJson["blockhash"] = blockHash;
-    txJson["block_hash"] = blockHash;
-    
-    txJson["is_coinbase"] = tx.isCoinbaseTransaction();
-    txJson["isCoinbase"] = tx.isCoinbaseTransaction();
     txJson["coinbase"] = tx.isCoinbaseTransaction();
     
     // From/To addresses
     if (tx.isCoinbaseTransaction()) {
         txJson["from"] = "coinbase";
-        txJson["from_address"] = "coinbase";
-        txJson["fromAddress"] = "coinbase";
     } else {
         txJson["from"] = tx.getSenderAddress();
-        txJson["from_address"] = tx.getSenderAddress();
-        txJson["fromAddress"] = tx.getSenderAddress();
     }
     
     txJson["to"] = tx.getReceiverAddress();
-    txJson["to_address"] = tx.getReceiverAddress();
-    txJson["toAddress"] = tx.getReceiverAddress();
     
     // Amount/value
     double totalOutput = 0.0;
     for (const auto& output : tx.getOutputs()) {
         totalOutput += output.amount;
     }
-    txJson["value"] = totalOutput;
     txJson["amount"] = totalOutput;
-    
     txJson["fee"] = tx.getFee();
-    txJson["gas_price"] = 0.0;
-    txJson["gasPrice"] = 0.0;
-    txJson["gas_used"] = 0;
-    txJson["gasUsed"] = 0;
-    txJson["status"] = "success";
-    txJson["timestamp"] = static_cast<uint64_t>(tx.getTimestamp());
     txJson["time"] = static_cast<uint64_t>(tx.getTimestamp());
-    txJson["nonce"] = tx.getNonce();
-    txJson["input_data"] = "";
-    txJson["input"] = "";
-    txJson["data"] = "";
     
     // Traceability fields (GXC specific)
-    txJson["prev_tx_hash"] = tx.getPrevTxHash();
-    txJson["previousTxHash"] = tx.getPrevTxHash();
-    txJson["referenced_amount"] = tx.getReferencedAmount();
-    txJson["referencedAmount"] = tx.getReferencedAmount();
-    
-    // Traceability validation
-    bool traceabilityValid = tx.isTraceabilityValid();
-    txJson["traceability_valid"] = traceabilityValid;
-    txJson["traceabilityValid"] = traceabilityValid;
+    txJson["prevtxhash"] = tx.getPrevTxHash();
+    txJson["referencedamount"] = tx.getReferencedAmount();
+    txJson["traceabilityvalid"] = tx.isTraceabilityValid();
     
     // Transaction metadata
     txJson["memo"] = tx.getMemo();
-    txJson["lock_time"] = tx.getLockTime();
-    txJson["lockTime"] = tx.getLockTime();
+    txJson["locktime"] = tx.getLockTime();
     
     // Gold-backed and PoP fields
-    txJson["is_gold_backed"] = tx.isGoldBackedTransaction();
-    txJson["isGoldBacked"] = tx.isGoldBackedTransaction();
-    txJson["pop_reference"] = tx.getPopReference();
-    txJson["popReference"] = tx.getPopReference();
+    txJson["goldBacked"] = tx.isGoldBackedTransaction();
+    txJson["popreference"] = tx.getPopReference();
     
     // Signature (from first input if available)
     std::string signature = "";

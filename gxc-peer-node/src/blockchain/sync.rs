@@ -150,7 +150,7 @@ impl BlockchainSync {
         
         let total_blocks = blocks.len();
         let total_transactions: usize = blocks.iter()
-            .map(|b| b.transactions.len())
+            .map(|b| b.tx.len())
             .sum();
         
         let avg_difficulty = if !blocks.is_empty() {

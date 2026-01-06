@@ -55,17 +55,17 @@ impl BlockValidator {
         
         // 6. Verify timestamp is reasonable
         let now = chrono::Utc::now().timestamp() as u64;
-        if block.timestamp > now + 7200 {
+        if block.time > now + 7200 {
             bail!("Block timestamp too far in future");
         }
         
         // 7. Verify previous block link
         if let Some(prev) = previous_block {
-            if block.previous_hash != prev.hash {
+            if block.previousblockhash != prev.hash {
                 bail!(
                     "Previous hash mismatch: expected {}, got {}",
                     prev.hash,
-                    block.previous_hash
+                    block.previousblockhash
                 );
             }
             
@@ -77,13 +77,13 @@ impl BlockValidator {
                 );
             }
             
-            if block.timestamp <= prev.timestamp {
+            if block.time <= prev.time {
                 bail!("Block timestamp must be greater than previous block");
             }
         }
         
         // 8. Verify transactions
-        for (i, tx) in block.transactions.iter().enumerate() {
+        for (i, tx) in block.tx.iter().enumerate() {
             if i == 0 {
                 // Coinbase must be first
                 if !tx.is_coinbase {
