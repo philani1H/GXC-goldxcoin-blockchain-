@@ -35,10 +35,14 @@ pub struct Transaction {
     pub from: String,
     pub to: String,
     pub amount: f64,
+    #[serde(default)]
     pub fee: f64,
-    pub timestamp: u64,
+    #[serde(alias = "timestamp", default)]
+    pub time: u64,
+    #[serde(default)]
     pub signature: String,
-    pub is_coinbase: bool,
+    #[serde(alias = "is_coinbase", default)]
+    pub coinbase: bool,
 }
 
 impl Block {
@@ -123,7 +127,7 @@ impl Block {
         let coinbase = &self.tx[0];
         
         // Must be coinbase type
-        if !coinbase.is_coinbase {
+        if !coinbase.coinbase {
             return false;
         }
         
