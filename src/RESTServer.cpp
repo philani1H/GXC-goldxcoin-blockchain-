@@ -108,11 +108,38 @@ void RESTServer::setupRoutes() {
     // Admin login (simplified)
     httpServer->Post("/api/admin/login", [this](const httplib::Request& req, httplib::Response& res) {
         nlohmann::json response;
-        response["success"] = true;
-        response["message"] = "Admin API available via RPC";
-        response["admin_id"] = "admin_temp";
-        response["role"] = "super_admin";
-        res.set_content(response.dump(), "application/json");
+        
+        if (!adminSystem) {
+            response["success"] = false;
+            response["error"] = "Admin system not available";
+            res.status = 503;
+            res.set_content(response.dump(), "application/json");
+            return;
+        }
+        
+        try {
+            auto json = nlohmann::json::parse(req.body);
+            
+            if (!json.contains("username") || !json.contains("password")) {
+                response["success"] = false;
+                response["error"] = "username and password are required";
+                res.status = 400;
+                res.set_content(response.dump(), "application/json");
+                return;
+            }
+            
+            std::string username = json["username"];
+            std::string password = json["password"];
+            
+            auto result = adminSystem->adminLogin(username, password);
+            res.set_content(result.dump(), "application/json");
+            
+        } catch (const std::exception& e) {
+            response["success"] = false;
+            response["error"] = e.what();
+            res.status = 401;
+            res.set_content(response.dump(), "application/json");
+        }
     });
     
     // Admin stats (simplified)
