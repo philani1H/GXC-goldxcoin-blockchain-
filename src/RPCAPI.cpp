@@ -20,19 +20,35 @@
 #include <errno.h>
 #include <filesystem>
 
-RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
-    : blockchain(blockchain), network(nullptr), p2pNetwork(nullptr), cpuMiner(nullptr), serverPort(port), isRunning(false) {
-
-    // Initialize node wallet
+// Helper function to initialize wallet with persistence
+static void initializeWallet(std::unique_ptr<Wallet>& wallet) {
     wallet = std::make_unique<Wallet>();
+    
+    // Check for wallet private key in environment variable (for persistent wallet across restarts)
+    const char* envPrivateKey = std::getenv("GXC_WALLET_PRIVATE_KEY");
+    if (envPrivateKey && strlen(envPrivateKey) > 0) {
+        // Load wallet from environment variable
+        if (wallet->importPrivateKey(envPrivateKey)) {
+            LOG_API(LogLevel::INFO, "✅ Loaded node wallet from environment: " + wallet->getAddress());
+            return;
+        } else {
+            LOG_API(LogLevel::ERROR, "Failed to import wallet from environment variable");
+        }
+    }
+    
+    // Try to load from file
     std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
-
-    // Try to load existing wallet
+    
     if (wallet->loadFromFile(walletPath)) {
-        LOG_API(LogLevel::INFO, "Loaded existing node wallet: " + wallet->getAddress());
+        LOG_API(LogLevel::INFO, "Loaded existing node wallet from file: " + wallet->getAddress());
     } else {
         // Create new wallet and save it
         LOG_API(LogLevel::INFO, "Creating new node wallet: " + wallet->getAddress());
+        LOG_API(LogLevel::INFO, "⚠️  IMPORTANT: To persist this wallet across restarts:");
+        LOG_API(LogLevel::INFO, "   1. Check wallet file: " + walletPath);
+        LOG_API(LogLevel::INFO, "   2. Set GXC_WALLET_PRIVATE_KEY environment variable");
+        LOG_API(LogLevel::INFO, "   3. Or configure persistent volume for " + walletPath);
+        
         // Ensure directory exists
         std::filesystem::create_directories(std::filesystem::path(walletPath).parent_path());
         if (wallet->saveToFile(walletPath)) {
@@ -41,6 +57,13 @@ RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
             LOG_API(LogLevel::ERROR, "Failed to save node wallet to " + walletPath);
         }
     }
+}
+
+RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
+    : blockchain(blockchain), network(nullptr), p2pNetwork(nullptr), cpuMiner(nullptr), serverPort(port), isRunning(false) {
+
+    // Initialize node wallet with persistence support
+    initializeWallet(wallet);
 
     registerMethods();
 }
@@ -48,24 +71,8 @@ RPCAPI::RPCAPI(Blockchain* blockchain, uint16_t port)
 RPCAPI::RPCAPI(Blockchain* blockchain, Network* network, uint16_t port)
     : blockchain(blockchain), network(network), p2pNetwork(nullptr), cpuMiner(nullptr), serverPort(port), isRunning(false) {
     
-    // Initialize node wallet
-    wallet = std::make_unique<Wallet>();
-    std::string walletPath = Config::get("data_dir", ".") + "/wallet/wallet.dat";
-
-    // Try to load existing wallet
-    if (wallet->loadFromFile(walletPath)) {
-        LOG_API(LogLevel::INFO, "Loaded existing node wallet: " + wallet->getAddress());
-    } else {
-        // Create new wallet and save it
-        LOG_API(LogLevel::INFO, "Creating new node wallet: " + wallet->getAddress());
-        // Ensure directory exists
-        std::filesystem::create_directories(std::filesystem::path(walletPath).parent_path());
-        if (wallet->saveToFile(walletPath)) {
-            LOG_API(LogLevel::INFO, "Saved node wallet to " + walletPath);
-        } else {
-            LOG_API(LogLevel::ERROR, "Failed to save node wallet to " + walletPath);
-        }
-    }
+    // Initialize node wallet with persistence support
+    initializeWallet(wallet);
 
     // Register RPC methods
     registerMethods();
