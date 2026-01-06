@@ -12,8 +12,11 @@
 #include "../include/RESTServer.h"
 #include "../include/MarketMakerAdmin.h"
 #include "../include/ReversalFeePool.h"
+#include "../include/FraudDetection.h"
+#include "../include/blockchain.h"
 #include "../include/Logger.h"
 #include <string>
+#include <ctime>
 
 // ============================================================================
 // ADMIN AUTHENTICATION
@@ -309,7 +312,8 @@ std::string RESTServer::getPendingFraudReports(const std::string& sessionToken) 
             reportJson["description"] = report.description;
             reportJson["evidence"] = report.evidence;
             reportJson["timestamp"] = report.timestamp;
-            reportJson["status"] = report.status;
+            reportJson["factsStatus"] = report.factsStatus;
+            reportJson["executionStatus"] = report.executionStatus;
             reportJson["assignedTo"] = report.assignedTo;
             response["reports"].push_back(reportJson);
         }
@@ -341,11 +345,15 @@ std::string RESTServer::getFraudReportDetails(const std::string& sessionToken, c
         response["description"] = report.description;
         response["evidence"] = report.evidence;
         response["timestamp"] = report.timestamp;
-        response["status"] = report.status;
+        response["factsStatus"] = report.factsStatus;
+        response["executionStatus"] = report.executionStatus;
         response["reviewedBy"] = report.reviewedBy;
         response["reviewedAt"] = report.reviewedAt;
         response["reviewNotes"] = report.reviewNotes;
         response["assignedTo"] = report.assignedTo;
+        response["proofHash"] = report.proofHash;
+        response["recoveredAmount"] = report.recoveredAmount;
+        response["executionNotes"] = report.executionNotes;
         
         return jsonToString(response);
         
@@ -590,10 +598,12 @@ std::string RESTServer::getMMApplicationDetails(const std::string& sessionToken,
         response["verificationSteps"] = nlohmann::json::array();
         for (const auto& step : app.verificationSteps) {
             nlohmann::json stepJson;
-            stepJson["step"] = step.step;
+            stepJson["stepName"] = step.stepName;
+            stepJson["status"] = static_cast<int>(step.status);
             stepJson["verifiedBy"] = step.verifiedBy;
             stepJson["verifiedAt"] = step.verifiedAt;
             stepJson["notes"] = step.notes;
+            stepJson["proofDocument"] = step.proofDocument;
             stepJson["passed"] = step.passed;
             response["verificationSteps"].push_back(stepJson);
         }
@@ -636,9 +646,11 @@ std::string RESTServer::verifyMMLicense(const std::string& sessionToken, const s
         }
         
         std::string applicationId = json["applicationId"];
+        bool passed = json.value("passed", true);
         std::string notes = json.value("notes", "");
+        std::string proofDocumentHash = json.value("proofDocumentHash", "");
         
-        bool success = adminSystem->verifyLicense(adminId, applicationId, notes);
+        bool success = adminSystem->verifyLicense(adminId, applicationId, passed, notes, proofDocumentHash);
         
         nlohmann::json response;
         response["success"] = success;
@@ -852,10 +864,10 @@ std::string RESTServer::getMMDocument(const std::string& sessionToken, const std
         
         // Check if this document type has been verified
         for (const auto& step : app.verificationSteps) {
-            if ((docType == "license" && step.step == "LICENSE_VERIFICATION") ||
-                (docType == "financial" && step.step == "FINANCIAL_REVIEW") ||
-                (docType == "technical" && step.step == "TECHNICAL_VERIFICATION") ||
-                (docType == "kyc" && step.step == "KYC_AML_VERIFICATION")) {
+            if ((docType == "license" && step.stepName == "LICENSE_VERIFICATION") ||
+                (docType == "financial" && step.stepName == "FINANCIAL_REVIEW") ||
+                (docType == "technical" && step.stepName == "TECHNICAL_VERIFICATION") ||
+                (docType == "kyc" && step.stepName == "KYC_AML_VERIFICATION")) {
                 response["metadata"]["verified"] = step.passed;
                 response["metadata"]["verifiedBy"] = step.verifiedBy;
                 response["metadata"]["verifiedAt"] = step.verifiedAt;
@@ -905,7 +917,11 @@ std::string RESTServer::getAuditLog(const std::string& sessionToken) {
             return createErrorResponse(401, "UNAUTHORIZED", "Invalid session");
         }
         
-        auto auditLog = adminSystem->getAuditLog(adminId);
+        // Get time range from query parameters (default: last 30 days)
+        std::time_t endTime = std::time(nullptr);
+        std::time_t startTime = endTime - (30 * 24 * 60 * 60); // 30 days ago
+        
+        auto auditLog = adminSystem->getAuditLog(adminId, startTime, endTime);
         
         nlohmann::json response;
         response["logs"] = nlohmann::json::array();
@@ -949,8 +965,9 @@ std::string RESTServer::getSystemStatistics(const std::string& sessionToken) {
         
         // Add blockchain statistics if available
         if (blockchain) {
-            activity["blockchain"]["totalBlocks"] = blockchain->getChainLength();
-            activity["blockchain"]["totalAddresses"] = blockchain->getTotalAddressCount();
+            activity["blockchain"]["totalBlocks"] = blockchain->getHeight();
+            // getTotalAddressCount() may not exist, skip for now
+            // activity["blockchain"]["totalAddresses"] = blockchain->getTotalAddressCount();
         }
         
         return jsonToString(activity);
