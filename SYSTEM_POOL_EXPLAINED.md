@@ -6,23 +6,24 @@ The System Pool is a **blockchain-level wallet** that automatically accumulates 
 
 ## How It Works
 
-### Block Reward Split
+### Block Rewards
 
-When a miner finds a valid block, the reward is automatically split:
+Miners receive **100% of the block reward** (e.g., 50 GXC per block).
 
-- **85% to Miner**: Direct payment for mining work
-- **15% to System Pool**: Funds fraud detection operations
-
-**Example:**
-- Block reward: 50 GXC
-- Miner receives: 42.5 GXC
-- System Pool receives: 7.5 GXC
+The system pool does **NOT** take a cut of block rewards.
 
 ### Transaction Fee Split
 
-Transaction fees are also split:
+**Only transaction fees are split:**
 - **85% to Miner**: Included in block reward
 - **15% to System Pool**: Accumulated for fraud operations
+
+**Example:**
+- Block reward: 50 GXC → 100% to miner
+- Transaction fees: 10 GXC total
+  - Miner receives: 8.5 GXC (85%)
+  - System Pool receives: 1.5 GXC (15%)
+- **Total miner payment: 58.5 GXC**
 
 ## System Pool Addresses
 
@@ -103,15 +104,17 @@ print(f"System Pool Balance: {response.json()['result']} GXC")
 ## Economic Impact
 
 **For Miners:**
-- Slightly reduced reward (85% vs 100%)
-- But: Network is more secure and valuable
-- Long-term: Higher coin value compensates
+- **Block rewards**: 100% to miner (no reduction)
+- **Transaction fees**: 85% to miner, 15% to pool
+- Network is more secure and valuable
+- Long-term: Higher coin value from fraud protection
 
 **For Network:**
-- Sustainable fraud protection
+- Sustainable fraud protection funded by transaction fees
 - No need for external funding
 - Transparent operations
 - Predictable economics
+- Block rewards remain fully incentivized
 
 ## Governance
 
@@ -132,10 +135,13 @@ The system pool is controlled by:
 ## FAQ
 
 **Q: Is this a mining pool taking a cut?**
-A: No. This is a blockchain protocol feature, not a third-party service.
+A: No. This is a blockchain protocol feature, not a third-party service. Block rewards are 100% to miners.
+
+**Q: Does this reduce my mining rewards?**
+A: No. Block rewards (50 GXC) go 100% to miners. Only transaction fees are split 85/15.
 
 **Q: Can I opt out?**
-A: No. It's part of the consensus rules, like transaction fees.
+A: No. The fee split is part of the consensus rules, like transaction fees themselves.
 
 **Q: Who controls the pool funds?**
 A: The blockchain protocol and admin system, with full transparency.
@@ -150,22 +156,21 @@ A: Only through a protocol upgrade requiring network consensus.
 
 ### Coinbase Transaction Structure
 
+Block rewards go 100% to miner:
+
 ```json
 {
   "outputs": [
     {
       "address": "tGXC9fab7317231b966af85ac453e168c0932",
-      "amount": 42.5,
-      "script": "OP_DUP OP_HASH160 ... OP_CHECKSIG"
-    },
-    {
-      "address": "tGXC2a9d9ddb2e9ee658bca1c2ff41ffed99",
-      "amount": 7.5,
+      "amount": 50.0,
       "script": "OP_DUP OP_HASH160 ... OP_CHECKSIG"
     }
   ]
 }
 ```
+
+Transaction fee splits are handled separately during block processing.
 
 ### Code Location
 
