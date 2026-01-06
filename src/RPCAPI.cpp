@@ -1082,9 +1082,247 @@ void RPCAPI::handleClient(int clientSocket) {
                     response += rpcResponse;
                 }
             }
+            // Admin API GET endpoints (Railway-compatible)
+            else if (path.find("/api/admin/login") == 0 || path.find("/admin/login") == 0) {
+                // Extract credentials from query string: /api/admin/login?username=xxx&password=xxx
+                std::string username, password;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    
+                    // Parse username
+                    size_t userPos = query.find("username=");
+                    if (userPos != std::string::npos) {
+                        username = query.substr(userPos + 9);
+                        size_t ampPos = username.find('&');
+                        if (ampPos != std::string::npos) {
+                            username = username.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse password
+                    size_t passPos = query.find("password=");
+                    if (passPos != std::string::npos) {
+                        password = query.substr(passPos + 9);
+                        size_t ampPos = password.find('&');
+                        if (ampPos != std::string::npos) {
+                            password = password.substr(0, ampPos);
+                        }
+                    }
+                }
+                
+                if (username.empty() || password.empty()) {
+                    std::string body = "{\"error\":\"Missing credentials\",\"usage\":\"/api/admin/login?username=admin&password=admin123\"}";
+                    response = "HTTP/1.1 400 Bad Request\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                } else {
+                    // Simple admin login response (placeholder until REST server is accessible)
+                    JsonValue loginResponse;
+                    
+                    // Check credentials (hardcoded for now - should use admin system)
+                    if (username == "admin" && password == "admin123") {
+                        loginResponse["success"] = true;
+                        loginResponse["sessionToken"] = "railway_temp_token_" + std::to_string(Utils::getCurrentTimestamp());
+                        loginResponse["adminId"] = "admin_001";
+                        loginResponse["username"] = username;
+                        loginResponse["role"] = "super_admin";
+                        JsonValue permissions = JsonValue::array();
+                        permissions.push_back("manage_admins");
+                        permissions.push_back("fraud_reviewer");
+                        permissions.push_back("fraud_approver");
+                        loginResponse["permissions"] = permissions;
+                        loginResponse["expiresAt"] = Utils::getCurrentTimestamp() + 86400;
+                        loginResponse["note"] = "Railway-compatible GET endpoint. Full admin system requires REST API on port 8080.";
+                    } else {
+                        loginResponse["success"] = false;
+                        loginResponse["error"] = "INVALID_CREDENTIALS";
+                        loginResponse["message"] = "Invalid username or password";
+                    }
+                    
+                    std::string body = loginResponse.dump();
+                    response = "HTTP/1.1 200 OK\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                }
+            }
+            else if (path.find("/api/fraud/report") == 0 || path.find("/fraud/report") == 0) {
+                // Extract fraud report data from query string
+                // /api/fraud/report?txHash=xxx&reporterAddress=xxx&amount=xxx&description=xxx
+                std::string txHash, reporterAddress, amountStr, description;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    
+                    // Parse txHash
+                    size_t txPos = query.find("txHash=");
+                    if (txPos != std::string::npos) {
+                        txHash = query.substr(txPos + 7);
+                        size_t ampPos = txHash.find('&');
+                        if (ampPos != std::string::npos) {
+                            txHash = txHash.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse reporterAddress
+                    size_t addrPos = query.find("reporterAddress=");
+                    if (addrPos != std::string::npos) {
+                        reporterAddress = query.substr(addrPos + 16);
+                        size_t ampPos = reporterAddress.find('&');
+                        if (ampPos != std::string::npos) {
+                            reporterAddress = reporterAddress.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse amount
+                    size_t amtPos = query.find("amount=");
+                    if (amtPos != std::string::npos) {
+                        amountStr = query.substr(amtPos + 7);
+                        size_t ampPos = amountStr.find('&');
+                        if (ampPos != std::string::npos) {
+                            amountStr = amountStr.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse description (URL encoded)
+                    size_t descPos = query.find("description=");
+                    if (descPos != std::string::npos) {
+                        description = query.substr(descPos + 12);
+                        size_t ampPos = description.find('&');
+                        if (ampPos != std::string::npos) {
+                            description = description.substr(0, ampPos);
+                        }
+                        // Basic URL decode (replace %20 with space)
+                        size_t pos = 0;
+                        while ((pos = description.find("%20", pos)) != std::string::npos) {
+                            description.replace(pos, 3, " ");
+                            pos += 1;
+                        }
+                    }
+                }
+                
+                if (txHash.empty() || reporterAddress.empty() || amountStr.empty() || description.empty()) {
+                    std::string body = "{\"error\":\"Missing parameters\",\"usage\":\"/api/fraud/report?txHash=xxx&reporterAddress=xxx&amount=100&description=stolen\"}";
+                    response = "HTTP/1.1 400 Bad Request\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                } else {
+                    // Simple fraud report response (placeholder until REST server is accessible)
+                    JsonValue reportResponse;
+                    reportResponse["success"] = true;
+                    reportResponse["reportId"] = "FR_" + std::to_string(Utils::getCurrentTimestamp());
+                    reportResponse["message"] = "Fraud report submitted successfully";
+                    reportResponse["status"] = "pending_review";
+                    reportResponse["txHash"] = txHash;
+                    reportResponse["reporterAddress"] = reporterAddress;
+                    reportResponse["amount"] = std::stod(amountStr);
+                    reportResponse["description"] = description;
+                    reportResponse["note"] = "Railway-compatible GET endpoint. Full fraud system requires REST API on port 8080.";
+                    
+                    LOG_API(LogLevel::INFO, "Fraud report submitted via GET: " + txHash + " from " + reporterAddress);
+                    
+                    std::string body = reportResponse.dump();
+                    response = "HTTP/1.1 200 OK\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                }
+            }
+            else if (path.find("/api/admin/fraud/approve") == 0 || path.find("/admin/fraud/approve") == 0) {
+                // Extract approval data from query string
+                // /api/admin/fraud/approve?token=xxx&reportId=xxx&notes=xxx
+                std::string token, reportId, notes;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    
+                    // Parse token
+                    size_t tokenPos = query.find("token=");
+                    if (tokenPos != std::string::npos) {
+                        token = query.substr(tokenPos + 6);
+                        size_t ampPos = token.find('&');
+                        if (ampPos != std::string::npos) {
+                            token = token.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse reportId
+                    size_t idPos = query.find("reportId=");
+                    if (idPos != std::string::npos) {
+                        reportId = query.substr(idPos + 9);
+                        size_t ampPos = reportId.find('&');
+                        if (ampPos != std::string::npos) {
+                            reportId = reportId.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse notes
+                    size_t notesPos = query.find("notes=");
+                    if (notesPos != std::string::npos) {
+                        notes = query.substr(notesPos + 6);
+                        size_t ampPos = notes.find('&');
+                        if (ampPos != std::string::npos) {
+                            notes = notes.substr(0, ampPos);
+                        }
+                        // Basic URL decode
+                        size_t pos = 0;
+                        while ((pos = notes.find("%20", pos)) != std::string::npos) {
+                            notes.replace(pos, 3, " ");
+                            pos += 1;
+                        }
+                    }
+                }
+                
+                if (token.empty() || reportId.empty()) {
+                    std::string body = "{\"error\":\"Missing parameters\",\"usage\":\"/api/admin/fraud/approve?token=xxx&reportId=FR_123&notes=approved\"}";
+                    response = "HTTP/1.1 400 Bad Request\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                } else {
+                    // Simple fraud approval response (placeholder until REST server is accessible)
+                    JsonValue approvalResponse;
+                    approvalResponse["success"] = true;
+                    approvalResponse["reportId"] = reportId;
+                    approvalResponse["status"] = "approved";
+                    approvalResponse["notes"] = notes;
+                    approvalResponse["approvedBy"] = "admin_via_get";
+                    approvalResponse["approvedAt"] = Utils::getCurrentTimestamp();
+                    approvalResponse["note"] = "Railway-compatible GET endpoint. Full fraud system requires REST API on port 8080. This is a placeholder response.";
+                    
+                    LOG_API(LogLevel::INFO, "Fraud report approved via GET: " + reportId);
+                    
+                    std::string body = approvalResponse.dump();
+                    response = "HTTP/1.1 200 OK\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                }
+            }
             else {
                 // 404 for other GET requests
-                std::string body = "{\"error\":\"Not found\",\"path\":\"" + path + "\",\"hint\":\"Try /health, /api/getinfo, /api/getblockcount, /api/getbalance?address=xxx, /api/listunspent?address=xxx\"}";
+                std::string body = "{\"error\":\"Not found\",\"path\":\"" + path + "\",\"hint\":\"Try /health, /api/getinfo, /api/admin/login?username=admin&password=admin123, /api/fraud/report?txHash=xxx&reporterAddress=xxx&amount=100&description=stolen\"}";
                 response = "HTTP/1.1 404 Not Found\r\n";
                 response += "Content-Type: application/json\r\n";
                 response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
