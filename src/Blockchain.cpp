@@ -405,8 +405,14 @@ bool Blockchain::addBlock(const Block& block) {
             }
         }
         
-        bool validationResult = validateBlockInternal(blockToAdd, expectedIndex);
-        LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Block validation result: " + std::string(validationResult ? "PASS" : "FAIL"));
+        bool validationResult = false;
+        try {
+            validationResult = validateBlockInternal(blockToAdd, expectedIndex);
+            LOG_BLOCKCHAIN(LogLevel::INFO, "addBlock: Block validation result: " + std::string(validationResult ? "PASS" : "FAIL"));
+        } catch (const std::exception& e) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "addBlock: Exception during validation: " + std::string(e.what()));
+            validationResult = false;
+        }
         
         if (!validationResult) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "addBlock: Block validation failed");
