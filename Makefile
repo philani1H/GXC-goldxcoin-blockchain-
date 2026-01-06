@@ -686,6 +686,30 @@ src/EthashAlgorithm.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/EthashAlgorithm.cpp.s
 .PHONY : src/EthashAlgorithm.cpp.s
 
+src/FraudDetection.o: src/FraudDetection.cpp.o
+.PHONY : src/FraudDetection.o
+
+# target to build an object file
+src/FraudDetection.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/FraudDetection.cpp.o
+.PHONY : src/FraudDetection.cpp.o
+
+src/FraudDetection.i: src/FraudDetection.cpp.i
+.PHONY : src/FraudDetection.i
+
+# target to preprocess a source file
+src/FraudDetection.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/FraudDetection.cpp.i
+.PHONY : src/FraudDetection.cpp.i
+
+src/FraudDetection.s: src/FraudDetection.cpp.s
+.PHONY : src/FraudDetection.s
+
+# target to generate assembly for a file
+src/FraudDetection.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/FraudDetection.cpp.s
+.PHONY : src/FraudDetection.cpp.s
+
 src/HashUtils.o: src/HashUtils.cpp.o
 .PHONY : src/HashUtils.o
 
@@ -757,6 +781,30 @@ src/Logger.s: src/Logger.cpp.s
 src/Logger.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/Logger.cpp.s
 .PHONY : src/Logger.cpp.s
+
+src/MarketMakerAdmin.o: src/MarketMakerAdmin.cpp.o
+.PHONY : src/MarketMakerAdmin.o
+
+# target to build an object file
+src/MarketMakerAdmin.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/MarketMakerAdmin.cpp.o
+.PHONY : src/MarketMakerAdmin.cpp.o
+
+src/MarketMakerAdmin.i: src/MarketMakerAdmin.cpp.i
+.PHONY : src/MarketMakerAdmin.i
+
+# target to preprocess a source file
+src/MarketMakerAdmin.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/MarketMakerAdmin.cpp.i
+.PHONY : src/MarketMakerAdmin.cpp.i
+
+src/MarketMakerAdmin.s: src/MarketMakerAdmin.cpp.s
+.PHONY : src/MarketMakerAdmin.s
+
+# target to generate assembly for a file
+src/MarketMakerAdmin.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/MarketMakerAdmin.cpp.s
+.PHONY : src/MarketMakerAdmin.cpp.s
 
 src/MessageHandler.o: src/MessageHandler.cpp.o
 .PHONY : src/MessageHandler.o
@@ -854,6 +902,30 @@ src/PeerManager.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/PeerManager.cpp.s
 .PHONY : src/PeerManager.cpp.s
 
+src/ProofGenerator.o: src/ProofGenerator.cpp.o
+.PHONY : src/ProofGenerator.o
+
+# target to build an object file
+src/ProofGenerator.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/ProofGenerator.cpp.o
+.PHONY : src/ProofGenerator.cpp.o
+
+src/ProofGenerator.i: src/ProofGenerator.cpp.i
+.PHONY : src/ProofGenerator.i
+
+# target to preprocess a source file
+src/ProofGenerator.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/ProofGenerator.cpp.i
+.PHONY : src/ProofGenerator.cpp.i
+
+src/ProofGenerator.s: src/ProofGenerator.cpp.s
+.PHONY : src/ProofGenerator.s
+
+# target to generate assembly for a file
+src/ProofGenerator.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/ProofGenerator.cpp.s
+.PHONY : src/ProofGenerator.cpp.s
+
 src/ProofOfPrice.o: src/ProofOfPrice.cpp.o
 .PHONY : src/ProofOfPrice.o
 
@@ -925,6 +997,54 @@ src/RPCAPI.s: src/RPCAPI.cpp.s
 src/RPCAPI.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/RPCAPI.cpp.s
 .PHONY : src/RPCAPI.cpp.s
+
+src/ReversalExecutor.o: src/ReversalExecutor.cpp.o
+.PHONY : src/ReversalExecutor.o
+
+# target to build an object file
+src/ReversalExecutor.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/ReversalExecutor.cpp.o
+.PHONY : src/ReversalExecutor.cpp.o
+
+src/ReversalExecutor.i: src/ReversalExecutor.cpp.i
+.PHONY : src/ReversalExecutor.i
+
+# target to preprocess a source file
+src/ReversalExecutor.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/ReversalExecutor.cpp.i
+.PHONY : src/ReversalExecutor.cpp.i
+
+src/ReversalExecutor.s: src/ReversalExecutor.cpp.s
+.PHONY : src/ReversalExecutor.s
+
+# target to generate assembly for a file
+src/ReversalExecutor.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/ReversalExecutor.cpp.s
+.PHONY : src/ReversalExecutor.cpp.s
+
+src/ReversalFeePool.o: src/ReversalFeePool.cpp.o
+.PHONY : src/ReversalFeePool.o
+
+# target to build an object file
+src/ReversalFeePool.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/ReversalFeePool.cpp.o
+.PHONY : src/ReversalFeePool.cpp.o
+
+src/ReversalFeePool.i: src/ReversalFeePool.cpp.i
+.PHONY : src/ReversalFeePool.i
+
+# target to preprocess a source file
+src/ReversalFeePool.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/ReversalFeePool.cpp.i
+.PHONY : src/ReversalFeePool.cpp.i
+
+src/ReversalFeePool.s: src/ReversalFeePool.cpp.s
+.PHONY : src/ReversalFeePool.s
+
+# target to generate assembly for a file
+src/ReversalFeePool.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gxc_core.dir/build.make CMakeFiles/gxc_core.dir/src/ReversalFeePool.cpp.s
+.PHONY : src/ReversalFeePool.cpp.s
 
 src/SalectValidator.o: src/SalectValidator.cpp.o
 .PHONY : src/SalectValidator.o
@@ -1859,6 +1979,9 @@ help:
 	@echo "... src/EthashAlgorithm.o"
 	@echo "... src/EthashAlgorithm.i"
 	@echo "... src/EthashAlgorithm.s"
+	@echo "... src/FraudDetection.o"
+	@echo "... src/FraudDetection.i"
+	@echo "... src/FraudDetection.s"
 	@echo "... src/HashUtils.o"
 	@echo "... src/HashUtils.i"
 	@echo "... src/HashUtils.s"
@@ -1868,6 +1991,9 @@ help:
 	@echo "... src/Logger.o"
 	@echo "... src/Logger.i"
 	@echo "... src/Logger.s"
+	@echo "... src/MarketMakerAdmin.o"
+	@echo "... src/MarketMakerAdmin.i"
+	@echo "... src/MarketMakerAdmin.s"
 	@echo "... src/MessageHandler.o"
 	@echo "... src/MessageHandler.i"
 	@echo "... src/MessageHandler.s"
@@ -1880,6 +2006,9 @@ help:
 	@echo "... src/PeerManager.o"
 	@echo "... src/PeerManager.i"
 	@echo "... src/PeerManager.s"
+	@echo "... src/ProofGenerator.o"
+	@echo "... src/ProofGenerator.i"
+	@echo "... src/ProofGenerator.s"
 	@echo "... src/ProofOfPrice.o"
 	@echo "... src/ProofOfPrice.i"
 	@echo "... src/ProofOfPrice.s"
@@ -1889,6 +2018,12 @@ help:
 	@echo "... src/RPCAPI.o"
 	@echo "... src/RPCAPI.i"
 	@echo "... src/RPCAPI.s"
+	@echo "... src/ReversalExecutor.o"
+	@echo "... src/ReversalExecutor.i"
+	@echo "... src/ReversalExecutor.s"
+	@echo "... src/ReversalFeePool.o"
+	@echo "... src/ReversalFeePool.i"
+	@echo "... src/ReversalFeePool.s"
 	@echo "... src/SalectValidator.o"
 	@echo "... src/SalectValidator.i"
 	@echo "... src/SalectValidator.s"

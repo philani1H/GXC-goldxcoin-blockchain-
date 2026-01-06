@@ -60,6 +60,7 @@ public:
     // Transaction management
     bool addTransaction(const Transaction& transaction);
     void addTransactionUnchecked(const Transaction& transaction); // Add without verification (for block submission)
+    void updateTransactionWorkReceipts(const std::string& workReceipt); // Update work receipts after block is prepared
     void calculateMerkleRoot();
     std::string calculateMerkleRoot() const; // Const version for validation
     

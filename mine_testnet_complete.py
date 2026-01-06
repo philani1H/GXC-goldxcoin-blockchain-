@@ -12,7 +12,7 @@ import json
 import sys
 
 # Configuration
-MINER_ADDRESS = os.environ.get('MINER_ADDRESS', 'tGXC9fab7317231b966af85ac453e168c0932')
+MINER_ADDRESS = os.environ.get('MINER_ADDRESS', 'tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf')
 RPC_PORT = 8332  # Correct RPC port
 RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', f'http://localhost:{RPC_PORT}'))
 

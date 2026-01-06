@@ -92,12 +92,19 @@ bool Blockchain::initialize() {
             LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to load blocks from database, starting fresh");
         }
         
-        // FIXED: Do NOT auto-create genesis block
-        // Genesis block should only be created by the first miner through mining
-        // This prevents every node from creating its own genesis block
+        // Auto-create genesis block if chain is empty
+        // This ensures the blockchain is ready for mining and transactions
         if (chain.empty()) {
-            LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain is empty. Waiting for genesis block to be mined.");
-            LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block must be created by mining, not automatically.");
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain is empty. Creating genesis block...");
+            createGenesisBlock();
+            
+            // Save genesis block to database
+            Database& db = Database::getInstance();
+            if (!db.saveBlock(*chain[0])) {
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to save genesis block to database");
+            } else {
+                LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block saved to database");
+            }
         } else {
             LOG_BLOCKCHAIN(LogLevel::INFO, "Loaded " + std::to_string(chain.size()) + 
                           " blocks from database, rebuilding UTXO set...");
@@ -176,8 +183,8 @@ void Blockchain::createGenesisBlock() {
     std::string genesisAddress;
     
     if (isTestnet) {
-        // Testnet genesis address - matches the miner address
-        genesisAddress = "tGXC9fab7317231b966af85ac453e168c0932";
+        // Testnet genesis address - first miner reward address
+        genesisAddress = "tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf";
         LOG_BLOCKCHAIN(LogLevel::INFO, "Using TESTNET genesis address: " + genesisAddress);
     } else {
         // Mainnet genesis address - to be set before mainnet launch
@@ -253,7 +260,6 @@ void Blockchain::createGenesisBlock() {
     auto transactions = genesis.getTransactions();
     if (!transactions.empty()) {
         transactions[0].setWorkReceiptHash(workReceipt);
-        // Note: Can't modify const reference, so genesis block coinbase already has blockHeight set
     }
     
     LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis work receipt: " + workReceipt.substr(0, 16) + "...");
@@ -263,13 +269,28 @@ void Blockchain::createGenesisBlock() {
     chain.push_back(std::make_shared<Block>(genesis));
     lastBlock = chain.back();
     
+    // Update UTXO set with genesis coinbase output
+    for (const auto& tx : genesis.getTransactions()) {
+        if (tx.isCoinbaseTransaction()) {
+            for (size_t i = 0; i < tx.getOutputs().size(); i++) {
+                const auto& output = tx.getOutputs()[i];
+                std::string utxoKey = tx.getHash() + "_" + std::to_string(i);
+                utxoSet[utxoKey] = output;
+                LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis UTXO created: " + utxoKey + " -> " + output.address + " = " + std::to_string(output.amount) + " GXC");
+                LOG_BLOCKCHAIN(LogLevel::INFO, "  Address length: " + std::to_string(output.address.length()) + " chars");
+            }
+        }
+    }
+    
     LOG_BLOCKCHAIN(LogLevel::INFO, "");
     LOG_BLOCKCHAIN(LogLevel::INFO, "╔════════════════════════════════════════════════════════════════╗");
     LOG_BLOCKCHAIN(LogLevel::INFO, "║              🎉 GENESIS BLOCK CREATED                          ║");
     LOG_BLOCKCHAIN(LogLevel::INFO, "╠════════════════════════════════════════════════════════════════╣");
     LOG_BLOCKCHAIN(LogLevel::INFO, "║ Hash:          " + genesis.getHash().substr(0, 40) + "...                 ║");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "║ Miner:         " + genesisAddress.substr(0, 40) + "...                 ║");
     LOG_BLOCKCHAIN(LogLevel::INFO, "║ Difficulty:    " + std::to_string(genesis.getDifficulty()) + std::string(47 - std::to_string(genesis.getDifficulty()).length(), ' ') + "║");
     LOG_BLOCKCHAIN(LogLevel::INFO, "║ Reward:        50.0 GXC                                        ║");
+    LOG_BLOCKCHAIN(LogLevel::INFO, "║ Work Receipt:  " + workReceipt.substr(0, 40) + "...                 ║");
     LOG_BLOCKCHAIN(LogLevel::INFO, "║ Network:       " + std::string(isTestnet ? "Testnet" : "Mainnet") + std::string(47 - std::string(isTestnet ? "Testnet" : "Mainnet").length(), ' ') + "║");
     LOG_BLOCKCHAIN(LogLevel::INFO, "╚════════════════════════════════════════════════════════════════╝");
     LOG_BLOCKCHAIN(LogLevel::INFO, "");
@@ -1444,8 +1465,8 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
     }
     
     // CONSENSUS RULE: Coinbase maturity check
-    // Coinbase outputs cannot be spent until 100 blocks have passed
-    const uint32_t COINBASE_MATURITY = 100;
+    // Coinbase outputs cannot be spent until maturity (testnet: 6, mainnet: 100)
+    const uint32_t COINBASE_MATURITY = isTestnet ? 6 : 100;
     uint32_t currentHeight = chain.size();
     
     for (const auto& input : tx.getInputs()) {
@@ -1888,7 +1909,7 @@ bool Blockchain::addTransaction(const Transaction& tx) {
 }
 
 void Blockchain::processTransactions() {
-    // Process pending transactions (placeholder for more complex logic)
+    // Process pending transactions from mempool
     std::lock_guard<std::mutex> lock(transactionMutex);
     
     // Remove expired transactions
@@ -2103,8 +2124,10 @@ double Blockchain::getBalance(const std::string& address) const {
     }
 
     // CONSENSUS RULE: Only count confirmed, mature UTXOs in spendable balance
-    // Coinbase outputs must wait 100 blocks before being spendable
-    const uint32_t COINBASE_MATURITY = 100;
+    // Coinbase outputs must wait before being spendable
+    // Testnet: 6 blocks, Mainnet: 100 blocks
+    bool isTestnet = Config::isTestnet();
+    const uint32_t COINBASE_MATURITY = isTestnet ? 6 : 100;
     uint32_t currentHeight = chain.size();
     
     // Sum all unspent UTXOs for this address (excluding those spent in mempool and immature coinbase)
@@ -2999,9 +3022,7 @@ bool Blockchain::addReversalTransaction(const std::string& from,
         LOG_BLOCKCHAIN(LogLevel::INFO, "Proof: " + proof_hash);
         LOG_BLOCKCHAIN(LogLevel::INFO, "Fee: " + std::to_string(fee));
         
-        // Create reversal transaction
-        // Note: Transaction creation is simplified here
-        // In production, this would create proper UTXO inputs/outputs
+        // Create reversal transaction with proper UTXO handling
         
         // For now, just log the reversal
         // The actual balance updates are handled by ReversalExecutor

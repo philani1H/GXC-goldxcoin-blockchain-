@@ -52,7 +52,7 @@ WEBSOCKET_URL = os.environ.get('BLOCKCHAIN_WS_URL', os.environ.get('BLOCKCHAIN_R
 
 # Mining Configuration - Network-aware default addresses
 if NETWORK == 'testnet':
-    DEFAULT_MINER_ADDRESS = os.environ.get('MINER_ADDRESS', 'tGXC9fab7317231b966af85ac453e168c0932')
+    DEFAULT_MINER_ADDRESS = os.environ.get('MINER_ADDRESS', 'tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf')
 else:
     DEFAULT_MINER_ADDRESS = os.environ.get('MINER_ADDRESS', 'GXC9fab7317231b966af85ac453e168c0932')
 

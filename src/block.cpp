@@ -119,3 +119,13 @@ void Block::addTransactionUnchecked(const Transaction& transaction) {
     // Add transaction without verification (used when submitting pre-validated blocks)
     transactions.push_back(transaction);
 }
+
+void Block::updateTransactionWorkReceipts(const std::string& workReceipt) {
+    // Update work receipt hash for all transactions (especially coinbase)
+    // This is called after the block is fully prepared and work receipt is computed
+    for (auto& tx : transactions) {
+        if (tx.isCoinbaseTransaction()) {
+            tx.setWorkReceiptHash(workReceipt);
+        }
+    }
+}

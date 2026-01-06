@@ -1857,7 +1857,8 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
     // Get UTXOs and filter for mature coinbase only
     const auto& fullUtxoSet = blockchain->getUtxoSet();
     uint32_t currentHeight = blockchain->getHeight();
-    const uint32_t COINBASE_MATURITY = 100;
+    bool isTestnet = Config::isTestnet();
+    const uint32_t COINBASE_MATURITY = isTestnet ? 6 : 100;
     
     // Filter UTXOs to only include mature coinbase outputs
     std::unordered_map<std::string, TransactionOutput> spendableUtxoSet;
@@ -2225,12 +2226,7 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
             }
         }
         
-        // Get transactions from block
-        std::vector<Transaction> blockTransactions;
-        if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
-            // Transactions are already in block (from Python miner)
-            // We'll process them below
-        }
+        // Transactions will be processed below
         
         // Calculate block reward with halving
         double blockReward = calculateBlockReward(height);
@@ -2276,6 +2272,8 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
         
         // Check if coinbase transaction exists in submitted block
         bool hasCoinbase = false;
+        std::vector<Transaction> blockTransactions;
+        
         if (blockData.contains("transactions") && blockData["transactions"].is_array()) {
             LOG_API(LogLevel::INFO, "submitBlock: Processing " + std::to_string(blockData["transactions"].size()) + " transactions from submitted block");
             for (const auto& txJson : blockData["transactions"]) {
@@ -2284,18 +2282,15 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
                     bool isCoinbase = txJson.value("is_coinbase", txJson.value("coinbase", txJson.value("type", "") == "coinbase"));
                     LOG_API(LogLevel::INFO, "  Processing TX: " + txHash.substr(0, 16) + "..., is_coinbase=" + (isCoinbase ? "true" : "false"));
                     
+                    // Create transaction from JSON
+                    Transaction tx = createTransactionFromJson(txJson);
+                    
                     if (isCoinbase) {
                         hasCoinbase = true;
-                        // Create transaction from JSON
-                        Transaction coinbaseTx = createTransactionFromJson(txJson);
-                        newBlock.addTransactionUnchecked(coinbaseTx);
-                        LOG_API(LogLevel::INFO, "    Added coinbase transaction to block");
-                    } else {
-                        // Regular transaction - create from JSON (already has all fields from template)
-                        Transaction tx = createTransactionFromJson(txJson);
-                        newBlock.addTransactionUnchecked(tx);
-                        LOG_API(LogLevel::INFO, "    Added regular transaction to block");
+                        LOG_API(LogLevel::INFO, "    Created coinbase transaction");
                     }
+                    
+                    blockTransactions.push_back(tx);
                 }
             }
         } else {
@@ -2311,8 +2306,22 @@ JsonValue RPCAPI::submitBlock(const JsonValue& params) {
                               std::string("Block missing coinbase transaction. Every block must have exactly one coinbase at index 0."));
         }
         
-        // Recalculate merkle root to ensure it's correct
+        // First, add transactions to block temporarily to calculate merkle root
+        for (const auto& tx : blockTransactions) {
+            newBlock.addTransactionUnchecked(tx);
+        }
+        
+        // Recalculate merkle root
         newBlock.calculateMerkleRoot();
+        
+        // Compute work receipt (needs merkle root)
+        std::string workReceipt = newBlock.computeWorkReceipt();
+        newBlock.setWorkReceiptHash(workReceipt);
+        LOG_API(LogLevel::INFO, "submitBlock: Work receipt computed: " + workReceipt.substr(0, 16) + "...");
+        
+        // Update all transaction work receipts (especially coinbase)
+        newBlock.updateTransactionWorkReceipts(workReceipt);
+        LOG_API(LogLevel::INFO, "submitBlock: Transaction work receipts updated");
         
         // Verify hash is still set after all modifications
         if (newBlock.getHash().empty()) {
@@ -2397,7 +2406,7 @@ double RPCAPI::calculateBlockReward(uint32_t height) {
 
 // Helper function to create Transaction from JSON
 Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
-    // This is a simplified version - in production, would fully parse all fields
+    // Parse transaction from JSON with full field support
     std::string txHash = txJson.value("hash", txJson.value("txid", ""));
     bool isCoinbase = txJson.value("is_coinbase", txJson.value("coinbase", false));
     
@@ -2419,6 +2428,16 @@ Transaction RPCAPI::createTransactionFromJson(const JsonValue& txJson) {
         if (!minerAddress.empty() && amount > 0) {
             Transaction coinbase(minerAddress, amount);
             coinbase.setHash(txHash);
+            
+            // Set block height if provided
+            if (txJson.contains("block_height")) {
+                coinbase.setBlockHeight(txJson["block_height"].get<uint32_t>());
+            } else if (txJson.contains("blockHeight")) {
+                coinbase.setBlockHeight(txJson["blockHeight"].get<uint32_t>());
+            } else if (txJson.contains("height")) {
+                coinbase.setBlockHeight(txJson["height"].get<uint32_t>());
+            }
+            
             return coinbase;
         }
     }
@@ -2588,8 +2607,9 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         // CRITICAL: Create coinbase transaction TEMPLATE for the block template
         // This is NOT a payment - miner must find valid block and submit it to get paid
         Transaction coinbaseTx(minerAddress, blockReward);
+        coinbaseTx.setBlockHeight(nextBlockHeight); // Set correct block height
         
-        LOG_API(LogLevel::DEBUG, "📝 Coinbase TEMPLATE created for miner " + minerAddress.substr(0, 16) + "...");
+        LOG_API(LogLevel::DEBUG, "📝 Coinbase TEMPLATE created for miner " + minerAddress.substr(0, 16) + "... at height " + std::to_string(nextBlockHeight));
         
         // CRITICAL FIX: Include pending transactions from mempool
         // Without this, transactions are never included in mined blocks!
@@ -2608,6 +2628,8 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         coinbaseJson["timestamp"] = static_cast<uint64_t>(coinbaseTx.getTimestamp());
         coinbaseJson["is_coinbase"] = true;
         coinbaseJson["coinbase"] = true;
+        coinbaseJson["block_height"] = nextBlockHeight;
+        coinbaseJson["blockHeight"] = nextBlockHeight;
         
         // Coinbase inputs (empty)
         coinbaseJson["inputs"] = JsonValue(JsonValue::array());
@@ -3001,7 +3023,8 @@ JsonValue RPCAPI::registerValidator(const JsonValue& params) {
         // Get UTXOs and filter for mature coinbase only (same as sendtoaddress)
         const auto& fullUtxoSet = blockchain->getUtxoSet();
         uint32_t currentHeight = blockchain->getHeight();
-        const uint32_t COINBASE_MATURITY = 100;
+        bool isTestnet = Config::isTestnet();
+        const uint32_t COINBASE_MATURITY = isTestnet ? 6 : 100;
         
         // Filter UTXOs to only include mature coinbase outputs
         std::unordered_map<std::string, TransactionOutput> spendableUtxoSet;
@@ -3321,7 +3344,8 @@ JsonValue RPCAPI::addStake(const JsonValue& params) {
                 // Get UTXOs and filter for mature coinbase only (same as sendtoaddress and registerValidator)
                 const auto& fullUtxoSet = blockchain->getUtxoSet();
                 uint32_t currentHeight = blockchain->getHeight();
-                const uint32_t COINBASE_MATURITY = 100;
+                bool isTestnet = Config::isTestnet();
+                const uint32_t COINBASE_MATURITY = isTestnet ? 6 : 100;
                 
                 // Filter UTXOs to only include mature coinbase outputs
                 std::unordered_map<std::string, TransactionOutput> spendableUtxoSet;
@@ -4218,7 +4242,8 @@ JsonValue RPCAPI::listUnspent(const JsonValue& params) {
     
     const auto& utxoSet = blockchain->getUtxoSet();
     uint32_t currentHeight = blockchain->getHeight();
-    const uint32_t COINBASE_MATURITY = 100;
+    bool isTestnet = Config::isTestnet();
+    const uint32_t COINBASE_MATURITY = isTestnet ? 6 : 100;
     
     JsonValue result = JsonValue::array();
     

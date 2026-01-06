@@ -5,7 +5,13 @@
 #include <atomic>
 #include <cstdint>
 #include <unordered_map>
+#include <memory>
 #include <nlohmann/json.hpp>
+
+// Forward declare httplib::Server
+namespace httplib {
+    class Server;
+}
 
 class Blockchain;
 class FraudDetection;
@@ -20,7 +26,9 @@ private:
     uint16_t serverPort;
     std::atomic<bool> isRunning;
     std::thread serverThread;
+    std::unique_ptr<httplib::Server> httpServer;
     
+    void setupRoutes();
     void serverLoop();
     std::string handleRequest(const std::string& method, const std::string& path, const std::string& body);
     std::string getBlockchainInfo();

@@ -9,7 +9,7 @@ import hashlib
 import time
 import json
 
-MINER_ADDRESS = "tGXC9fab7317231b966af85ac453e168c0932"
+MINER_ADDRESS = "tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf"
 # Use Railway URL from environment, fallback to localhost for local development
 # FIXED: Changed port from 18332 to 8332 (correct RPC port)
 RPC_URL = os.environ.get('BLOCKCHAIN_RPC_URL', os.environ.get('RAILWAY_NODE_URL', 'http://localhost:8332'))

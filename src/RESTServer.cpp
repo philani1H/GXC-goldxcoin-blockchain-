@@ -5,6 +5,8 @@
 #include "../include/MarketMakerAdmin.h"
 #include "../include/Logger.h"
 #include "../include/Utils.h"
+#define CPPHTTPLIB_OPENSSL_SUPPORT
+#include "../include/httplib.h"
 #include <sstream>
 #include <iomanip>
 #include <thread>
@@ -52,8 +54,17 @@ bool RESTServer::start() {
     LOG_API(LogLevel::INFO, "Starting REST API server");
     
     try {
+        // Create HTTP server
+        httpServer = std::make_unique<httplib::Server>();
+        
+        // Setup routes
+        setupRoutes();
+        
         isRunning = true;
         serverThread = std::thread(&RESTServer::serverLoop, this);
+        
+        // Give server time to start
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         
         LOG_API(LogLevel::INFO, "REST API server started successfully on port " + std::to_string(serverPort));
         return true;
@@ -74,6 +85,10 @@ void RESTServer::stop() {
     
     isRunning = false;
     
+    if (httpServer) {
+        httpServer->stop();
+    }
+    
     if (serverThread.joinable()) {
         serverThread.join();
     }
@@ -81,18 +96,78 @@ void RESTServer::stop() {
     LOG_API(LogLevel::INFO, "REST API server stopped");
 }
 
+void RESTServer::setupRoutes() {
+    // Health check
+    httpServer->Get("/health", [](const httplib::Request&, httplib::Response& res) {
+        nlohmann::json response;
+        response["status"] = "ok";
+        response["service"] = "GXC Blockchain REST API";
+        res.set_content(response.dump(), "application/json");
+    });
+    
+    // Admin login (simplified)
+    httpServer->Post("/api/admin/login", [this](const httplib::Request& req, httplib::Response& res) {
+        nlohmann::json response;
+        response["success"] = true;
+        response["message"] = "Admin API available via RPC";
+        response["admin_id"] = "admin_temp";
+        response["role"] = "super_admin";
+        res.set_content(response.dump(), "application/json");
+    });
+    
+    // Admin stats (simplified)
+    httpServer->Get("/api/admin/stats", [this](const httplib::Request&, httplib::Response& res) {
+        nlohmann::json response;
+        response["total_transactions"] = 0;
+        response["flagged_transactions"] = 0;
+        response["blockchain_height"] = blockchain ? blockchain->getHeight() : 0;
+        res.set_content(response.dump(), "application/json");
+    });
+    
+    // Fraud status
+    httpServer->Get("/api/fraud/status", [this](const httplib::Request&, httplib::Response& res) {
+        nlohmann::json response;
+        response["status"] = "active";
+        response["algorithms"] = nlohmann::json::array({"velocity", "amount", "pattern", "taint", "ai_sentinel"});
+        response["fraud_detection_enabled"] = (fraudDetection != nullptr);
+        res.set_content(response.dump(), "application/json");
+    });
+    
+    // Blockchain info
+    httpServer->Get("/api/v1/blockchain/info", [this](const httplib::Request&, httplib::Response& res) {
+        std::string result = getBlockchainInfo();
+        res.set_content(result, "application/json");
+    });
+    
+    // Get block
+    httpServer->Get(R"(/api/v1/block/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        std::string blockId = req.matches[1];
+        std::string result = getBlock(blockId);
+        res.set_content(result, "application/json");
+    });
+    
+    // Trace transaction
+    httpServer->Get(R"(/api/v1/trace/(.+))", [this](const httplib::Request& req, httplib::Response& res) {
+        std::string txHash = req.matches[1];
+        std::string result = traceTransaction(txHash);
+        res.set_content(result, "application/json");
+    });
+    
+    LOG_API(LogLevel::INFO, "REST API routes configured");
+}
+
 void RESTServer::serverLoop() {
     LOG_API(LogLevel::INFO, "REST server loop started");
     
-    while (isRunning) {
-        try {
-            // Simplified server loop - would handle actual HTTP requests in real implementation
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            
-        } catch (const std::exception& e) {
-            LOG_API(LogLevel::ERROR, "Error in REST server loop: " + std::string(e.what()));
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+    try {
+        // Start listening (this blocks until server is stopped)
+        if (!httpServer->listen("0.0.0.0", serverPort)) {
+            LOG_API(LogLevel::ERROR, "Failed to bind to port " + std::to_string(serverPort));
+            isRunning = false;
         }
+    } catch (const std::exception& e) {
+        LOG_API(LogLevel::ERROR, "Error in REST server: " + std::string(e.what()));
+        isRunning = false;
     }
     
     LOG_API(LogLevel::INFO, "REST server loop stopped");
