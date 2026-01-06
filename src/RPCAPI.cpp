@@ -919,9 +919,172 @@ void RPCAPI::handleClient(int clientSocket) {
                 response += "\r\n";
                 response += rpcResponse;
             }
+            // GET endpoints with query parameters
+            else if (path.find("/api/getbalance") == 0 || path.find("/getbalance") == 0) {
+                // Extract address from query string: /api/getbalance?address=xxx
+                std::string address;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    size_t addrPos = query.find("address=");
+                    if (addrPos != std::string::npos) {
+                        address = query.substr(addrPos + 8);
+                        // Remove any trailing parameters
+                        size_t ampPos = address.find('&');
+                        if (ampPos != std::string::npos) {
+                            address = address.substr(0, ampPos);
+                        }
+                    }
+                }
+                
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "getbalance";
+                JsonValue params = JsonValue::array();
+                if (!address.empty()) {
+                    params.push_back(address);
+                }
+                rpcRequest["params"] = params;
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path.find("/api/listunspent") == 0 || path.find("/listunspent") == 0) {
+                // Extract address from query string: /api/listunspent?address=xxx
+                std::string address;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    size_t addrPos = query.find("address=");
+                    if (addrPos != std::string::npos) {
+                        address = query.substr(addrPos + 8);
+                        // Remove any trailing parameters
+                        size_t ampPos = address.find('&');
+                        if (ampPos != std::string::npos) {
+                            address = address.substr(0, ampPos);
+                        }
+                    }
+                }
+                
+                JsonValue rpcRequest;
+                rpcRequest["jsonrpc"] = "2.0";
+                rpcRequest["method"] = "listunspent";
+                JsonValue params = JsonValue::array();
+                if (!address.empty()) {
+                    params.push_back(address);
+                }
+                rpcRequest["params"] = params;
+                rpcRequest["id"] = 1;
+                std::string rpcResponse = processRequest(rpcRequest.dump());
+                
+                response = "HTTP/1.1 200 OK\r\n";
+                response += "Content-Type: application/json\r\n";
+                response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                response += "Access-Control-Allow-Origin: *\r\n";
+                response += "Connection: close\r\n";
+                response += "\r\n";
+                response += rpcResponse;
+            }
+            else if (path.find("/api/getblock") == 0 || path.find("/getblock") == 0) {
+                // Extract hash from query string: /api/getblock?hash=xxx
+                std::string hash;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    size_t hashPos = query.find("hash=");
+                    if (hashPos != std::string::npos) {
+                        hash = query.substr(hashPos + 5);
+                        // Remove any trailing parameters
+                        size_t ampPos = hash.find('&');
+                        if (ampPos != std::string::npos) {
+                            hash = hash.substr(0, ampPos);
+                        }
+                    }
+                }
+                
+                if (hash.empty()) {
+                    std::string body = "{\"error\":\"Missing hash parameter\",\"usage\":\"/api/getblock?hash=BLOCKHASH\"}";
+                    response = "HTTP/1.1 400 Bad Request\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                } else {
+                    JsonValue rpcRequest;
+                    rpcRequest["jsonrpc"] = "2.0";
+                    rpcRequest["method"] = "getblock";
+                    JsonValue params = JsonValue::array();
+                    params.push_back(hash);
+                    rpcRequest["params"] = params;
+                    rpcRequest["id"] = 1;
+                    std::string rpcResponse = processRequest(rpcRequest.dump());
+                    
+                    response = "HTTP/1.1 200 OK\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += rpcResponse;
+                }
+            }
+            else if (path.find("/api/gettransaction") == 0 || path.find("/gettransaction") == 0) {
+                // Extract txid from query string: /api/gettransaction?txid=xxx
+                std::string txid;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    size_t txidPos = query.find("txid=");
+                    if (txidPos != std::string::npos) {
+                        txid = query.substr(txidPos + 5);
+                        // Remove any trailing parameters
+                        size_t ampPos = txid.find('&');
+                        if (ampPos != std::string::npos) {
+                            txid = txid.substr(0, ampPos);
+                        }
+                    }
+                }
+                
+                if (txid.empty()) {
+                    std::string body = "{\"error\":\"Missing txid parameter\",\"usage\":\"/api/gettransaction?txid=TXID\"}";
+                    response = "HTTP/1.1 400 Bad Request\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                } else {
+                    JsonValue rpcRequest;
+                    rpcRequest["jsonrpc"] = "2.0";
+                    rpcRequest["method"] = "gettransaction";
+                    JsonValue params = JsonValue::array();
+                    params.push_back(txid);
+                    rpcRequest["params"] = params;
+                    rpcRequest["id"] = 1;
+                    std::string rpcResponse = processRequest(rpcRequest.dump());
+                    
+                    response = "HTTP/1.1 200 OK\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(rpcResponse.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += rpcResponse;
+                }
+            }
             else {
                 // 404 for other GET requests
-                std::string body = "{\"error\":\"Not found\",\"path\":\"" + path + "\",\"hint\":\"Try /health, /api/getinfo, /api/getblockcount, /api/getblocktemplate\"}";
+                std::string body = "{\"error\":\"Not found\",\"path\":\"" + path + "\",\"hint\":\"Try /health, /api/getinfo, /api/getblockcount, /api/getbalance?address=xxx, /api/listunspent?address=xxx\"}";
                 response = "HTTP/1.1 404 Not Found\r\n";
                 response += "Content-Type: application/json\r\n";
                 response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
@@ -944,14 +1107,14 @@ void RPCAPI::handleClient(int clientSocket) {
             // Log for debugging Railway proxy issues
             LOG_API(LogLevel::DEBUG, "POST request body length: " + std::to_string(body.length()));
             if (body.empty()) {
-                LOG_API(LogLevel::WARNING, "Empty POST body received - Railway proxy may be stripping it");
+                LOG_API(LogLevel::INFO, "Empty POST body - redirecting to GET endpoints");
                 // Return helpful error
                 JsonValue errorResponse;
                 errorResponse["jsonrpc"] = "2.0";
                 errorResponse["id"] = nullptr;
                 JsonValue errorObj;
                 errorObj["code"] = -32700;
-                errorObj["message"] = "Parse error: Empty request body. Railway proxy may be stripping POST data. Use GET endpoints instead: /api/getinfo, /api/getblockcount, /api/getblocktemplate";
+                errorObj["message"] = "Empty POST body. Use GET endpoints: /api/getinfo, /api/getblockcount, /api/getbalance?address=xxx, /api/listunspent?address=xxx, /api/getblock?hash=xxx, /api/gettransaction?txid=xxx";
                 errorResponse["error"] = errorObj;
                 
                 std::string errorJson = errorResponse.dump();
