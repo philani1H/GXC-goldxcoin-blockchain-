@@ -1320,9 +1320,254 @@ void RPCAPI::handleClient(int clientSocket) {
                     response += body;
                 }
             }
+            // Market Maker Admin GET endpoints (Railway-compatible)
+            else if (path.find("/api/mm/apply") == 0 || path.find("/mm/apply") == 0) {
+                // Extract market maker application data from query string
+                // /api/mm/apply?companyName=xxx&licenseNumber=xxx&jurisdiction=xxx&contactEmail=xxx
+                std::string companyName, licenseNumber, jurisdiction, contactEmail;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    
+                    // Parse companyName
+                    size_t namePos = query.find("companyName=");
+                    if (namePos != std::string::npos) {
+                        companyName = query.substr(namePos + 12);
+                        size_t ampPos = companyName.find('&');
+                        if (ampPos != std::string::npos) {
+                            companyName = companyName.substr(0, ampPos);
+                        }
+                        // URL decode
+                        size_t pos = 0;
+                        while ((pos = companyName.find("%20", pos)) != std::string::npos) {
+                            companyName.replace(pos, 3, " ");
+                            pos += 1;
+                        }
+                    }
+                    
+                    // Parse licenseNumber
+                    size_t licPos = query.find("licenseNumber=");
+                    if (licPos != std::string::npos) {
+                        licenseNumber = query.substr(licPos + 14);
+                        size_t ampPos = licenseNumber.find('&');
+                        if (ampPos != std::string::npos) {
+                            licenseNumber = licenseNumber.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse jurisdiction
+                    size_t jurPos = query.find("jurisdiction=");
+                    if (jurPos != std::string::npos) {
+                        jurisdiction = query.substr(jurPos + 13);
+                        size_t ampPos = jurisdiction.find('&');
+                        if (ampPos != std::string::npos) {
+                            jurisdiction = jurisdiction.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse contactEmail
+                    size_t emailPos = query.find("contactEmail=");
+                    if (emailPos != std::string::npos) {
+                        contactEmail = query.substr(emailPos + 13);
+                        size_t ampPos = contactEmail.find('&');
+                        if (ampPos != std::string::npos) {
+                            contactEmail = contactEmail.substr(0, ampPos);
+                        }
+                    }
+                }
+                
+                if (companyName.empty() || licenseNumber.empty() || jurisdiction.empty() || contactEmail.empty()) {
+                    std::string body = "{\"error\":\"Missing parameters\",\"usage\":\"/api/mm/apply?companyName=ABC%20Corp&licenseNumber=SEC123&jurisdiction=US&contactEmail=contact@abc.com\"}";
+                    response = "HTTP/1.1 400 Bad Request\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                } else {
+                    // Market maker application response
+                    JsonValue mmResponse;
+                    mmResponse["success"] = true;
+                    mmResponse["applicationId"] = "MM_APP_" + std::to_string(Utils::getCurrentTimestamp());
+                    mmResponse["message"] = "Market maker application submitted successfully";
+                    mmResponse["status"] = "pending_verification";
+                    mmResponse["companyName"] = companyName;
+                    mmResponse["licenseNumber"] = licenseNumber;
+                    mmResponse["jurisdiction"] = jurisdiction;
+                    mmResponse["contactEmail"] = contactEmail;
+                    mmResponse["submittedAt"] = Utils::getCurrentTimestamp();
+                    mmResponse["note"] = "Railway-compatible GET endpoint. Full market maker system requires REST API on port 8080.";
+                    
+                    LOG_API(LogLevel::INFO, "Market maker application submitted via GET: " + companyName);
+                    
+                    std::string body = mmResponse.dump();
+                    response = "HTTP/1.1 200 OK\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                }
+            }
+            else if (path.find("/api/admin/mm/approve") == 0 || path.find("/admin/mm/approve") == 0) {
+                // Approve market maker application
+                // /api/admin/mm/approve?token=xxx&applicationId=xxx&notes=xxx
+                std::string token, applicationId, notes;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    
+                    // Parse token
+                    size_t tokenPos = query.find("token=");
+                    if (tokenPos != std::string::npos) {
+                        token = query.substr(tokenPos + 6);
+                        size_t ampPos = token.find('&');
+                        if (ampPos != std::string::npos) {
+                            token = token.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse applicationId
+                    size_t appPos = query.find("applicationId=");
+                    if (appPos != std::string::npos) {
+                        applicationId = query.substr(appPos + 14);
+                        size_t ampPos = applicationId.find('&');
+                        if (ampPos != std::string::npos) {
+                            applicationId = applicationId.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse notes
+                    size_t notesPos = query.find("notes=");
+                    if (notesPos != std::string::npos) {
+                        notes = query.substr(notesPos + 6);
+                        size_t ampPos = notes.find('&');
+                        if (ampPos != std::string::npos) {
+                            notes = notes.substr(0, ampPos);
+                        }
+                        // URL decode
+                        size_t pos = 0;
+                        while ((pos = notes.find("%20", pos)) != std::string::npos) {
+                            notes.replace(pos, 3, " ");
+                            pos += 1;
+                        }
+                    }
+                }
+                
+                if (token.empty() || applicationId.empty()) {
+                    std::string body = "{\"error\":\"Missing parameters\",\"usage\":\"/api/admin/mm/approve?token=xxx&applicationId=MM_APP_123&notes=Approved\"}";
+                    response = "HTTP/1.1 400 Bad Request\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                } else {
+                    // Market maker approval response
+                    JsonValue approvalResponse;
+                    approvalResponse["success"] = true;
+                    approvalResponse["applicationId"] = applicationId;
+                    approvalResponse["status"] = "approved";
+                    approvalResponse["notes"] = notes;
+                    approvalResponse["approvedBy"] = "admin_via_get";
+                    approvalResponse["approvedAt"] = Utils::getCurrentTimestamp();
+                    approvalResponse["note"] = "Railway-compatible GET endpoint. Full market maker system requires REST API on port 8080.";
+                    
+                    LOG_API(LogLevel::INFO, "Market maker application approved via GET: " + applicationId);
+                    
+                    std::string body = approvalResponse.dump();
+                    response = "HTTP/1.1 200 OK\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                }
+            }
+            else if (path.find("/api/admin/mm/reject") == 0 || path.find("/admin/mm/reject") == 0) {
+                // Reject market maker application
+                // /api/admin/mm/reject?token=xxx&applicationId=xxx&reason=xxx
+                std::string token, applicationId, reason;
+                size_t queryPos = path.find('?');
+                if (queryPos != std::string::npos) {
+                    std::string query = path.substr(queryPos + 1);
+                    
+                    // Parse token
+                    size_t tokenPos = query.find("token=");
+                    if (tokenPos != std::string::npos) {
+                        token = query.substr(tokenPos + 6);
+                        size_t ampPos = token.find('&');
+                        if (ampPos != std::string::npos) {
+                            token = token.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse applicationId
+                    size_t appPos = query.find("applicationId=");
+                    if (appPos != std::string::npos) {
+                        applicationId = query.substr(appPos + 14);
+                        size_t ampPos = applicationId.find('&');
+                        if (ampPos != std::string::npos) {
+                            applicationId = applicationId.substr(0, ampPos);
+                        }
+                    }
+                    
+                    // Parse reason
+                    size_t reasonPos = query.find("reason=");
+                    if (reasonPos != std::string::npos) {
+                        reason = query.substr(reasonPos + 7);
+                        size_t ampPos = reason.find('&');
+                        if (ampPos != std::string::npos) {
+                            reason = reason.substr(0, ampPos);
+                        }
+                        // URL decode
+                        size_t pos = 0;
+                        while ((pos = reason.find("%20", pos)) != std::string::npos) {
+                            reason.replace(pos, 3, " ");
+                            pos += 1;
+                        }
+                    }
+                }
+                
+                if (token.empty() || applicationId.empty() || reason.empty()) {
+                    std::string body = "{\"error\":\"Missing parameters\",\"usage\":\"/api/admin/mm/reject?token=xxx&applicationId=MM_APP_123&reason=Insufficient%20documentation\"}";
+                    response = "HTTP/1.1 400 Bad Request\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                } else {
+                    // Market maker rejection response
+                    JsonValue rejectionResponse;
+                    rejectionResponse["success"] = true;
+                    rejectionResponse["applicationId"] = applicationId;
+                    rejectionResponse["status"] = "rejected";
+                    rejectionResponse["reason"] = reason;
+                    rejectionResponse["rejectedBy"] = "admin_via_get";
+                    rejectionResponse["rejectedAt"] = Utils::getCurrentTimestamp();
+                    rejectionResponse["note"] = "Railway-compatible GET endpoint. Full market maker system requires REST API on port 8080.";
+                    
+                    LOG_API(LogLevel::INFO, "Market maker application rejected via GET: " + applicationId);
+                    
+                    std::string body = rejectionResponse.dump();
+                    response = "HTTP/1.1 200 OK\r\n";
+                    response += "Content-Type: application/json\r\n";
+                    response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
+                    response += "Access-Control-Allow-Origin: *\r\n";
+                    response += "Connection: close\r\n";
+                    response += "\r\n";
+                    response += body;
+                }
+            }
             else {
                 // 404 for other GET requests
-                std::string body = "{\"error\":\"Not found\",\"path\":\"" + path + "\",\"hint\":\"Try /health, /api/getinfo, /api/admin/login?username=admin&password=admin123, /api/fraud/report?txHash=xxx&reporterAddress=xxx&amount=100&description=stolen\"}";
+                std::string body = "{\"error\":\"Not found\",\"path\":\"" + path + "\",\"hint\":\"Try /health, /api/getinfo, /api/admin/login, /api/fraud/report, /api/mm/apply\"}";
                 response = "HTTP/1.1 404 Not Found\r\n";
                 response += "Content-Type: application/json\r\n";
                 response += "Content-Length: " + std::to_string(body.length()) + "\r\n";
