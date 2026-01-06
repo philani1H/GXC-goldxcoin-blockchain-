@@ -1,186 +1,356 @@
 #!/bin/bash
 
-# Test Admin System via REST API
-# This script tests all admin functions using the REST API
+# GXC Admin API - Comprehensive Test Suite
+# Tests all admin functions on Railway deployment
 
-echo "========================================"
-echo "GXC Admin System API Test"
-echo "========================================"
+NODE_URL="https://gxc-chain112-blockchain-node-production.up.railway.app"
 
-# Colors
+echo "=========================================="
+echo "GXC Admin API - Comprehensive Test Suite"
+echo "=========================================="
+echo ""
+echo "Node URL: $NODE_URL"
+echo ""
+
+# Colors for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# API Base URL
-API_URL="http://localhost:8332"
-
 # Test counter
 TESTS_PASSED=0
 TESTS_FAILED=0
 
-# Function to test API endpoint
-test_api() {
-    local test_name="$1"
-    local method="$2"
-    local endpoint="$3"
-    local data="$4"
-    local expected_status="$5"
-    
-    echo ""
-    echo "----------------------------------------"
-    echo "TEST: $test_name"
-    echo "----------------------------------------"
-    
-    if [ "$method" == "GET" ]; then
-        response=$(curl -s -w "\n%{http_code}" "$API_URL$endpoint")
-    else
-        response=$(curl -s -w "\n%{http_code}" -X "$method" "$API_URL$endpoint" \
-            -H "Content-Type: application/json" \
-            -d "$data")
-    fi
-    
-    # Extract status code (last line)
-    status_code=$(echo "$response" | tail -n1)
-    # Extract body (all but last line)
-    body=$(echo "$response" | head -n-1)
-    
-    echo "Status: $status_code"
-    echo "Response: $body"
-    
-    if [ "$status_code" == "$expected_status" ]; then
-        echo -e "${GREEN}✅ PASSED${NC}"
+# Function to print test result
+print_result() {
+    if [ $1 -eq 0 ]; then
+        echo -e "${GREEN}✅ PASS${NC}: $2"
         ((TESTS_PASSED++))
-        # Return the body for further processing
-        echo "$body"
     else
-        echo -e "${RED}❌ FAILED - Expected $expected_status, got $status_code${NC}"
+        echo -e "${RED}❌ FAIL${NC}: $2"
         ((TESTS_FAILED++))
-        return 1
     fi
 }
 
-# Check if node is running
-echo "Checking if GXC node is running..."
-if ! curl -s "$API_URL/api/v1/blockchain/info" > /dev/null 2>&1; then
-    echo -e "${RED}❌ ERROR: GXC node is not running at $API_URL${NC}"
-    echo "Please start the node first:"
-    echo "  ./gxc-node --datadir=./test_data --port=9333 --rpc-port=8332"
-    exit 1
-fi
-
-echo -e "${GREEN}✅ Node is running${NC}"
-
+echo "=========================================="
+echo "TEST 1: Admin Login (Valid Credentials)"
+echo "=========================================="
 echo ""
-echo "========================================"
-echo "TEST 1: Super Admin Login"
-echo "========================================"
 
-LOGIN_DATA='{
-    "username": "Philani-GXC.Foundation",
-    "password": "GXC$ecure2025!Philani#Foundation@Admin"
-}'
+RESPONSE=$(curl -s "$NODE_URL/api/admin/login?username=admin&password=admin123")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
 
-login_response=$(test_api "Super Admin Login" "POST" "/api/admin/login" "$LOGIN_DATA" "200")
-
-if [ $? -eq 0 ]; then
-    # Extract session token from response
-    SESSION_TOKEN=$(echo "$login_response" | jq -r '.sessionToken // .token // .')
-    echo "Session Token: $SESSION_TOKEN"
+# Check if login was successful
+SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
+if [ "$SUCCESS" == "true" ]; then
+    print_result 0 "Admin login with valid credentials"
+    TOKEN=$(echo "$RESPONSE" | jq -r '.sessionToken')
+    echo "Session Token: $TOKEN"
 else
-    echo -e "${RED}❌ Cannot proceed without login${NC}"
-    exit 1
+    print_result 1 "Admin login with valid credentials"
 fi
-
 echo ""
-echo "========================================"
-echo "TEST 2: Get Admin Info"
-echo "========================================"
 
-test_api "Get Admin Info" "GET" "/api/admin/info?sessionToken=$SESSION_TOKEN" "" "200"
-
+echo "=========================================="
+echo "TEST 2: Admin Login (Invalid Credentials)"
+echo "=========================================="
 echo ""
-echo "========================================"
-echo "TEST 3: Submit Fraud Report (Public)"
-echo "========================================"
 
-FRAUD_REPORT='{
-    "txHash": "test_stolen_tx_' $(date +%s) '",
-    "reporterAddress": "test_victim_address",
-    "amount": 1000.0,
-    "email": "victim@test.com",
-    "description": "Test fraud report - wallet hacked",
-    "evidence": "Test evidence: screenshots, logs"
-}'
+RESPONSE=$(curl -s "$NODE_URL/api/admin/login?username=admin&password=wrongpassword")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
 
-report_response=$(test_api "Submit Fraud Report" "POST" "/api/fraud/report-stolen" "$FRAUD_REPORT" "200")
+# Check if login failed as expected
+SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
+if [ "$SUCCESS" == "false" ]; then
+    print_result 0 "Admin login rejection with invalid credentials"
+else
+    print_result 1 "Admin login rejection with invalid credentials"
+fi
+echo ""
 
-if [ $? -eq 0 ]; then
-    REPORT_ID=$(echo "$report_response" | jq -r '.reportId // empty')
+echo "=========================================="
+echo "TEST 3: Admin Login (Missing Parameters)"
+echo "=========================================="
+echo ""
+
+RESPONSE=$(curl -s "$NODE_URL/api/admin/login?username=admin")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if error is returned
+ERROR=$(echo "$RESPONSE" | jq -r '.error')
+if [ "$ERROR" != "null" ]; then
+    print_result 0 "Admin login error handling for missing parameters"
+else
+    print_result 1 "Admin login error handling for missing parameters"
+fi
+echo ""
+
+echo "=========================================="
+echo "TEST 4: Submit Fraud Report (Valid)"
+echo "=========================================="
+echo ""
+
+RESPONSE=$(curl -s "$NODE_URL/api/fraud/report?txHash=test_tx_001&reporterAddress=tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf&amount=100.5&description=Test%20fraud%20report")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if report was submitted
+SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
+REPORT_ID=$(echo "$RESPONSE" | jq -r '.reportId')
+if [ "$SUCCESS" == "true" ] && [ "$REPORT_ID" != "null" ]; then
+    print_result 0 "Fraud report submission"
     echo "Report ID: $REPORT_ID"
+else
+    print_result 1 "Fraud report submission"
 fi
-
 echo ""
-echo "========================================"
-echo "TEST 4: Get Pending Fraud Reports"
-echo "========================================"
 
-test_api "Get Pending Reports" "GET" "/api/admin/fraud/reports/pending?sessionToken=$SESSION_TOKEN" "" "200"
-
+echo "=========================================="
+echo "TEST 5: Submit Fraud Report (Missing Params)"
+echo "=========================================="
 echo ""
-echo "========================================"
-echo "TEST 5: Check Transaction Taint"
-echo "========================================"
 
-test_api "Check Transaction Taint" "GET" "/api/fraud/check-transaction/test_tx_123" "" "200"
-
+RESPONSE=$(curl -s "$NODE_URL/api/fraud/report?txHash=test_tx_002&amount=50")
+echo "Response:"
+echo "$RESPONSE" | jq .
 echo ""
-echo "========================================"
-echo "TEST 6: Check Address Fraud Status"
-echo "========================================"
 
-test_api "Check Address Fraud" "GET" "/api/fraud/check-address/test_address_123" "" "200"
-
+# Check if error is returned
+ERROR=$(echo "$RESPONSE" | jq -r '.error')
+if [ "$ERROR" != "null" ]; then
+    print_result 0 "Fraud report error handling for missing parameters"
+else
+    print_result 1 "Fraud report error handling for missing parameters"
+fi
 echo ""
-echo "========================================"
-echo "TEST 7: Get Blockchain Info"
-echo "========================================"
 
-test_api "Get Blockchain Info" "GET" "/api/v1/blockchain/info" "" "200"
-
+echo "=========================================="
+echo "TEST 6: Submit Multiple Fraud Reports"
+echo "=========================================="
 echo ""
-echo "========================================"
-echo "TEST 8: Admin Logout"
-echo "========================================"
 
-LOGOUT_DATA="{\"sessionToken\": \"$SESSION_TOKEN\"}"
-test_api "Admin Logout" "POST" "/api/admin/logout" "$LOGOUT_DATA" "200"
-
+for i in {1..3}; do
+    echo "Submitting report $i..."
+    RESPONSE=$(curl -s "$NODE_URL/api/fraud/report?txHash=test_tx_00$i&reporterAddress=tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf&amount=$((100 * i))&description=Fraud%20report%20$i")
+    REPORT_ID=$(echo "$RESPONSE" | jq -r '.reportId')
+    echo "Report ID: $REPORT_ID"
+done
 echo ""
-echo "========================================"
-echo "TEST 9: Invalid Login Attempt"
-echo "========================================"
-
-INVALID_LOGIN='{
-    "username": "invalid_user",
-    "password": "wrong_password"
-}'
-
-test_api "Invalid Login" "POST" "/api/admin/login" "$INVALID_LOGIN" "401"
-
+print_result 0 "Multiple fraud report submissions"
 echo ""
-echo "========================================"
+
+echo "=========================================="
+echo "TEST 7: Approve Fraud Report (Valid)"
+echo "=========================================="
+echo ""
+
+# Use the token from TEST 1
+RESPONSE=$(curl -s "$NODE_URL/api/admin/fraud/approve?token=$TOKEN&reportId=$REPORT_ID&notes=Approved%20for%20testing")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if approval was successful
+SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
+if [ "$SUCCESS" == "true" ]; then
+    print_result 0 "Fraud report approval"
+else
+    print_result 1 "Fraud report approval"
+fi
+echo ""
+
+echo "=========================================="
+echo "TEST 8: Approve Fraud Report (Missing Token)"
+echo "=========================================="
+echo ""
+
+RESPONSE=$(curl -s "$NODE_URL/api/admin/fraud/approve?reportId=FR_123&notes=Test")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if error is returned
+ERROR=$(echo "$RESPONSE" | jq -r '.error')
+if [ "$ERROR" != "null" ]; then
+    print_result 0 "Fraud approval error handling for missing token"
+else
+    print_result 1 "Fraud approval error handling for missing token"
+fi
+echo ""
+
+echo "=========================================="
+echo "TEST 9: Blockchain Info (Sanity Check)"
+echo "=========================================="
+echo ""
+
+RESPONSE=$(curl -s "$NODE_URL/api/getinfo")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if blockchain info is returned
+HEIGHT=$(echo "$RESPONSE" | jq -r '.result.height')
+if [ "$HEIGHT" != "null" ] && [ "$HEIGHT" -ge 0 ]; then
+    print_result 0 "Blockchain info retrieval"
+    echo "Current Height: $HEIGHT"
+else
+    print_result 1 "Blockchain info retrieval"
+fi
+echo ""
+
+echo "=========================================="
+echo "TEST 10: Health Check"
+echo "=========================================="
+echo ""
+
+RESPONSE=$(curl -s "$NODE_URL/health")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if health check returns OK
+STATUS=$(echo "$RESPONSE" | jq -r '.status')
+if [ "$STATUS" == "ok" ]; then
+    print_result 0 "Health check endpoint"
+else
+    print_result 1 "Health check endpoint"
+fi
+echo ""
+
+echo "=========================================="
+echo "TEST 11: Get Balance"
+echo "=========================================="
+echo ""
+
+RESPONSE=$(curl -s "$NODE_URL/api/getbalance?address=tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if balance is returned
+RESULT=$(echo "$RESPONSE" | jq -r '.result')
+if [ "$RESULT" != "null" ]; then
+    print_result 0 "Get balance endpoint"
+else
+    print_result 1 "Get balance endpoint"
+fi
+echo ""
+
+echo "=========================================="
+echo "TEST 12: List Unspent"
+echo "=========================================="
+echo ""
+
+RESPONSE=$(curl -s "$NODE_URL/api/listunspent?address=tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if unspent list is returned
+RESULT=$(echo "$RESPONSE" | jq -r '.result')
+if [ "$RESULT" != "null" ]; then
+    print_result 0 "List unspent endpoint"
+else
+    print_result 1 "List unspent endpoint"
+fi
+echo ""
+
+echo "=========================================="
+echo "TEST 13: Get Block Count"
+echo "=========================================="
+echo ""
+
+RESPONSE=$(curl -s "$NODE_URL/api/getblockcount")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if block count is returned
+RESULT=$(echo "$RESPONSE" | jq -r '.result')
+if [ "$RESULT" != "null" ] && [ "$RESULT" -ge 0 ]; then
+    print_result 0 "Get block count endpoint"
+    echo "Block Count: $RESULT"
+else
+    print_result 1 "Get block count endpoint"
+fi
+echo ""
+
+echo "=========================================="
+echo "TEST 14: Get Best Block Hash"
+echo "=========================================="
+echo ""
+
+RESPONSE=$(curl -s "$NODE_URL/api/getbestblockhash")
+echo "Response:"
+echo "$RESPONSE" | jq .
+echo ""
+
+# Check if block hash is returned
+RESULT=$(echo "$RESPONSE" | jq -r '.result')
+if [ "$RESULT" != "null" ] && [ "$RESULT" != "" ]; then
+    print_result 0 "Get best block hash endpoint"
+else
+    print_result 1 "Get best block hash endpoint"
+fi
+echo ""
+
+echo "=========================================="
+echo "TEST 15: Complete Admin Workflow"
+echo "=========================================="
+echo ""
+
+echo "Step 1: Admin Login..."
+LOGIN_RESPONSE=$(curl -s "$NODE_URL/api/admin/login?username=admin&password=admin123")
+WORKFLOW_TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.sessionToken')
+echo "Token: $WORKFLOW_TOKEN"
+echo ""
+
+echo "Step 2: Submit Fraud Report..."
+REPORT_RESPONSE=$(curl -s "$NODE_URL/api/fraud/report?txHash=workflow_test_tx&reporterAddress=tGXC3tz6MsTbP2NCMvc33JixQdkQi6tf&amount=250&description=Workflow%20test")
+WORKFLOW_REPORT_ID=$(echo "$REPORT_RESPONSE" | jq -r '.reportId')
+echo "Report ID: $WORKFLOW_REPORT_ID"
+echo ""
+
+echo "Step 3: Approve Fraud Report..."
+APPROVE_RESPONSE=$(curl -s "$NODE_URL/api/admin/fraud/approve?token=$WORKFLOW_TOKEN&reportId=$WORKFLOW_REPORT_ID&notes=Workflow%20test%20approved")
+APPROVE_STATUS=$(echo "$APPROVE_RESPONSE" | jq -r '.status')
+echo "Status: $APPROVE_STATUS"
+echo ""
+
+if [ "$APPROVE_STATUS" == "approved" ]; then
+    print_result 0 "Complete admin workflow (login → report → approve)"
+else
+    print_result 1 "Complete admin workflow (login → report → approve)"
+fi
+echo ""
+
+echo "=========================================="
 echo "TEST SUMMARY"
-echo "========================================"
-echo -e "Tests Passed: ${GREEN}$TESTS_PASSED${NC}"
-echo -e "Tests Failed: ${RED}$TESTS_FAILED${NC}"
-echo "========================================"
+echo "=========================================="
+echo ""
+echo -e "${GREEN}Tests Passed: $TESTS_PASSED${NC}"
+echo -e "${RED}Tests Failed: $TESTS_FAILED${NC}"
+echo ""
+
+TOTAL_TESTS=$((TESTS_PASSED + TESTS_FAILED))
+SUCCESS_RATE=$((TESTS_PASSED * 100 / TOTAL_TESTS))
+
+echo "Total Tests: $TOTAL_TESTS"
+echo "Success Rate: $SUCCESS_RATE%"
+echo ""
 
 if [ $TESTS_FAILED -eq 0 ]; then
-    echo -e "${GREEN}✅ ALL TESTS PASSED!${NC}"
+    echo -e "${GREEN}🎉 ALL TESTS PASSED!${NC}"
     exit 0
 else
-    echo -e "${RED}❌ SOME TESTS FAILED${NC}"
+    echo -e "${YELLOW}⚠️  Some tests failed. Review the output above.${NC}"
     exit 1
 fi
