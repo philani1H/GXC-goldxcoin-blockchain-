@@ -7,9 +7,13 @@
  * - Fraud report management
  * - Market maker application management
  * - Dashboard and statistics
- * 
- * Add this to RESTServer.cpp
  */
+
+#include "../include/RESTServer.h"
+#include "../include/MarketMakerAdmin.h"
+#include "../include/ReversalFeePool.h"
+#include "../include/Logger.h"
+#include <string>
 
 // ============================================================================
 // ADMIN AUTHENTICATION
@@ -970,14 +974,14 @@ std::string RESTServer::getReversalPoolStats(const std::string& sessionToken) {
     
     try {
         // Verify admin session
-        std::string adminId;
-        if (!adminSystem->verifySessionToken(sessionToken, adminId)) {
+        std::string adminId = adminSystem->verifyAdminSession(sessionToken);
+        if (adminId.empty()) {
             return createErrorResponse(401, "UNAUTHORIZED", 
                 "Invalid or expired session token");
         }
         
         // Check permission
-        if (!adminSystem->hasPermission(adminId, "view_reversal_stats")) {
+        if (!adminSystem->verifyAdminPermission(adminId, "view_reversal_stats")) {
             return createErrorResponse(403, "FORBIDDEN", 
                 "You do not have permission to view reversal statistics");
         }
@@ -1022,8 +1026,8 @@ std::string RESTServer::recordPoolFunding(const std::string& sessionToken, const
     
     try {
         // Verify admin session
-        std::string adminId;
-        if (!adminSystem->verifySessionToken(sessionToken, adminId)) {
+        std::string adminId = adminSystem->verifyAdminSession(sessionToken);
+        if (adminId.empty()) {
             return createErrorResponse(401, "UNAUTHORIZED", 
                 "Invalid or expired session token");
         }

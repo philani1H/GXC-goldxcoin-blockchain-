@@ -164,8 +164,7 @@ private:
     std::string generateReportId();
     std::string generateSessionToken();
     
-    // Verify admin permissions
-    bool verifyAdminPermission(const std::string& adminId, const std::string& permission);
+    // Verify session token (private)
     bool verifySessionToken(const std::string& sessionToken, std::string& adminId);
     
     // Log action
@@ -177,6 +176,9 @@ private:
     
 public:
     MarketMakerAdmin();
+    
+    // Verify admin permissions (public)
+    bool verifyAdminPermission(const std::string& adminId, const std::string& permission);
     
     // Set fraud detection system (called after initialization)
     void setFraudDetection(class FraudDetection* fd) {

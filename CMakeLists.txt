@@ -183,6 +183,7 @@ set(NETWORK_SOURCES
     src/Network.cpp
     src/RPCAPI.cpp
     src/RESTServer.cpp
+    # src/RESTServer_AdminAPIs.cpp  # TODO: Fix struct mismatches before enabling
     src/WebSocketServer.cpp
     src/PeerManager.cpp
     src/MessageHandler.cpp
