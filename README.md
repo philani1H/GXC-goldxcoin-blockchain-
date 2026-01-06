@@ -481,6 +481,30 @@ curl -X POST http://localhost:8545 -H "Content-Type: application/json" -d '{
 **Mainnet:** `http://localhost:8332`
 **Testnet:** `http://localhost:8545`
 
+### GET Endpoints (Railway Compatible)
+
+For Railway deployments where POST bodies may be stripped, use GET endpoints with query parameters:
+
+```bash
+# Get blockchain info
+curl https://your-node.railway.app/api/getinfo
+
+# Get block count
+curl https://your-node.railway.app/api/getblockcount
+
+# Get balance for address
+curl https://your-node.railway.app/api/getbalance?address=YOUR_ADDRESS
+
+# List unspent outputs
+curl https://your-node.railway.app/api/listunspent?address=YOUR_ADDRESS
+
+# Get block by hash
+curl https://your-node.railway.app/api/getblock?hash=BLOCK_HASH
+
+# Get transaction by ID
+curl https://your-node.railway.app/api/gettransaction?txid=TX_ID
+```
+
 ### Available Methods (101 total)
 
 #### Blockchain Info
