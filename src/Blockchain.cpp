@@ -20,13 +20,15 @@ Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0),
     // Initialize Staking Pool
     stakingPool = std::make_unique<StakingPool>();
     
-    // Initialize Reversal Fee Pool (self-sustaining fraud detection funding)
-    reversalFeePool = std::make_shared<ReversalFeePool>();
-    reversalFeePool->initialize("GXC_SYSTEM_POOL_ADDRESS");
-    
     // Set difficulty based on network type
     // CONSENSUS RULE: Minimum difficulty is 1.0 (at least 1 leading zero required)
     bool isTestnet = Config::isTestnet();
+    
+    // Initialize Reversal Fee Pool (self-sustaining fraud detection funding)
+    reversalFeePool = std::make_shared<ReversalFeePool>();
+    // Use network-appropriate address (testnet: tGXC, mainnet: GXC)
+    std::string poolAddress = isTestnet ? "tGXC2a9d9ddb2e9ee658bca1c2ff41ffed99" : "GXC2a9d9ddb2e9ee658bca1c2ff41ffed99";
+    reversalFeePool->initialize(poolAddress);
     if (isTestnet) {
         difficulty = 1.0;  // Minimum difficulty for testnet (1 leading zero)
         LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain instance created (TESTNET mode, difficulty: 1.0)");

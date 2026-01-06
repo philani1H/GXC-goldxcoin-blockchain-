@@ -2606,10 +2606,28 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
         
         // CRITICAL: Create coinbase transaction TEMPLATE for the block template
         // This is NOT a payment - miner must find valid block and submit it to get paid
-        Transaction coinbaseTx(minerAddress, blockReward);
-        coinbaseTx.setBlockHeight(nextBlockHeight); // Set correct block height
+        // Split reward: 85% to miner, 15% to system pool (self-sustaining fraud detection)
+        double feePoolSplitPercentage = Config::getDouble("fee_pool_split_percentage", 0.15);
+        double minerReward = blockReward * (1.0 - feePoolSplitPercentage);
+        double poolReward = blockReward * feePoolSplitPercentage;
         
-        LOG_API(LogLevel::DEBUG, "📝 Coinbase TEMPLATE created for miner " + minerAddress.substr(0, 16) + "... at height " + std::to_string(nextBlockHeight));
+        // Get system pool address
+        bool isTestnet = Config::isTestnet();
+        std::string poolAddress = isTestnet ? "tGXC2a9d9ddb2e9ee658bca1c2ff41ffed99" : "GXC2a9d9ddb2e9ee658bca1c2ff41ffed99";
+        
+        // Create coinbase with miner reward
+        Transaction coinbaseTx(minerAddress, minerReward);
+        coinbaseTx.setBlockHeight(nextBlockHeight);
+        
+        // Add system pool output
+        TransactionOutput poolOutput;
+        poolOutput.address = poolAddress;
+        poolOutput.amount = poolReward;
+        poolOutput.script = "OP_DUP OP_HASH160 " + poolAddress + " OP_EQUALVERIFY OP_CHECKSIG";
+        coinbaseTx.addOutput(poolOutput);
+        
+        LOG_API(LogLevel::DEBUG, "📝 Coinbase TEMPLATE created: " + std::to_string(minerReward) + " GXC to miner, " + 
+                std::to_string(poolReward) + " GXC to system pool (height " + std::to_string(nextBlockHeight) + ")");
         
         // CRITICAL FIX: Include pending transactions from mempool
         // Without this, transactions are never included in mined blocks!
