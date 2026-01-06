@@ -295,18 +295,39 @@ BlockTemplate MiningManager::getCurrentBlockTemplate() {
     template_.timestamp = Utils::getCurrentTimestamp();
     template_.minerAddress = minerAddress;
     
+    // Calculate block reward based on height (halving every 1,051,200 blocks)
+    double blockReward = 50.0; // Initial reward
+    uint32_t halvings = template_.height / 1051200;
+    for (uint32_t i = 0; i < halvings; i++) {
+        blockReward /= 2.0;
+    }
+    if (blockReward < 0.00000001) {
+        blockReward = 0.00000001; // Minimum reward
+    }
+    
+    LOG_MINING(LogLevel::DEBUG, "Block reward for height " + std::to_string(template_.height) + 
+               ": " + std::to_string(blockReward) + " GXC");
+    
     // Add pending transactions with traceability validation
     auto pendingTx = blockchain->getPendingTransactions(100); // Get up to 100 pending transactions
+    double totalFees = 0.0;
+    
     for (const auto& tx : pendingTx) {
         if (tx.isTraceabilityValid()) {
             template_.transactions.push_back(tx);
+            totalFees += tx.getFee();
         }
     }
     
-    // Create coinbase transaction (use default reward of 12.5 GXC)
-    double blockReward = 12.5; // Default block reward
-    Transaction coinbase(minerAddress, blockReward);
+    // Create coinbase transaction with block reward + transaction fees
+    double totalReward = blockReward + totalFees;
+    Transaction coinbase(minerAddress, totalReward);
+    
     template_.transactions.insert(template_.transactions.begin(), coinbase);
+    
+    LOG_MINING(LogLevel::DEBUG, "Coinbase transaction: " + std::to_string(totalReward) + 
+               " GXC to " + minerAddress + " (reward: " + std::to_string(blockReward) + 
+               ", fees: " + std::to_string(totalFees) + ")");
     
     return template_;
 }
@@ -364,19 +385,34 @@ void MiningManager::submitShare(const BlockTemplate& blockTemplate, uint64_t non
     try {
         if (poolUrl.empty()) {
             // Solo mining - submit to blockchain
+            LOG_MINING(LogLevel::INFO, "Creating block from template with nonce " + std::to_string(nonce));
+            
             Block newBlock = createBlockFromTemplate(blockTemplate, nonce);
+            
+            LOG_MINING(LogLevel::INFO, "Submitting block " + std::to_string(newBlock.getIndex()) + 
+                       " to blockchain (hash: " + newBlock.getHash().substr(0, 16) + "...)");
+            
             if (blockchain->addBlock(newBlock)) {
                 {
                     std::lock_guard<std::mutex> lock(miningMutex);
                     acceptedShares++;
                 }
-                LOG_MINING(LogLevel::INFO, "Successfully mined block " + std::to_string(newBlock.getIndex()));
+                
+                LOG_MINING(LogLevel::INFO, "✅ Successfully mined block " + std::to_string(newBlock.getIndex()));
+                LOG_MINING(LogLevel::INFO, "Block hash: " + newBlock.getHash());
+                LOG_MINING(LogLevel::INFO, "Miner address: " + minerAddress);
+                LOG_MINING(LogLevel::INFO, "Block reward will be credited to miner");
+                LOG_MINING(LogLevel::INFO, "Transactions in block: " + std::to_string(newBlock.getTransactions().size()));
+                
+                // The blockchain will handle reward distribution through the coinbase transaction
+                
             } else {
                 {
                     std::lock_guard<std::mutex> lock(miningMutex);
                     rejectedShares++;
                 }
-                LOG_MINING(LogLevel::WARNING, "Block rejected by blockchain");
+                LOG_MINING(LogLevel::WARNING, "❌ Block rejected by blockchain");
+                LOG_MINING(LogLevel::WARNING, "This may be due to: invalid proof of work, invalid transactions, or stale block");
             }
         } else {
             // Pool mining - submit to pool
@@ -409,6 +445,14 @@ Block MiningManager::createBlockFromTemplate(const BlockTemplate& blockTemplate,
     for (const auto& tx : blockTemplate.transactions) {
         block.addTransaction(tx);
     }
+    
+    // Calculate block hash with the nonce
+    std::string blockData = serializeBlockTemplate(blockTemplate, nonce);
+    std::string blockHash = sha256(blockData);
+    block.setHash(blockHash);
+    
+    LOG_MINING(LogLevel::DEBUG, "Created block from template: height=" + std::to_string(blockTemplate.height) + 
+               ", hash=" + blockHash.substr(0, 16) + "..., nonce=" + std::to_string(nonce));
     
     return block;
 }

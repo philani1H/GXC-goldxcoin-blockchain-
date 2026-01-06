@@ -149,10 +149,23 @@ json MarketMakerAdmin::adminLogin(const std::string& username, const std::string
             // Generate session token
             std::stringstream ss;
             ss << "SESSION_" << adminId << "_" << std::time(nullptr);
+            std::string sessionToken = ss.str();
+            
+            // Store session token
+            sessionTokens[sessionToken] = adminId;
             
             logAction(adminId, "login", "", "Admin logged in");
             
-            return ss.str();
+            // Return JSON response
+            json response;
+            response["success"] = true;
+            response["sessionToken"] = sessionToken;
+            response["adminId"] = adminId;
+            response["username"] = admin.username;
+            response["role"] = admin.role;
+            response["message"] = "Login successful";
+            
+            return response;
         }
     }
     
