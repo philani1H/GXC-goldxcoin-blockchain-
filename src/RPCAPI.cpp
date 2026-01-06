@@ -2910,15 +2910,30 @@ JsonValue RPCAPI::stopNode(const JsonValue& params) {
 JsonValue RPCAPI::getInfo(const JsonValue& params) {
     JsonValue result;
     
+    uint32_t currentHeight = blockchain->getHeight();
+    Block latestBlock = blockchain->getLatestBlock();
+    double blockReward = calculateBlockReward(currentHeight);
+    
     result["version"] = 200000; // 2.0.0
     result["protocolversion"] = 70015;
-    result["blocks"] = static_cast<uint64_t>(blockchain->getHeight());
+    result["blocks"] = static_cast<uint64_t>(currentHeight);
+    result["height"] = static_cast<uint64_t>(currentHeight);
+    result["bestblockhash"] = latestBlock.getHash();
     result["timeoffset"] = 0;
     result["connections"] = 3; // Would get actual connection count
     result["difficulty"] = blockchain->getDifficulty();
-    result["testnet"] = false;
+    result["chain"] = Config::isTestnet() ? "test" : "main";
+    result["testnet"] = Config::isTestnet();
     result["relayfee"] = 0.00001;
     result["errors"] = "";
+    result["mediantime"] = static_cast<uint64_t>(Utils::getCurrentTimestamp());
+    result["verificationprogress"] = 1.0;
+    result["initialblockdownload"] = false;
+    result["chainwork"] = latestBlock.getChainWork();
+    result["size_on_disk"] = 0;
+    result["pruned"] = false;
+    result["block_reward"] = blockReward;
+    result["reward"] = blockReward;
     
     return result;
 }

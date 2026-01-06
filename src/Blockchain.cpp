@@ -584,27 +584,48 @@ bool Blockchain::addBlock(const Block& block) {
         }
         
         // DEPOSIT TRANSACTION FEE SPLIT TO SYSTEM POOL
-        // Self-sustaining model: 10-20% of transaction fees go to system pool
+        // Self-sustaining model: 15% of transaction fees go to system pool as REAL UTXOs
         if (reversalFeePool) {
             double feePoolSplitPercentage = Config::getDouble("fee_pool_split_percentage", 0.15);
-            uint64_t totalPoolDeposits = 0;
+            double totalPoolDeposits = 0.0;
+            
+            // Get pool address
+            bool isTestnet = Config::isTestnet();
+            std::string poolAddress = isTestnet ? "tGXC2a9d9ddb2e9ee658bca1c2ff41ffed99" : "GXC2a9d9ddb2e9ee658bca1c2ff41ffed99";
             
             for (const auto& tx : blockToAdd.getTransactions()) {
                 if (!tx.isCoinbaseTransaction()) {
-                    uint64_t txFee = static_cast<uint64_t>(tx.getFee() * 100000000); // Convert to satoshis
+                    double txFee = tx.getFee();
                     if (txFee > 0) {
-                        uint64_t poolDeposit = reversalFeePool->depositTransactionFeeSplit(
-                            tx.getHash(), txFee, feePoolSplitPercentage);
-                        totalPoolDeposits += poolDeposit;
+                        double poolShare = txFee * feePoolSplitPercentage;
+                        
+                        // Create REAL UTXO for pool
+                        std::string utxoKey = tx.getHash() + "_pool_fee";
+                        TransactionOutput poolOutput;
+                        poolOutput.address = poolAddress;
+                        poolOutput.amount = poolShare;
+                        poolOutput.script = "OP_DUP OP_HASH160 " + poolAddress + " OP_EQUALVERIFY OP_CHECKSIG";
+                        
+                        // Add to UTXO set
+                        utxoSet[utxoKey] = poolOutput;
+                        
+                        // Also track internally
+                        uint64_t poolDepositSatoshis = static_cast<uint64_t>(poolShare * 100000000);
+                        reversalFeePool->depositTransactionFeeSplit(tx.getHash(), poolDepositSatoshis, feePoolSplitPercentage);
+                        
+                        totalPoolDeposits += poolShare;
+                        
+                        LOG_BLOCKCHAIN(LogLevel::DEBUG, "Created pool UTXO: " + std::to_string(poolShare) + 
+                                      " GXC from TX " + tx.getHash().substr(0, 16) + "...");
                     }
                 }
             }
             
             if (totalPoolDeposits > 0) {
                 LOG_BLOCKCHAIN(LogLevel::INFO, "System Pool: Deposited " + 
-                              std::to_string(totalPoolDeposits / 100000000.0) + 
+                              std::to_string(totalPoolDeposits) + 
                               " GXC from transaction fee splits (" + 
-                              std::to_string(feePoolSplitPercentage * 100) + "%)");
+                              std::to_string(feePoolSplitPercentage * 100) + "%) as real UTXOs");
             }
         }
         
