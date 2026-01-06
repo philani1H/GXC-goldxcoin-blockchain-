@@ -5,14 +5,26 @@ use sha2::{Sha256, Digest};
 pub struct Block {
     pub height: u32,
     pub hash: String,
+    #[serde(alias = "previousblockhash", alias = "prev_hash", alias = "parent_hash", default)]
     pub previous_hash: String,
+    #[serde(alias = "merkleroot", default)]
     pub merkle_root: String,
+    #[serde(alias = "time", default)]
     pub timestamp: u64,
+    #[serde(default)]
     pub nonce: u64,
+    #[serde(default = "default_difficulty")]
     pub difficulty: f64,
+    #[serde(alias = "miner_address", default)]
     pub miner: String,
+    #[serde(default)]
     pub work_receipt: String,
+    #[serde(alias = "tx", default)]
     pub transactions: Vec<Transaction>,
+}
+
+fn default_difficulty() -> f64 {
+    1.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,7 +47,7 @@ impl Block {
             self.previous_hash,
             self.merkle_root,
             self.nonce,
-            self.miner, // In real implementation, use miner_pubkey
+            self.miner,
             self.difficulty,
             self.timestamp
         );

@@ -1,0 +1,17 @@
+[network]
+name = "testnet"
+
+[p2p]
+listen_addr = "0.0.0.0"
+listen_port = 18444
+max_peers = 50
+bootstrap_peers = [
+    "gxc-chain112-blockchain-node-production.up.railway.app:18333"
+]
+
+[rpc]
+node_url = "https://gxc-chain112-blockchain-node-production.up.railway.app"
+
+[node]
+node_id = "gxc-peer-rust-1"
+data_dir = "./data"
