@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "Dockerfile.testnet"
 
 [deploy]
 startCommand = "/app/gxc-node --testnet --config=/app/gxc-testnet.conf"
