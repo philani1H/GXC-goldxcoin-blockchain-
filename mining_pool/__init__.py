@@ -1,2 +1,0 @@
-# GXC Mining Pool Package
-
