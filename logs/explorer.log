@@ -1,6 +1,0 @@
-Traceback (most recent call last):
-  File "/workspaces/GXC-goldxcoin-blockchain-/web/blockchain_explorer.py", line 3790, in <module>
-    socketio.run(app, host='0.0.0.0', port=3000, debug=False)
-  File "/workspaces/GXC-goldxcoin-blockchain-/.venv/lib/python3.12/site-packages/flask_socketio/__init__.py", line 640, in run
-    raise RuntimeError('The Werkzeug web server is not '
-RuntimeError: The Werkzeug web server is not designed to run in production. Pass allow_unsafe_werkzeug=True to the run() method to disable this error.

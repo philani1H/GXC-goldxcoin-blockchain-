@@ -9,7 +9,7 @@
 
 // Default constructor
 Transaction::Transaction() 
-    : timestamp(std::time(nullptr)), referencedAmount(0.0), nonce(0),
+    : timestamp(0), referencedAmount(0.0), nonce(0),
       isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0), type(TransactionType::NORMAL),
       workReceiptHash(""), blockHeight(0) {
     txHash = "";

@@ -1,3 +1,0 @@
-  File "C:\Users\phila\GXC-goldxcoin-blockchain-\api\wallet_service.py", line 37
-    conn = sqlite3.connect(DATABASE_PATH)
-IndentationError: unexpected indent
