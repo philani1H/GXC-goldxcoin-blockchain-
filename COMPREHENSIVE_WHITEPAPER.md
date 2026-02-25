@@ -3314,16 +3314,665 @@ All features are production-ready, mathematically proven, and cryptographically 
 ---
 
 *This document represents the COMPLETE technical specification of the GoldXCoin blockchain as implemented in the C++ node software, including all advanced features, mathematical proofs, and implementation details.*
+
 ---
 
-**Document Version**: 1.0
-**Date**: 2026-01-10
+## 26. Database Layer — Complete LevelDB Specification
+
+### 26.1 Singleton Pattern and Initialization
+
+The `Database` class is a **thread-safe singleton** backed by LevelDB.
+
+```
+Database::initialize(dbPath) → opens LevelDB, stores instance
+Database::getInstance()      → returns reference, throws if not initialized
+Database::shutdown()         → flushes, closes, destroys instance
+```
+
+**Network Isolation Guard** — the database refuses to open if the path
+and the node's network mode do not agree:
+
+```
+isTestnet=true  → path MUST contain "testnet"
+isTestnet=false → path MUST NOT contain "testnet"
+```
+
+This prevents a testnet database from ever corrupting mainnet state.
+
+### 26.2 LevelDB Tuning Parameters
+
+```cpp
+options.create_if_missing   = true
+options.paranoid_checks     = true
+options.max_open_files      = 100
+options.write_buffer_size   = 4 MB      // in-memory write buffer
+options.block_cache         = 8 MB      // LRU read cache
+options.filter_policy       = Bloom(10) // 10-bit Bloom filter per key
+options.compression         = Snappy    // fast lossless compression
+writeOptions.sync           = false     // async flush (safe: chain is rebuild-able)
+```
+
+### 26.3 Key Namespace Design
+
+Every record type owns an exclusive key prefix, enabling efficient prefix-scans:
+
+| Prefix      | Contents                                      |
+|-------------|-----------------------------------------------|
+| `blk:`      | Block JSON, keyed by block hash               |
+| `blkh:`     | Block hash, keyed by zero-padded height       |
+| `tx:`       | Transaction JSON, keyed by tx hash            |
+| `txb:`      | Block mapping (block_hash + height), keyed by tx hash |
+| `utxo:`     | UTXO JSON, keyed by `txHash:outputIndex`      |
+| `addr:`     | UTXO copy, keyed by `address:txHash:index`    |
+| `val:`      | Validator JSON, keyed by address              |
+| `peer:`     | Peer JSON, keyed by `ip:port`                 |
+| `cfg:`      | Config string, keyed by config name           |
+| `trace:`    | Traceability JSON, keyed by tx hash           |
+| `wallet:`   | Encrypted wallet, keyed by address            |
+| `proposal:` | Governance proposal JSON                      |
+| `vote:`     | Vote JSON, keyed by `proposalId:voter`        |
+| `price:`    | Price history, keyed by `asset:timestamp`     |
+| `bridge:`   | Bridge transfer JSON, keyed by transferId     |
+| `share:`    | Mining pool share, keyed by `pool:miner`      |
+
+**Height key zero-padding** ensures lexicographic order equals numeric order:
+
+```cpp
+// Height 42 → key "blkh:0000000042"
+oss << prefix << std::setw(10) << std::setfill('0') << height;
+```
+
+### 26.4 Atomic Block Persistence (WriteBatch)
+
+Every call to `saveBlock()` performs a **single atomic WriteBatch** containing:
+
+```
+1. Block JSON          → blk:<hash>
+2. Height→hash index   → blkh:<height>
+3. latest_block_height → cfg:latest_block_height
+4. latest_block_hash   → cfg:latest_block_hash
+
+For each transaction in the block:
+  5.  tx JSON          → tx:<txHash>
+  6.  tx→block mapping → txb:<txHash>
+  7.  Delete spent UTXOs from UTXO set
+  8.  Insert new UTXOs → utxo:<txHash>:<outputIndex>
+  9.  Insert address index → addr:<address>:<txHash>:<outputIndex>
+  10. Traceability record  → trace:<txHash>   (non-coinbase only)
+```
+
+**Atomicity guarantee**: if the process crashes mid-write, LevelDB's
+journal ensures the batch is either fully applied or fully absent on
+recovery — no partial state is possible.
+
+### 26.5 JSON Serialization Schema
+
+#### Block Record
+```json
+{
+  "index": 12345,
+  "hash": "0000abc...",
+  "previous_hash": "0000xyz...",
+  "merkle_root": "abc123...",
+  "timestamp": 1700000000,
+  "difficulty": 1000.0,
+  "nonce": 987654321,
+  "miner_address": "GXC...",
+  "block_type": 0,
+  "tx_hashes": ["hash1", "hash2"]
+}
+```
+
+#### Transaction Record
+```json
+{
+  "hash": "txhash...",
+  "sender": "GXC...",
+  "receiver": "GXC...",
+  "fee": 0.001,
+  "timestamp": 1700000001,
+  "nonce": 1,
+  "is_coinbase": false,
+  "prev_tx_hash": "prevhash...",
+  "referenced_amount": 10.5,
+  "traceability_valid": true,
+  "inputs": [
+    {"tx_hash": "...", "output_index": 0, "amount": 10.5, "signature": "..."}
+  ],
+  "outputs": [
+    {"address": "GXC...", "amount": 10.0, "script": ""},
+    {"address": "GXC...", "amount": 0.499, "script": ""}
+  ]
+}
+```
+
+#### UTXO Record
+```json
+{
+  "tx_hash": "abc...",
+  "output_index": 0,
+  "address": "GXC...",
+  "amount": 10.0,
+  "script": "",
+  "block_height": 12345
+}
+```
+
+#### Traceability Record
+```json
+{
+  "tx_hash": "abc...",
+  "prev_tx_hash": "xyz...",
+  "referenced_amount": 10.5,
+  "sender": "GXC...",
+  "receiver": "GXC...",
+  "block_height": 12345,
+  "timestamp": 1700000001,
+  "validation_status": true
+}
+```
+
+#### Validator Record
+```json
+{
+  "address": "GXC...",
+  "stake_amount": 5000.0,
+  "staking_days": 180,
+  "stake_start_time": 1699000000,
+  "is_active": true,
+  "public_key": "02abc...",
+  "blocks_produced": 423,
+  "missed_blocks": 2,
+  "uptime": 99.53,
+  "total_rewards": 211.5,
+  "pending_rewards": 1.25,
+  "is_slashed": false,
+  "slashed_amount": 0.0
+}
+```
+
+### 26.6 UTXO Balance Lookup
+
+**Address Balance** is derived entirely from the UTXO set — no separate
+balance counter is maintained:
+
+```
+getAddressBalance(address) →
+    utxos = getUTXOsByAddress(address)       // prefix-scan addr:<address>:
+    return Σ utxo.amount
+```
+
+This guarantees that the stored balance is always consistent with the chain.
+
+### 26.7 Data Persistence Per Subsystem
+
+| Subsystem         | Storage Location         | Persistence Method          |
+|-------------------|--------------------------|-----------------------------|
+| Blocks            | LevelDB `blk:` / `blkh:` | Atomic WriteBatch per block |
+| Transactions      | LevelDB `tx:` / `txb:`   | Same WriteBatch as block    |
+| UTXO Set          | LevelDB `utxo:` / `addr:`| Same WriteBatch as block    |
+| Traceability      | LevelDB `trace:`         | Same WriteBatch as block    |
+| Validators        | LevelDB `val:`           | On every state change       |
+| Staking Pool      | LevelDB (own instance)   | Serialized via own DB path  |
+| Governance        | LevelDB `proposal:`/`vote:`| On submit/vote/execute    |
+| Peers             | LevelDB `peer:`          | On connect / disconnect     |
+| Wallets           | LevelDB `wallet:`        | On create / import          |
+| Price Data (PoP)  | LevelDB `price:`         | On each oracle submission   |
+| Bridge Transfers  | LevelDB `bridge:`        | On initiate / status change |
+| Pool Shares       | LevelDB `share:`         | On share submission         |
+| Config / Metadata | LevelDB `cfg:`           | On every change             |
+
+### 26.8 Database Maintenance Operations
+
+```cpp
+// Trigger LevelDB compaction (runs in background automatically too)
+vacuum()  →  db->CompactRange(nullptr, nullptr)
+
+// Hot backup — copy entire data directory
+backup(backupPath)  →  std::filesystem::copy(dataDirectory, backupPath, recursive)
+
+// Restore from backup
+restore(backupPath)  →  close() → remove(dataDirectory) → copy(backupPath) → reopen()
+
+// Size reporting
+getDatabaseSize()  →  Σ file_size for all files in dataDirectory
+
+// Corruption repair (LevelDB built-in)
+repairDatabase()  →  leveldb::RepairDB(dataDirectory, options)
+```
+
+### 26.9 Error Codes
+
+```cpp
+enum DatabaseError {
+    DB_SUCCESS       = 0,
+    DB_ERROR_INIT    = 1,   // Failed to open LevelDB
+    DB_ERROR_NOT_FOUND = 2, // Key not present
+    DB_ERROR_CORRUPT = 3,   // Data corruption detected
+    DB_ERROR_DISK_FULL = 4, // No space left
+    DB_ERROR_PERMISSION = 5,// File permission denied
+    DB_ERROR_IO      = 6    // Generic I/O error
+};
+```
+
+---
+
+## 27. Block Explorer API
+
+### 27.1 Architecture
+
+`ExplorerAPI` is a read-only façade over `Blockchain` that formats all
+on-chain data as structured JSON for use by dashboards, wallets, and
+third-party integrations.
+
+### 27.2 Block Endpoints
+
+```
+getLatestBlocks(limit)           → last N blocks, full details
+getBlock(hashOrHeight)           → single block by hash or height string
+getBlockTransactions(identifier) → all transactions in a block
+searchBlocks(query)              → blocks matching free-text query
+```
+
+### 27.3 Transaction Endpoints
+
+```
+getTransaction(txHash)           → full tx details + traceability fields
+getTransactionChain(txHash)      → complete chain from genesis to this tx
+getLatestTransactions(limit)     → last N transactions across all blocks
+getAddressTransactions(addr, N)  → transactions involving an address
+searchTransactions(query)        → free-text search
+```
+
+### 27.4 Address Endpoints
+
+```
+getAddressDetails(address)       → balance, tx count, first/last seen
+getAddressBalance(address)       → balance + UTXO list
+getAddressUtxos(address)         → all UTXOs for an address
+getRichestAddresses(limit)       → top N by balance (wealth distribution)
+```
+
+### 27.5 Validator and Stock Endpoints
+
+```
+getAllValidators()                → full validator list with stake and uptime
+getValidatorDetails(address)     → per-validator stats and block history
+getTopValidators(limit)          → top N by weighted stake
+getAllStocks()                    → all deployed stock contracts
+getStockDetails(ticker)          → price, market cap, holder count
+getStockHolders(ticker)          → all addresses holding a stock
+getStockTransactions(ticker, N)  → buy/sell history
+getMarketMakerStocks(address)    → stocks deployed by a specific market maker
+```
+
+### 27.6 Network Statistics
+
+```
+getBlockchainStats() →
+{
+  "total_blocks": 12345,
+  "total_transactions": 987654,
+  "total_addresses": 45678,
+  "total_supply": 15000000.0,
+  "circulating_supply": 14500000.0,
+  "total_burned": 100.0,
+  "avg_block_time": 601.2,
+  "latest_block_height": 12344,
+  "latest_block_hash": "0000..."
+}
+
+getNetworkStats() →
+{
+  "hashrate": 1.5e15,
+  "difficulty": 1000.0,
+  "active_validators": 50,
+  "total_staked": 5000000.0,
+  "stake_ratio": 0.33,
+  "mempool_size": 120,
+  "peer_count": 87,
+  "protocol_version": 70015
+}
+```
+
+### 27.7 Chart Data
+
+```
+getBlockTimeChart(days)           → [{timestamp, block_time}]
+getTransactionVolumeChart(days)   → [{timestamp, tx_count}]
+getValidatorDistributionChart()   → [{address, stake_weight}]
+getStockPriceChart(ticker, days)  → [{timestamp, price}]
+```
+
+### 27.8 Universal Search
+
+```
+search(query) →
+{
+  "blocks":       [...],   // blocks whose hash starts with query
+  "transactions": [...],   // txs whose hash starts with query
+  "addresses":    [...],   // addresses matching query
+  "validators":   [...],   // validators matching query
+  "stocks":       [...]    // stocks with ticker or name matching query
+}
+```
+
+---
+
+## 28. Market Maker Administration System
+
+### 28.1 Overview
+
+The `MarketMakerAdmin` system controls who may deploy stock contracts on the GXC blockchain. It enforces a **five-step regulatory verification pipeline** before granting authorization, and provides a separate fraud-report workflow that integrates with the fraud-detection and reversal engines.
+
+### 28.2 Admin Role Hierarchy
+
+```
+super_admin
+  ├── Create / remove / deactivate other admins
+  ├── Approve / reject market maker applications
+  ├── Revoke active market makers
+  └── View full audit log
+
+verifier
+  ├── Execute each of the 5 verification steps
+  └── Request additional documents from applicant
+
+reviewer
+  ├── Assign applications to verifiers
+  └── View pending applications
+
+fraud_admin
+  ├── Assign fraud reports to reviewers
+  └── View all fraud reports
+
+fraud_approver
+  ├── Approve fraud reports (marks tx as stolen → triggers reversal pipeline)
+  └── Reject fraud reports
+
+fraud_reviewer
+  └── View fraud reports and statistics
+```
+
+### 28.3 Session Management
+
+All admin actions require a valid **session token**:
+
+```
+adminLogin(username, password) →
+    if bcrypt_verify(password, admin.passwordHash):
+        token = generateSessionToken()          // cryptographically random
+        sessionTokens[token] = adminId
+        sessionExpiry[token] = now() + 24h
+        return {token, adminId, role, permissions}
+
+verifyAdminSession(token) →
+    if token ∈ sessionTokens AND now() < sessionExpiry[token]:
+        return sessionTokens[token]   // adminId
+    return ""                         // invalid or expired
+
+adminLogout(token) →
+    sessionTokens.erase(token)
+```
+
+### 28.4 Market Maker Verification Pipeline
+
+**Five sequential steps — all must pass before approval:**
+
+```
+Step 1: verifyLicense()
+    Admin contacts regulatory body (SEC, FCA, MAS, etc.)
+    Verifies licenseNumber is current and valid
+    Records proofDocumentHash (hash of verification letter)
+
+Step 2: checkCompanyReputation()
+    Searches public records, news, and regulatory databases
+    Flags any disciplinary history
+
+Step 3: reviewFinancialStanding()
+    Reviews financialStatementsHash (audited financials)
+    Ensures applicant has sufficient capital to operate
+
+Step 4: verifyTechnicalCapabilities()
+    Reviews technicalCapabilitiesHash
+    Confirms applicant can safely operate on-chain contracts
+
+Step 5: completeKycAmlCheck()
+    Full KYC (Know Your Customer) and AML (Anti-Money Laundering) check
+    Reviews kycDocumentsHash
+```
+
+**Approval** (requires super_admin, all 5 steps passed):
+```
+approveApplication(adminId, applicationId, notes) →
+    require(all 5 steps passed)
+    require(adminPermission == super_admin)
+    application.status = APPROVED
+    marketMakerId = generateMarketMakerId()
+    logAction(adminId, "approve_application", applicationId, notes)
+    emit MarketMakerActivated(marketMakerId)
+```
+
+**Rejection:**
+```
+rejectApplication(adminId, applicationId, reason) →
+    require(adminPermission == super_admin)
+    application.status = REJECTED
+    logAction(adminId, "reject_application", applicationId, reason)
+```
+
+**Revocation:**
+```
+revokeMarketMaker(adminId, marketMakerId, reason) →
+    require(adminPermission == super_admin)
+    application.status = REVOKED
+    logAction(adminId, "revoke_market_maker", marketMakerId, reason)
+    emit MarketMakerRevoked(marketMakerId, reason)
+```
+
+### 28.5 Application Status Lifecycle
+
+```
+PENDING
+  → UNDER_REVIEW         (assigned to reviewer)
+  → LICENSE_VERIFIED     (Step 1 passed)
+  → REPUTATION_CHECKED   (Step 2 passed)
+  → FINANCIAL_REVIEWED   (Step 3 passed)
+  → TECHNICAL_VERIFIED   (Step 4 passed)
+  → KYC_AML_COMPLETED    (Step 5 passed)
+  → APPROVED             (super_admin decision)
+     OR
+  → REJECTED             (super_admin decision at any step)
+     OR
+  → REVOKED              (post-approval revocation)
+```
+
+### 28.6 Fraud Report Lifecycle
+
+```
+Public submits report:
+submitFraudReport(txHash, reporter, amount, email, description, evidence)
+  → reportId
+
+Admin reviews facts (NOT execution — protocol does that separately):
+  PENDING
+    → assignFraudReportToReviewer(reportId, reviewerAdminId)
+    → FACTS_APPROVED   (fraud_approver confirms fraud is real)
+         → FraudDetection::markAsStolen(txHash)
+         → TaintPropagation starts automatically
+         → ProofGenerator::generateProof()
+         → ReversalExecutor::executeReversal()
+    → FACTS_REJECTED   (fraud_approver determines claim is invalid)
+
+Protocol then updates:
+  PROTOCOL_VALIDATING → EXECUTED    (reversal happened)
+                     → INFEASIBLE   (current holder has no recoverable balance)
+```
+
+**Key separation of concerns**:
+- Admins validate **facts** (is the reported theft real?).
+- The **protocol** independently validates **feasibility** (does math allow recovery?).
+- No admin can force a reversal that is mathematically infeasible.
+- No admin can block a reversal that is mathematically feasible and fact-approved.
+
+### 28.7 Audit Log
+
+Every admin action is recorded immutably:
+
+```cpp
+struct AuditLogEntry {
+    std::string logId;
+    std::string adminId;
+    std::string action;       // "verify_license", "approve_application", etc.
+    std::string applicationId;
+    std::string details;
+    std::time_t timestamp;
+    std::string ipAddress;
+};
+```
+
+The audit log is append-only and accessible only to `super_admin`.
+
+---
+
+## 29. Config System
+
+### 29.1 Parameters Stored
+
+```cpp
+class Config {
+    // Network
+    bool isTestnet;
+    uint16_t p2pPort;        // 8333 mainnet / 18333 testnet
+    uint16_t rpcPort;        // 8332 mainnet / 18332 testnet
+    uint16_t restPort;       // 8080
+
+    // Consensus
+    uint32_t targetBlockTime;           // 600 s mainnet / 120 s testnet
+    uint32_t difficultyAdjustInterval;  // 2016 blocks
+    double   minDifficulty;             // 1000.0 mainnet / 1.0 testnet
+    uint64_t maxBlockSize;              // 1 048 576 bytes
+
+    // Economics
+    double   initialBlockReward;        // 50.0 GXC
+    uint64_t halvingInterval;           // 1 051 200 blocks
+    double   maxSupply;                 // 31 000 000 GXC
+    double   feePoolSplitPercentage;    // 0.15 (15%)
+
+    // Staking
+    double   minValidatorStake;         // 100.0 GXC
+    uint32_t minStakingDays;            // 14
+    uint32_t maxStakingDays;            // 365
+
+    // Database
+    std::string dataDirectory;
+    std::string dbPath;
+
+    // Logging
+    LogLevel logLevel;
+    std::string logFile;
+};
+```
+
+### 29.2 Testnet vs Mainnet Differences
+
+| Parameter             | Mainnet      | Testnet      |
+|-----------------------|-------------|-------------|
+| Block time target     | 600 s       | 120 s       |
+| Min difficulty        | 1000.0      | 1.0         |
+| P2P port              | 8333        | 18333       |
+| RPC port              | 8332        | 18332       |
+| Network magic         | "GXC\x01"  | "GXCT"      |
+| Address prefix        | "GXC"       | "tGXC"      |
+| DB path must contain  | (no testnet)| "testnet"   |
+
+---
+
+## 30. Logger System
+
+### 30.1 Log Categories
+
+```cpp
+LOG_BLOCKCHAIN(level, message)
+LOG_NETWORK(level, message)
+LOG_MINING(level, message)
+LOG_DATABASE(level, message)
+LOG_SECURITY(level, message, component)
+LOG_FRAUD(level, message)
+LOG_REVERSAL(level, message)
+LOG_GOVERNANCE(level, message)
+LOG_BRIDGE(level, message)
+LOG_ORACLE(level, message)
+LOG_STAKING(level, message)
+LOG_WALLET(level, message)
+```
+
+### 30.2 Log Levels
+
+```
+DEBUG    → Internal state, algorithm steps
+INFO     → Normal operational events
+WARNING  → Non-critical anomalies
+ERROR    → Recoverable failures
+CRITICAL → System-threatening conditions (attacks, db corruption)
+```
+
+### 30.3 Security Log — Special Handling
+
+`LOG_SECURITY(level, message, component)` writes to both the standard
+log and a dedicated security audit trail, making it tamper-evident for
+forensic review.
+
+---
+
+## Appendix G: Complete Database Key Reference
+
+```
+blk:<blockHash>                        → Block JSON
+blkh:<0000000000>                      → Block hash at given height
+tx:<txHash>                            → Transaction JSON
+txb:<txHash>                           → {"block_hash":..., "block_height":...}
+utxo:<txHash>:<outputIndex>            → UTXO JSON
+addr:<address>:<txHash>:<outputIndex>  → UTXO JSON (address index)
+val:<address>                          → Validator JSON
+peer:<ip>:<port>                       → {"ip":..., "port":..., "last_seen":...}
+cfg:<key>                              → Config string value
+trace:<txHash>                         → Traceability JSON
+wallet:<address>                       → {"public_key":..., "encrypted_private_key":...}
+proposal:<proposalId>                  → Governance proposal JSON
+vote:<proposalId>:<voter>              → {"voter":..., "type":...}
+price:<asset>:<timestamp>             → {"price":..., "timestamp":...}
+bridge:<transferId>                    → Bridge transfer JSON
+share:<poolAddress>:<minerAddress>     → {"pool":..., "miner":..., "value":..., "timestamp":...}
+```
+
+---
+
+## Appendix H: Complete Admin Permission Matrix
+
+| Action                        | super_admin | verifier | reviewer | fraud_admin | fraud_approver | fraud_reviewer |
+|-------------------------------|:-----------:|:--------:|:--------:|:-----------:|:--------------:|:--------------:|
+| Create admin                  | ✅           | ❌        | ❌        | ❌           | ❌              | ❌              |
+| Approve/reject application    | ✅           | ❌        | ❌        | ❌           | ❌              | ❌              |
+| Revoke market maker           | ✅           | ❌        | ❌        | ❌           | ❌              | ❌              |
+| View audit log                | ✅           | ❌        | ❌        | ❌           | ❌              | ❌              |
+| Execute verification steps    | ✅           | ✅        | ❌        | ❌           | ❌              | ❌              |
+| Assign application            | ✅           | ❌        | ✅        | ❌           | ❌              | ❌              |
+| View pending applications     | ✅           | ✅        | ✅        | ❌           | ❌              | ❌              |
+| Assign fraud report           | ✅           | ❌        | ❌        | ✅           | ❌              | ❌              |
+| Approve/reject fraud report   | ✅           | ❌        | ❌        | ❌           | ✅              | ❌              |
+| View fraud reports            | ✅           | ❌        | ❌        | ✅           | ✅              | ✅              |
+| View dashboard                | ✅           | ✅        | ✅        | ✅           | ✅              | ✅              |
+
+---
+
+**Document Version**: 3.0 — Full Edition
+**Date**: 2026-02-25
 **Network**: GoldXCoin (GXC)
 **Protocol Version**: 70015
-
 **Authors**: GXC Development Team
 **Implementation**: C++ Node v2.0.0
 
 ---
 
-*This whitepaper describes the complete technical implementation of the GoldXCoin blockchain as deployed in the C++ node software. All formulas, algorithms, and specifications are production-ready and battle-tested.*
+*This document is the definitive, exhaustive technical specification of the GoldXCoin blockchain. It covers every C++ source file, every algorithm, every mathematical formula, every database key, every API endpoint, every admin permission, and every configuration parameter present in the node implementation. Nothing has been omitted.*
