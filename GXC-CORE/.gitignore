@@ -34,6 +34,8 @@ gxc-netdiag
 
 # Blockchain data directories (never commit chain data)
 data/
+gxc_data/
+gxc_data*/
 testnet-data/
 mainnet-data/
 *.ldb
