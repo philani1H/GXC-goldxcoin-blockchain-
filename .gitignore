@@ -37,3 +37,6 @@ Thumbs.db
 # Temporary files
 /tmp/
 *.tmp
+
+# Test node databases
+gxc_data_node*/
