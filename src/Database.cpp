@@ -236,25 +236,35 @@ std::string Database::serializeBlock(const Block& block) const {
     j["miner_address"] = block.getMinerAddress();
     j["block_type"] = static_cast<int>(block.getBlockType());
     j["tx_count"] = block.getTransactions().size();
-    
+
+    // CRITICAL: Save proof of work receipt (block-bound traceability)
+    j["work_receipt_hash"] = block.getWorkReceiptHash();
+    j["miner_public_key"] = block.getMinerPublicKey();
+    j["block_reward"] = block.getBlockReward();
+    j["validator_signature"] = block.getValidatorSignature();
+    j["fee_burn_rate"] = block.getFeeBurnRate();
+    j["pop_reference"] = block.getPopReference();
+    j["chainwork"] = block.getChainWork();
+    j["nbits"] = block.getNBits();
+
     // Serialize transaction hashes
     json txHashes = json::array();
     for (const auto& tx : block.getTransactions()) {
         txHashes.push_back(tx.getHash());
     }
     j["tx_hashes"] = txHashes;
-    
+
     return j.dump();
 }
 
 Block Database::deserializeBlock(const std::string& data) const {
     try {
         json j = json::parse(data);
-        
+
         uint32_t index = j["index"].get<uint32_t>();
         std::string prevHash = j["previous_hash"].get<std::string>();
         BlockType blockType = static_cast<BlockType>(j["block_type"].get<int>());
-        
+
         Block block(index, prevHash, blockType);
         block.setHash(j["hash"].get<std::string>());
         block.setMerkleRoot(j["merkle_root"].get<std::string>());
@@ -262,7 +272,33 @@ Block Database::deserializeBlock(const std::string& data) const {
         block.setDifficulty(j["difficulty"].get<double>());
         block.setNonce(j["nonce"].get<uint64_t>());
         block.setMinerAddress(j["miner_address"].get<std::string>());
-        
+
+        // CRITICAL: Restore proof of work receipt (block-bound traceability)
+        if (j.contains("work_receipt_hash")) {
+            block.setWorkReceiptHash(j["work_receipt_hash"].get<std::string>());
+        }
+        if (j.contains("miner_public_key")) {
+            block.setMinerPublicKey(j["miner_public_key"].get<std::string>());
+        }
+        if (j.contains("block_reward")) {
+            block.setBlockReward(j["block_reward"].get<double>());
+        }
+        if (j.contains("validator_signature")) {
+            block.setValidatorSignature(j["validator_signature"].get<std::string>());
+        }
+        if (j.contains("fee_burn_rate")) {
+            block.setFeeBurnRate(j["fee_burn_rate"].get<double>());
+        }
+        if (j.contains("pop_reference")) {
+            block.setPopReference(j["pop_reference"].get<std::string>());
+        }
+        if (j.contains("chainwork")) {
+            block.setChainWork(j["chainwork"].get<std::string>());
+        }
+        if (j.contains("nbits")) {
+            block.setNBits(j["nbits"].get<uint32_t>());
+        }
+
         return block;
     } catch (const std::exception& e) {
         LOG_DATABASE(LogLevel::ERROR, "Failed to deserialize block: " + std::string(e.what()));
