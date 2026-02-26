@@ -181,17 +181,50 @@ void P2PNetwork::handlePeer(std::shared_ptr<Peer> peer) {
         }
         else if (message.find("GETBLOCKS:") == 0) {
             int fromHeight = std::stoi(message.substr(10));
-            // Send blocks to peer
+            // Send blocks to peer (full block data, not just hash)
             for (int i = fromHeight; i <= blockchain->getHeight() && i < fromHeight + 500; i++) {
                 Block block = blockchain->getBlock(static_cast<size_t>(i));
-                // Serialize and send block (simplified)
-                sendMessage(peer->socket, "BLOCK:" + block.getHash());
+                // Serialize full block to JSON for P2P transfer
+                std::string blockData = block.serialize();
+                sendMessage(peer->socket, "BLOCKDATA:" + blockData);
+                LOG_P2P(LogLevel::DEBUG, "Sent block " + std::to_string(i) + " to peer");
+            }
+            sendMessage(peer->socket, "BLOCKDATA:END");
+        }
+        else if (message.find("BLOCKDATA:") == 0) {
+            // Receive and validate full block
+            std::string blockData = message.substr(10);
+
+            if (blockData == "END") {
+                LOG_P2P(LogLevel::INFO, "Block sync complete from peer");
+            } else {
+                try {
+                    // Deserialize block from JSON
+                    Block block = Block::deserialize(blockData);
+
+                    // Validate block
+                    if (block.getHash().empty()) {
+                        LOG_P2P(LogLevel::WARNING, "Received invalid block (empty hash)");
+                    } else {
+                        // Add block to blockchain
+                        if (blockchain->addBlock(block)) {
+                            LOG_P2P(LogLevel::INFO, "Added block " + std::to_string(block.getIndex()) +
+                                    " from peer (hash: " + block.getHash().substr(0, 16) + "...)");
+                            peer->syncedBlocks = block.getIndex();
+                        } else {
+                            LOG_P2P(LogLevel::WARNING, "Failed to add block " + std::to_string(block.getIndex()) +
+                                    " from peer (validation failed)");
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    LOG_P2P(LogLevel::ERROR, "Failed to deserialize block: " + std::string(e.what()));
+                }
             }
         }
         else if (message.find("BLOCK:") == 0) {
-            // Receive and validate block
+            // Legacy message - just log for compatibility
             std::string blockHash = message.substr(6);
-            LOG_P2P(LogLevel::INFO, "Received block: " + blockHash);
+            LOG_P2P(LogLevel::DEBUG, "Received block announcement: " + blockHash);
         }
         else if (message.find("PING") == 0) {
             sendMessage(peer->socket, "PONG");
@@ -291,9 +324,13 @@ int P2PNetwork::getPeerCount() {
 
 void P2PNetwork::broadcastNewBlock(const Block& block) {
     std::lock_guard<std::mutex> lock(peersMutex);
+    std::string blockData = block.serialize();
     for (auto& peer : peers) {
         if (peer->isActive) {
-            sendMessage(peer->socket, "BLOCK:" + block.getHash());
+            // Send full block data for immediate sync
+            sendMessage(peer->socket, "BLOCKDATA:" + blockData);
+            LOG_P2P(LogLevel::DEBUG, "Broadcasted block " + std::to_string(block.getIndex()) +
+                    " to peer " + peer->address);
         }
     }
 }
