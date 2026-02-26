@@ -37,6 +37,10 @@ private:
     static const std::string PREFIX_CONFIG;
     static const std::string PREFIX_TRACE;
     static const std::string PREFIX_ADDRESS;
+    static const std::string PREFIX_PENDING_TX;      // Mempool transactions
+    static const std::string PREFIX_GOLD_RESERVE;    // Gold-backed token reserves
+    static const std::string PREFIX_REVERSAL;        // Reversal tracking
+    static const std::string PREFIX_STAKING_POOL;    // Staking pool state
     
     // Helper methods
     std::string makeKey(const std::string& prefix, const std::string& id) const;
@@ -166,7 +170,28 @@ public:
     bool setConfigValue(const std::string& key, const std::string& value);
     bool getConfigValue(const std::string& key, std::string& value) const;
     bool deleteConfigValue(const std::string& key);
-    
+
+    // CRITICAL: Mempool persistence (pending transactions)
+    // Ensures pending transactions survive node restarts
+    bool savePendingTransaction(const Transaction& tx);
+    bool deletePendingTransaction(const std::string& txHash);
+    std::vector<Transaction> getAllPendingTransactions() const;
+    bool clearPendingTransactions();
+
+    // CRITICAL: Staking pool persistence
+    bool saveStakingPoolState(const std::string& stateJson);
+    bool loadStakingPoolState(std::string& stateJson) const;
+
+    // CRITICAL: Gold reserves persistence
+    bool saveGoldReserve(const std::string& address, double amount);
+    bool getGoldReserve(const std::string& address, double& amount) const;
+    std::vector<std::pair<std::string, double>> getAllGoldReserves() const;
+
+    // CRITICAL: Reversal tracking persistence
+    bool saveReversalRecord(const std::string& originalTxHash, const std::string& reversalTxHash);
+    bool isTransactionReversed(const std::string& txHash) const;
+    std::string getReversalTxHash(const std::string& originalTxHash) const;
+
     // Error handling
     enum DatabaseError {
         DB_SUCCESS = 0,

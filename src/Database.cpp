@@ -29,6 +29,10 @@ const std::string Database::PREFIX_PEER = "peer:";
 const std::string Database::PREFIX_CONFIG = "cfg:";
 const std::string Database::PREFIX_TRACE = "trace:";
 const std::string Database::PREFIX_ADDRESS = "addr:";
+const std::string Database::PREFIX_PENDING_TX = "pending:";       // Mempool transactions
+const std::string Database::PREFIX_GOLD_RESERVE = "gold:";        // Gold reserves
+const std::string Database::PREFIX_REVERSAL = "reversal:";        // Reversal tracking
+const std::string Database::PREFIX_STAKING_POOL = "staking:";     // Staking pool state
 
 Database::Database() : db(nullptr) {
     LOG_DATABASE(LogLevel::INFO, "Database instance created");
@@ -1203,4 +1207,240 @@ double Database::getPoolShares(const std::string& poolAddress, const std::string
 
 std::vector<std::pair<std::string, double>> Database::getPoolContributors(const std::string& poolAddress) const {
     return {}; // Simplified
+}
+
+// ==================== CRITICAL: MEMPOOL PERSISTENCE ====================
+// Ensures pending transactions survive node restarts
+// Without this, users lose pending transactions on every deployment
+
+bool Database::savePendingTransaction(const Transaction& tx) {
+    if (!db) return false;
+
+    try {
+        std::string txData = serializeTransaction(tx);
+        bool result = put(makeKey(PREFIX_PENDING_TX, tx.getHash()), txData);
+
+        if (result) {
+            LOG_DATABASE(LogLevel::DEBUG, "Saved pending transaction to DB: " + tx.getHash().substr(0, 16) + "...");
+        }
+
+        return result;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to save pending transaction: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool Database::deletePendingTransaction(const std::string& txHash) {
+    if (!db) return false;
+    
+    bool result = del(makeKey(PREFIX_PENDING_TX, txHash));
+    
+    if (result) {
+        LOG_DATABASE(LogLevel::DEBUG, "Deleted pending transaction from DB: " + txHash.substr(0, 16) + "...");
+    }
+    
+    return result;
+}
+
+std::vector<Transaction> Database::getAllPendingTransactions() const {
+    std::vector<Transaction> transactions;
+    
+    if (!db) return transactions;
+    
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+    
+    for (it->Seek(PREFIX_PENDING_TX); it->Valid(); it->Next()) {
+        std::string key = it->key().ToString();
+        if (key.find(PREFIX_PENDING_TX) != 0) break;
+        
+        try {
+            std::string txData = it->value().ToString();
+            Transaction tx = deserializeTransaction(txData);
+            transactions.push_back(tx);
+        } catch (...) {
+            continue;
+        }
+    }
+    
+    LOG_DATABASE(LogLevel::INFO, "Loaded " + std::to_string(transactions.size()) + " pending transactions from database");
+    return transactions;
+}
+
+bool Database::clearPendingTransactions() {
+    if (!db) return false;
+    
+    try {
+        leveldb::WriteBatch batch;
+        std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+        
+        for (it->Seek(PREFIX_PENDING_TX); it->Valid(); it->Next()) {
+            std::string key = it->key().ToString();
+            if (key.find(PREFIX_PENDING_TX) != 0) break;
+            batch.Delete(key);
+        }
+        
+        leveldb::Status status = db->Write(writeOptions, &batch);
+        if (!status.ok()) {
+            LOG_DATABASE(LogLevel::ERROR, "Failed to clear pending transactions: " + status.ToString());
+            return false;
+        }
+        
+        LOG_DATABASE(LogLevel::INFO, "Cleared all pending transactions from database");
+        return true;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Exception clearing pending transactions: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// ==================== CRITICAL: STAKING POOL PERSISTENCE ====================
+
+bool Database::saveStakingPoolState(const std::string& stateJson) {
+    if (!db) return false;
+    
+    try {
+        bool result = put(makeKey(PREFIX_STAKING_POOL, "state"), stateJson);
+        
+        if (result) {
+            LOG_DATABASE(LogLevel::INFO, "Saved staking pool state to database");
+        }
+        
+        return result;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to save staking pool state: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool Database::loadStakingPoolState(std::string& stateJson) const {
+    if (!db) return false;
+    
+    try {
+        bool result = get(makeKey(PREFIX_STAKING_POOL, "state"), stateJson);
+        
+        if (result) {
+            LOG_DATABASE(LogLevel::INFO, "Loaded staking pool state from database");
+        }
+        
+        return result;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to load staking pool state: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// ==================== CRITICAL: GOLD RESERVES PERSISTENCE ====================
+
+bool Database::saveGoldReserve(const std::string& address, double amount) {
+    if (!db) return false;
+    
+    try {
+        json j;
+        j["address"] = address;
+        j["amount"] = amount;
+        j["timestamp"] = Utils::getCurrentTimestamp();
+        
+        bool result = put(makeKey(PREFIX_GOLD_RESERVE, address), j.dump());
+        
+        if (result) {
+            LOG_DATABASE(LogLevel::DEBUG, "Saved gold reserve: " + address.substr(0, 16) + "... = " + std::to_string(amount));
+        }
+        
+        return result;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to save gold reserve: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool Database::getGoldReserve(const std::string& address, double& amount) const {
+    if (!db) return false;
+    
+    try {
+        std::string data;
+        if (!get(makeKey(PREFIX_GOLD_RESERVE, address), data)) {
+            return false;
+        }
+        
+        json j = json::parse(data);
+        amount = j["amount"].get<double>();
+        return true;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to get gold reserve: " + std::string(e.what()));
+        return false;
+    }
+}
+
+std::vector<std::pair<std::string, double>> Database::getAllGoldReserves() const {
+    std::vector<std::pair<std::string, double>> reserves;
+    
+    if (!db) return reserves;
+    
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(readOptions));
+    
+    for (it->Seek(PREFIX_GOLD_RESERVE); it->Valid(); it->Next()) {
+        std::string key = it->key().ToString();
+        if (key.find(PREFIX_GOLD_RESERVE) != 0) break;
+        
+        try {
+            json j = json::parse(it->value().ToString());
+            std::string address = j["address"].get<std::string>();
+            double amount = j["amount"].get<double>();
+            reserves.push_back({address, amount});
+        } catch (...) {
+            continue;
+        }
+    }
+    
+    LOG_DATABASE(LogLevel::INFO, "Loaded " + std::to_string(reserves.size()) + " gold reserves from database");
+    return reserves;
+}
+
+// ==================== CRITICAL: REVERSAL TRACKING PERSISTENCE ====================
+
+bool Database::saveReversalRecord(const std::string& originalTxHash, const std::string& reversalTxHash) {
+    if (!db) return false;
+    
+    try {
+        json j;
+        j["original_tx"] = originalTxHash;
+        j["reversal_tx"] = reversalTxHash;
+        j["timestamp"] = Utils::getCurrentTimestamp();
+        
+        bool result = put(makeKey(PREFIX_REVERSAL, originalTxHash), j.dump());
+        
+        if (result) {
+            LOG_DATABASE(LogLevel::INFO, "Saved reversal record: " + originalTxHash.substr(0, 16) + "... reversed by " + reversalTxHash.substr(0, 16) + "...");
+        }
+        
+        return result;
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to save reversal record: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool Database::isTransactionReversed(const std::string& txHash) const {
+    if (!db) return false;
+    
+    std::string data;
+    return get(makeKey(PREFIX_REVERSAL, txHash), data);
+}
+
+std::string Database::getReversalTxHash(const std::string& originalTxHash) const {
+    if (!db) return "";
+    
+    try {
+        std::string data;
+        if (!get(makeKey(PREFIX_REVERSAL, originalTxHash), data)) {
+            return "";
+        }
+        
+        json j = json::parse(data);
+        return j["reversal_tx"].get<std::string>();
+    } catch (const std::exception& e) {
+        LOG_DATABASE(LogLevel::ERROR, "Failed to get reversal tx hash: " + std::string(e.what()));
+        return "";
+    }
 }

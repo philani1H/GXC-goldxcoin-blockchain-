@@ -123,6 +123,29 @@ bool Blockchain::initialize() {
                 return false;
             }
 
+            // BULLETPROOF PROTECTION: Check for database lock file
+            // This file is created after the first block is mined
+            // If it exists but blocks failed to load, something is wrong
+            std::string lockFile = dataDir + "/blockchain.lock";
+            std::ifstream lockCheck(lockFile);
+            if (lockCheck.good()) {
+                lockCheck.close();
+
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "❌ CRITICAL: Database lock file exists but no blocks loaded!");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   Lock file: " + lockFile);
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   This indicates the database was previously used and may contain important data.");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   Database corruption or volume mount issue detected.");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   Possible causes:");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   1. Railway volume not mounted correctly");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   2. Database files corrupted or incomplete");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   3. Filesystem permissions issue");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   REFUSING TO START to prevent data loss.");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   Please restore from backup or delete " + lockFile + " to force fresh start.");
+                return false;
+            }
+
             // Database is truly empty - warn about persistence
             if (isEphemeralPath) {
                 LOG_BLOCKCHAIN(LogLevel::WARNING, "⚠️  WARNING: Database path appears to be on EPHEMERAL storage!");
@@ -150,6 +173,22 @@ bool Blockchain::initialize() {
                 LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to save genesis block to database");
             } else {
                 LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block saved to database");
+
+                // CRITICAL: Create database lock file to prevent accidental rebuilds
+                std::string lockFile = dataDir + "/blockchain.lock";
+                std::ofstream lock(lockFile);
+                if (lock.is_open()) {
+                    lock << "GoldXCoin Blockchain Database Lock File\n";
+                    lock << "Created: " << Utils::getCurrentTimestamp() << "\n";
+                    lock << "Network: " << (Config::isTestnet() ? "testnet" : "mainnet") << "\n";
+                    lock << "Genesis Block: " << chain[0]->getHash() << "\n";
+                    lock << "\nWARNING: Do not delete this file while the blockchain is in use.\n";
+                    lock << "This file prevents accidental database rebuilds that would cause data loss.\n";
+                    lock.close();
+                    LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Created database lock file: " + lockFile);
+                } else {
+                    LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to create database lock file (non-critical): " + lockFile);
+                }
             }
         } else {
             LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Successfully loaded " + std::to_string(chain.size()) +
@@ -164,7 +203,26 @@ bool Blockchain::initialize() {
     if (!loadValidatorsFromDatabase()) {
         LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to load validators from database");
     }
-        
+
+        // CRITICAL: Load pending transactions from database (mempool persistence)
+        // This ensures pending transactions survive node restarts
+        std::vector<Transaction> savedPendingTxs = db.getAllPendingTransactions();
+        if (!savedPendingTxs.empty()) {
+            std::lock_guard<std::mutex> txLock(transactionMutex);
+            for (const auto& tx : savedPendingTxs) {
+                // Re-validate transaction before adding to mempool
+                if (validateTransaction(tx)) {
+                    pendingTransactions.push_back(tx);
+                } else {
+                    // Transaction is no longer valid (e.g., UTXOs spent), remove from DB
+                    db.deletePendingTransaction(tx.getHash());
+                    LOG_BLOCKCHAIN(LogLevel::INFO, "Removed invalid pending transaction from DB: " + tx.getHash().substr(0, 16) + "...");
+                }
+            }
+            LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Restored " + std::to_string(pendingTransactions.size()) +
+                          " pending transactions from database (mempool persisted)");
+        }
+
         // Validate existing chain
         if (!isValid()) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "Existing blockchain is invalid");
@@ -1944,13 +2002,20 @@ bool Blockchain::validateTraceability() {
 
 void Blockchain::updateTransactionPool(const Block& block) {
     // Remove confirmed transactions from pending pool
+    Database& db = Database::getInstance();
+
     for (const auto& tx : block.getTransactions()) {
         auto it = std::find_if(pendingTransactions.begin(), pendingTransactions.end(),
                               [&tx](const Transaction& poolTx) {
                                   return poolTx.getHash() == tx.getHash();
                               });
-        
+
         if (it != pendingTransactions.end()) {
+            // CRITICAL: Remove from database
+            if (!db.deletePendingTransaction(tx.getHash())) {
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to delete pending transaction from database: " + tx.getHash());
+            }
+
             pendingTransactions.erase(it);
         }
     }
@@ -1978,7 +2043,14 @@ bool Blockchain::addTransaction(const Transaction& tx) {
     
     // Add to pending transactions
     pendingTransactions.push_back(tx);
-    
+
+    // CRITICAL: Save to database for persistence across restarts
+    Database& db = Database::getInstance();
+    if (!db.savePendingTransaction(tx)) {
+        LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to save pending transaction to database (in-memory only): " + tx.getHash());
+        // Don't fail - transaction is still in memory
+    }
+
     LOG_BLOCKCHAIN(LogLevel::DEBUG, "Transaction added to pool: " + tx.getHash());
     return true;
 }
@@ -1986,16 +2058,24 @@ bool Blockchain::addTransaction(const Transaction& tx) {
 void Blockchain::processTransactions() {
     // Process pending transactions from mempool
     std::lock_guard<std::mutex> lock(transactionMutex);
-    
+
     // Remove expired transactions
     auto currentTime = Utils::getCurrentTimestamp();
-    pendingTransactions.erase(
-        std::remove_if(pendingTransactions.begin(), pendingTransactions.end(),
-                      [currentTime](const Transaction& tx) {
-                          return currentTime - tx.getTimestamp() > 3600; // 1 hour expiry
-                      }),
-        pendingTransactions.end()
-    );
+    Database& db = Database::getInstance();
+
+    // First, identify and delete expired transactions from DB
+    auto it = pendingTransactions.begin();
+    while (it != pendingTransactions.end()) {
+        if (currentTime - it->getTimestamp() > 3600) {  // 1 hour expiry
+            // CRITICAL: Remove from database
+            if (!db.deletePendingTransaction(it->getHash())) {
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to delete expired pending transaction from database: " + it->getHash());
+            }
+            it = pendingTransactions.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 std::vector<Transaction> Blockchain::getPendingTransactions(size_t maxCount) {
