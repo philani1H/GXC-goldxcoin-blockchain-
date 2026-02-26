@@ -440,7 +440,35 @@ if(BUILD_TESTS)
         sqlite3
         pthread
     )
-    
+
+    # Test executable for mining with all 3 algorithms and rewards
+    add_executable(test_mining_rewards
+        tests/test_mining_rewards.cpp
+    )
+
+    target_link_libraries(test_mining_rewards
+        gxc_core
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        ${LEVELDB_LIBRARY}
+        sqlite3
+        pthread
+    )
+
+    # Simple test for algorithm verification
+    add_executable(test_simple_mining
+        tests/test_simple_mining.cpp
+    )
+
+    target_link_libraries(test_simple_mining
+        gxc_core
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        ${LEVELDB_LIBRARY}
+        sqlite3
+        pthread
+    )
+
     message(STATUS "Building test executables")
 endif()
 
