@@ -272,13 +272,20 @@ std::string Database::serializeTransaction(const Transaction& tx) const {
     j["sender"] = tx.getSenderAddress();
     j["receiver"] = tx.getReceiverAddress();
     j["fee"] = tx.getFee();
-    j["timestamp"] = tx.getTimestamp();
+    j["timestamp"] = static_cast<uint64_t>(tx.getTimestamp());  // Explicit cast to ensure uint64_t storage
     j["nonce"] = tx.getNonce();
+    j["type"] = static_cast<int>(tx.getType());  // CRITICAL FIX: Save transaction type
     j["is_coinbase"] = tx.isCoinbaseTransaction();
+    j["is_gold_backed"] = tx.isGoldBackedTransaction();
     j["prev_tx_hash"] = tx.getPrevTxHash();
     j["referenced_amount"] = tx.getReferencedAmount();
     j["traceability_valid"] = tx.isTraceabilityValid();
-    
+    j["pop_reference"] = tx.getPopReference();
+    j["memo"] = tx.getMemo();
+    j["lock_time"] = tx.getLockTime();
+    j["work_receipt_hash"] = tx.getWorkReceiptHash();
+    j["block_height"] = tx.getBlockHeight();
+
     // Serialize inputs
     json inputs = json::array();
     for (const auto& input : tx.getInputs()) {
@@ -287,10 +294,11 @@ std::string Database::serializeTransaction(const Transaction& tx) const {
         inp["output_index"] = input.outputIndex;
         inp["amount"] = input.amount;
         inp["signature"] = input.signature;
+        inp["public_key"] = input.publicKey;
         inputs.push_back(inp);
     }
     j["inputs"] = inputs;
-    
+
     // Serialize outputs
     json outputs = json::array();
     for (const auto& output : tx.getOutputs()) {
@@ -301,25 +309,45 @@ std::string Database::serializeTransaction(const Transaction& tx) const {
         outputs.push_back(out);
     }
     j["outputs"] = outputs;
-    
+
     return j.dump();
 }
 
 Transaction Database::deserializeTransaction(const std::string& data) const {
     try {
         json j = json::parse(data);
-        
+
         Transaction tx;
         tx.setHash(j["hash"].get<std::string>());
         tx.setSenderAddress(j["sender"].get<std::string>());
         tx.setReceiverAddress(j["receiver"].get<std::string>());
         tx.setFee(j["fee"].get<double>());
-        tx.setTimestamp(j["timestamp"].get<uint64_t>());
+        tx.setTimestamp(static_cast<std::time_t>(j["timestamp"].get<uint64_t>()));  // CRITICAL: Restore original timestamp
         tx.setNonce(j["nonce"].get<uint64_t>());
+
+        // CRITICAL FIX: Restore transaction type (NORMAL, STAKE, UNSTAKE, REWARD, COINBASE, REVERSAL)
+        if (j.contains("type")) {
+            tx.setType(static_cast<TransactionType>(j["type"].get<int>()));
+        }
+
         tx.setCoinbaseTransaction(j["is_coinbase"].get<bool>());
         tx.setPrevTxHash(j["prev_tx_hash"].get<std::string>());
         tx.setReferencedAmount(j["referenced_amount"].get<double>());
-        
+
+        // Restore additional fields (with backwards compatibility for old DB entries)
+        if (j.contains("memo")) {
+            tx.setMemo(j["memo"].get<std::string>());
+        }
+        if (j.contains("lock_time")) {
+            tx.setLockTime(j["lock_time"].get<uint32_t>());
+        }
+        if (j.contains("work_receipt_hash")) {
+            tx.setWorkReceiptHash(j["work_receipt_hash"].get<std::string>());
+        }
+        if (j.contains("block_height")) {
+            tx.setBlockHeight(j["block_height"].get<uint32_t>());
+        }
+
         // Deserialize inputs
         for (const auto& inp : j["inputs"]) {
             TransactionInput input;
@@ -327,9 +355,12 @@ Transaction Database::deserializeTransaction(const std::string& data) const {
             input.outputIndex = inp["output_index"].get<uint32_t>();
             input.amount = inp["amount"].get<double>();
             input.signature = inp["signature"].get<std::string>();
+            if (inp.contains("public_key")) {
+                input.publicKey = inp["public_key"].get<std::string>();
+            }
             tx.addInput(input);
         }
-        
+
         // Deserialize outputs
         for (const auto& out : j["outputs"]) {
             TransactionOutput output;
@@ -338,11 +369,12 @@ Transaction Database::deserializeTransaction(const std::string& data) const {
             output.script = out["script"].get<std::string>();
             tx.addOutput(output);
         }
-        
+
         return tx;
     } catch (const std::exception& e) {
         LOG_DATABASE(LogLevel::ERROR, "Failed to deserialize transaction: " + std::string(e.what()));
-        return Transaction();
+        LOG_DATABASE(LogLevel::ERROR, "   Data: " + data.substr(0, 200) + (data.length() > 200 ? "..." : ""));
+        return Transaction();  // Returns transaction with timestamp = NOW (potential bug source!)
     }
 }
 

@@ -87,29 +87,75 @@ std::vector<Transaction> Blockchain::getTransactionHistory(const std::string& ad
 bool Blockchain::initialize() {
     try {
         LOG_BLOCKCHAIN(LogLevel::INFO, "Initializing blockchain");
-        
+
+        // CRITICAL DATABASE PERSISTENCE CHECK
+        // Verify database is on persistent storage to prevent data loss on Railway/cloud deployments
+        Database& db = Database::getInstance();
+        std::string dataDir = Config::get("data_dir", "./gxc_data");
+
+        // Check if data directory is on ephemeral storage (common issue on cloud platforms)
+        bool isEphemeralPath = (dataDir.find("/tmp") == 0 ||
+                               dataDir.find("/var/tmp") == 0 ||
+                               dataDir == "./gxc_data" ||
+                               dataDir == "gxc_data");
+
         // CRITICAL: Load blocks from database FIRST before checking if chain is empty
         // This ensures that mined blocks persist across restarts
-        if (!loadBlocksFromDatabase()) {
-            LOG_BLOCKCHAIN(LogLevel::WARNING, "Failed to load blocks from database, starting fresh");
+        bool dbLoadSuccess = loadBlocksFromDatabase();
+
+        if (!dbLoadSuccess && !chain.empty()) {
+            // This should never happen - loadBlocksFromDatabase failed but chain is not empty
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "CRITICAL: Database load failed but chain vector is not empty. Data corruption detected.");
+            return false;
         }
-        
+
+        // Check if we're about to lose existing blockchain data
+        if (!dbLoadSuccess && chain.empty()) {
+            // Database is empty or corrupted
+            uint32_t blockCount = db.getBlockCount();
+
+            if (blockCount > 0) {
+                // Database has blocks but loading failed - CRITICAL ERROR
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "❌ CRITICAL: Database contains " + std::to_string(blockCount) +
+                              " blocks but loading failed! Refusing to start fresh to prevent data loss.");
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   Please investigate database corruption at: " + dataDir);
+                LOG_BLOCKCHAIN(LogLevel::ERROR, "   Use --force-fresh-start flag ONLY if you want to discard all blockchain data.");
+                return false;
+            }
+
+            // Database is truly empty - warn about persistence
+            if (isEphemeralPath) {
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "⚠️  WARNING: Database path appears to be on EPHEMERAL storage!");
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "   Path: " + dataDir);
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "   ALL BLOCKCHAIN DATA WILL BE LOST ON RESTART!");
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "   For production/Railway deployment:");
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "   1. Mount a persistent volume (e.g., /data, /mnt/blockchain)");
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "   2. Set data_dir=/your/persistent/path in config");
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "   3. Set environment variable: GXC_DATA_DIR=/your/persistent/path");
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "");
+                LOG_BLOCKCHAIN(LogLevel::WARNING, "   Starting with TEMPORARY blockchain (all coins will be lost on restart)...");
+            }
+
+            LOG_BLOCKCHAIN(LogLevel::INFO, "Database is empty. Creating genesis block...");
+        }
+
         // Auto-create genesis block if chain is empty
         // This ensures the blockchain is ready for mining and transactions
         if (chain.empty()) {
             LOG_BLOCKCHAIN(LogLevel::INFO, "Blockchain is empty. Creating genesis block...");
             createGenesisBlock();
-            
+
             // Save genesis block to database
-            Database& db = Database::getInstance();
             if (!db.saveBlock(*chain[0])) {
                 LOG_BLOCKCHAIN(LogLevel::ERROR, "Failed to save genesis block to database");
             } else {
                 LOG_BLOCKCHAIN(LogLevel::INFO, "Genesis block saved to database");
             }
         } else {
-            LOG_BLOCKCHAIN(LogLevel::INFO, "Loaded " + std::to_string(chain.size()) + 
-                          " blocks from database, rebuilding UTXO set...");
+            LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Successfully loaded " + std::to_string(chain.size()) +
+                          " blocks from persistent database");
+            LOG_BLOCKCHAIN(LogLevel::INFO, "   Database path: " + dataDir);
+            LOG_BLOCKCHAIN(LogLevel::INFO, "   Rebuilding UTXO set from " + std::to_string(chain.size()) + " blocks...");
             // Rebuild UTXO set from loaded blocks
             rebuildUtxoSet();
         }
